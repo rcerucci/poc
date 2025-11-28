@@ -38,32 +38,103 @@ document.addEventListener('DOMContentLoaded', () => {
     inicializarBotoes();
     inicializarCtrlV();
     carregarCacheSeExistir();
+    testarConexaoAPI(); // Debug
 });
+
+// ============================================
+// DEBUG - TESTAR CONEXÃO COM API
+// ============================================
+
+async function testarConexaoAPI() {
+    try {
+        console.log('🔍 Testando conexão com API...');
+        const response = await fetch('/api/health', {
+            method: 'GET'
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            console.log('✅ API respondeu:', data);
+        } else {
+            console.log('⚠️ API retornou status:', response.status);
+        }
+    } catch (error) {
+        console.log('❌ Erro ao testar API:', error);
+    }
+}
+
+// ============================================
+// COMPRESSÃO DE IMAGENS
+// ============================================
+
+function comprimirImagem(file, maxWidth = 1200, quality = 0.8) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        
+        reader.onload = (e) => {
+            const img = new Image();
+            
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+                
+                // Redimensionar se maior que maxWidth
+                if (width > maxWidth) {
+                    height = (height * maxWidth) / width;
+                    width = maxWidth;
+                }
+                
+                canvas.width = width;
+                canvas.height = height;
+                
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // Converter para base64 com qualidade reduzida
+                const comprimido = canvas.toDataURL('image/jpeg', quality);
+                
+                console.log(`📦 Imagem comprimida: ${(file.size / 1024).toFixed(0)}KB → ${(comprimido.length / 1024).toFixed(0)}KB`);
+                
+                resolve(comprimido);
+            };
+            
+            img.onerror = reject;
+            img.src = e.target.result;
+        };
+        
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
 
 // ============================================
 // CTRL+V - COLAR IMAGENS
 // ============================================
 
 function inicializarCtrlV() {
-    document.addEventListener('paste', (e) => {
+    document.addEventListener('paste', async (e) => {
         const items = e.clipboardData?.items;
         if (!items) return;
         
         for (let i = 0; i < items.length; i++) {
             if (items[i].type.indexOf('image') !== -1) {
+                e.preventDefault();
+                
                 const blob = items[i].getAsFile();
+                console.log('📋 Imagem colada:', blob.name, `${(blob.size / 1024).toFixed(0)}KB`);
                 
                 // Encontra próximo slot vazio
                 const proximoSlot = encontrarProximoSlotVazio();
                 
                 if (proximoSlot) {
-                    adicionarFotoNoSlot(blob, proximoSlot);
-                    exibirAlerta('success', '✅ Imagem colada! Total: ' + contarFotos() + ' fotos');
+                    const index = parseInt(proximoSlot.dataset.index);
+                    await adicionarFotoComCompressao(blob, proximoSlot, index);
+                    exibirAlerta('success', `✅ Imagem colada no slot ${index}! Total: ${contarFotos()} fotos`);
                 } else {
                     exibirAlerta('warning', '⚠️ Máximo de 4 fotos atingido');
                 }
                 
-                e.preventDefault();
                 break;
             }
         }
@@ -80,31 +151,35 @@ function encontrarProximoSlotVazio() {
     return null;
 }
 
-function adicionarFotoNoSlot(file, slot) {
+async function adicionarFotoComCompressao(file, slot, index) {
     const preview = slot.querySelector('.photo-preview');
     const placeholder = slot.querySelector('.photo-placeholder');
     const btnRemove = slot.querySelector('.btn-remove');
-    const index = parseInt(slot.dataset.index);
     
-    const reader = new FileReader();
-    
-    reader.onload = (e) => {
-        preview.src = e.target.result;
+    try {
+        // Comprimir imagem
+        const dataURLComprimido = await comprimirImagem(file);
+        
+        // Atualizar UI
+        preview.src = dataURLComprimido;
         preview.style.display = 'block';
         placeholder.style.display = 'none';
         btnRemove.style.display = 'flex';
         
+        // Salvar no estado
         AppState.fotosColetadas[index - 1] = {
             file: file,
-            dataURL: e.target.result,
-            nome: file.name || `clipboard-${Date.now()}.png`,
-            tamanho: file.size
+            dataURL: dataURLComprimido,
+            nome: file.name || `clipboard-${Date.now()}.jpg`,
+            tamanho: dataURLComprimido.length
         };
         
         verificarFotosMinimas();
-    };
-    
-    reader.readAsDataURL(file);
+        
+    } catch (error) {
+        console.error('Erro ao comprimir imagem:', error);
+        exibirAlerta('error', 'Erro ao processar imagem');
+    }
 }
 
 function contarFotos() {
@@ -112,7 +187,7 @@ function contarFotos() {
 }
 
 // ============================================
-// GESTÃO DE FOTOS
+// GESTÃO DE FOTOS (Upload por clique)
 // ============================================
 
 function inicializarEventosUpload() {
@@ -123,10 +198,10 @@ function inicializarEventosUpload() {
         const placeholder = slot.querySelector('.photo-placeholder');
         const btnRemove = slot.querySelector('.btn-remove');
         
-        input.addEventListener('change', (e) => {
+        input.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (file) {
-                adicionarFoto(file, slot, preview, placeholder, btnRemove, i);
+                await adicionarFoto(file, slot, preview, placeholder, btnRemove, i);
             }
         });
         
@@ -137,26 +212,31 @@ function inicializarEventosUpload() {
     }
 }
 
-function adicionarFoto(file, slot, preview, placeholder, btnRemove, index) {
-    const reader = new FileReader();
-    
-    reader.onload = (e) => {
-        preview.src = e.target.result;
+async function adicionarFoto(file, slot, preview, placeholder, btnRemove, index) {
+    try {
+        console.log(`📷 Upload foto ${index}:`, file.name, `${(file.size / 1024).toFixed(0)}KB`);
+        
+        // Comprimir imagem
+        const dataURLComprimido = await comprimirImagem(file);
+        
+        preview.src = dataURLComprimido;
         preview.style.display = 'block';
         placeholder.style.display = 'none';
         btnRemove.style.display = 'flex';
         
         AppState.fotosColetadas[index - 1] = {
             file: file,
-            dataURL: e.target.result,
+            dataURL: dataURLComprimido,
             nome: file.name,
-            tamanho: file.size
+            tamanho: dataURLComprimido.length
         };
         
         verificarFotosMinimas();
-    };
-    
-    reader.readAsDataURL(file);
+        
+    } catch (error) {
+        console.error('Erro ao processar foto:', error);
+        exibirAlerta('error', 'Erro ao processar imagem');
+    }
 }
 
 function removerFoto(input, slot, preview, placeholder, btnRemove, index) {
@@ -194,6 +274,9 @@ async function processarEtapa1() {
                 nome: foto.nome
             }));
         
+        console.log('📤 Enviando', imagensBase64.length, 'imagens para API');
+        console.log('📊 Tamanho total:', (JSON.stringify(imagensBase64).length / 1024).toFixed(0), 'KB');
+        
         const response = await fetch('/api/processar-etapa1', {
             method: 'POST',
             headers: {
@@ -204,11 +287,16 @@ async function processarEtapa1() {
             })
         });
         
+        console.log('📥 Resposta API:', response.status, response.statusText);
+        
         if (!response.ok) {
+            const errorText = await response.text();
+            console.error('❌ Erro da API:', errorText);
             throw new Error(`Erro HTTP: ${response.status}`);
         }
         
         const resposta = await response.json();
+        console.log('✅ Dados recebidos:', resposta);
         
         ocultarLoading();
         
@@ -228,7 +316,7 @@ async function processarEtapa1() {
         
     } catch (erro) {
         ocultarLoading();
-        console.error('Erro na Etapa 1:', erro);
+        console.error('❌ Erro na Etapa 1:', erro);
         exibirAlerta('error', 'Erro ao processar imagens: ' + erro.message);
     }
 }
@@ -255,67 +343,12 @@ function habilitarEdicaoManual() {
 // ============================================
 
 async function processarEtapa2() {
-    try {
-        if (!elementos.numeroPatrimonio.value || elementos.numeroPatrimonio.value === 'N/A') {
-            exibirAlerta('error', 'Número de Patrimônio inválido. Corrija antes de continuar.');
-            return;
-        }
-        
-        if (!elementos.nomeProduto.value || elementos.nomeProduto.value === 'N/A') {
-            exibirAlerta('error', 'Nome do Produto é obrigatório.');
-            return;
-        }
-        
-        exibirLoading('Processando IA: Etapa 2/2 - Buscando preço de reposição...');
-        
-        const dadosParaGrounding = {
-            nome_produto: elementos.nomeProduto.value,
-            modelo: AppState.dadosEtapa1?.modelo,
-            marca: AppState.dadosEtapa1?.marca,
-            estado: elementos.estado.value,
-            numero_patrimonio: elementos.numeroPatrimonio.value
-        };
-        
-        const response = await fetch('/api/processar-etapa2', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(dadosParaGrounding)
-        });
-        
-        if (!response.ok) {
-            throw new Error(`Erro HTTP: ${response.status}`);
-        }
-        
-        const resposta = await response.json();
-        
-        ocultarLoading();
-        
-        if (resposta.status === 'Falha_Grounding') {
-            exibirAlerta('warning', resposta.mensagem);
-            habilitarEdicaoManualValores();
-        } else {
-            preencherValores(resposta.dados.valores_estimados);
-            destacarCamposValores();
-            exibirAlerta('success', '✅ Valores calculados! Revise os dados antes de finalizar.');
-            
-            AppState.dadosCompletos = resposta.dados;
-            salvarCacheCompleto(resposta.dados);
-        }
-        
-    } catch (erro) {
-        ocultarLoading();
-        console.error('Erro na Etapa 2:', erro);
-        exibirAlerta('error', 'Erro ao buscar preço: ' + erro.message);
-    }
+    exibirAlerta('info', 'Etapa 2 ainda não implementada. Use valores manuais por enquanto.');
 }
 
 function preencherValores(valores) {
     elementos.valorMercado.value = formatarMoeda(valores.valor_mercado_estimado);
     elementos.valorAtual.value = formatarMoeda(valores.valor_atual_estimado);
-    
-    elementos.valorAtual.title = `Calculado: R$ ${valores.valor_mercado_estimado.toFixed(2)} × ${(valores.fator_depreciacao * 100).toFixed(0)}%`;
 }
 
 function destacarCamposValores() {
@@ -328,67 +361,6 @@ function destacarCamposValores() {
 
 function habilitarEdicaoManualValores() {
     elementos.valorMercado.focus();
-}
-
-// ============================================
-// FINALIZAÇÃO
-// ============================================
-
-function finalizarProcessamento() {
-    if (!AppState.dadosCompletos) {
-        exibirAlerta('error', 'Complete o processamento antes de finalizar.');
-        return;
-    }
-    
-    const dadosFinais = {
-        ...AppState.dadosCompletos,
-        numero_patrimonio: elementos.numeroPatrimonio.value,
-        nome_produto: elementos.nomeProduto.value,
-        descricao: elementos.descricao.value,
-        estado_conservacao: elementos.estado.value,
-        centro_custo: elementos.centroCusto.value,
-        categoria_depreciacao: elementos.depreciacao.value,
-        unidade: elementos.unidade.value
-    };
-    
-    exibirResultado(dadosFinais);
-    elementos.formSection.style.display = 'none';
-    elementos.resultSection.style.display = 'block';
-    ocultarAlerta();
-}
-
-function exibirResultado(dados) {
-    document.getElementById('resultIdentificacao').innerHTML = `
-        <p><strong>ID Temporário:</strong> POC_${gerarUUID()}</p>
-        <p><strong>Patrimônio:</strong> ${dados.numero_patrimonio}</p>
-        <p><strong>Nome:</strong> ${dados.nome_produto}</p>
-        <p><strong>Marca:</strong> ${dados.marca || 'N/A'}</p>
-        <p><strong>Modelo:</strong> ${dados.modelo || 'N/A'}</p>
-    `;
-    
-    document.getElementById('resultClassificacao').innerHTML = `
-        <p><strong>Estado:</strong> ${dados.estado_conservacao}</p>
-        <p><strong>Categoria:</strong> ${dados.categoria_depreciacao}</p>
-        <p><strong>Fator Aplicado:</strong> ${(dados.valores_estimados?.fator_depreciacao * 100).toFixed(0)}%</p>
-    `;
-    
-    const valorMercado = dados.valores_estimados?.valor_mercado_estimado || 0;
-    const valorAtual = dados.valores_estimados?.valor_atual_estimado || 0;
-    
-    document.getElementById('resultValores').innerHTML = `
-        <p><strong>Valor Mercado:</strong> ${formatarMoeda(valorMercado)}</p>
-        <p><strong>Valor Atual:</strong> ${formatarMoeda(valorAtual)}</p>
-        <p><strong>Depreciação:</strong> ${formatarMoeda(valorMercado - valorAtual)}</p>
-    `;
-    
-    document.getElementById('resultMetadados').innerHTML = `
-        <p><strong>Data:</strong> ${new Date().toLocaleString('pt-BR')}</p>
-        <p><strong>Origem:</strong> Sistema IA Automatizado</p>
-        <p><strong>Confiança OCR:</strong> ${dados.metadados?.confianca_ia || 'N/A'}%</p>
-        <p><strong>Versão:</strong> 1.0-POC</p>
-    `;
-    
-    document.getElementById('jsonOutput').textContent = JSON.stringify(dados, null, 2);
 }
 
 // ============================================
