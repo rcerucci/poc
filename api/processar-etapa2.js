@@ -1,11 +1,21 @@
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { VertexAI } = require('@google-cloud/vertexai');
 
 // Configuração
-const API_KEY = process.env.GOOGLE_API_KEY;
-const MODEL = process.env.VERTEX_MODEL || 'gemini-2.5-flash';
+const PROJECT_ID = 'gestech-imobilizados'; // seu project ID
+const LOCATION = 'us-central1';
+const MODEL = 'gemini-2.5-flash';
 
-// Inicializar Google AI
-const genAI = new GoogleGenerativeAI(API_KEY);
+// Parse das credenciais da variável de ambiente
+const credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON || '{}');
+
+// Inicializar Vertex AI
+const vertexAI = new VertexAI({
+    project: PROJECT_ID,
+    location: LOCATION,
+    googleAuthOptions: {
+        credentials: credentials
+    }
+});
 
 // Dicionário de depreciação
 const FATORES_DEPRECIACAO = {
@@ -61,7 +71,7 @@ module.exports = async (req, res) => {
         return res.status(405).json({ error: 'Method not allowed' });
     }
     
-    console.log('🔍 [ETAPA2] Iniciando busca de preços...');
+    console.log('🔍 [ETAPA2] Iniciando busca de preços com Grounding...');
     
     try {
         const { nome_produto, modelo, marca, estado_conservacao, categoria_depreciacao, numero_patrimonio } = req.body;
@@ -80,77 +90,79 @@ module.exports = async (req, res) => {
         // Construir query de busca
         const queryBusca = [nome_produto, marca, modelo]
             .filter(x => x && x !== 'N/A')
-            .join(' ') + ' preço novo Brasil 2024';
+            .join(' ') + ' preço novo Brasil 2024 site:mercadolivre.com.br OR site:amazon.com.br';
         
         console.log('🔎 [ETAPA2] Query de busca:', queryBusca);
         
-        // Prompt para busca de preços
-        const promptBuscaPreco = `Pesquise na web o preço de mercado atual (2024/2025) para o seguinte produto NOVO no Brasil:
+        // Prompt para Google Search Grounding
+        const promptGrounding = `Pesquise na web o preço de mercado atual para o seguinte produto NOVO no Brasil:
 
 Produto: ${nome_produto}
-Marca: ${marca || 'qualquer marca'}
-Modelo: ${modelo || 'modelo similar'}
+Marca: ${marca || 'qualquer marca confiável'}
+Modelo: ${modelo || 'modelo padrão'}
 
-Busque em sites confiáveis como Mercado Livre, Amazon, Magazine Luiza, Americanas, ou lojas especializadas.
+Busque em sites brasileiros como Mercado Livre, Amazon Brasil, Magazine Luiza, Americanas.
 
-Retorne APENAS um JSON válido com o seguinte formato:
+Retorne APENAS um JSON válido:
 
 {
   "preco_encontrado": true,
   "valor_mercado": 1500.00,
-  "fonte": "Mercado Livre",
-  "observacoes": "Baseado em produto similar novo"
+  "fonte": "nome do site onde encontrou",
+  "observacoes": "detalhes sobre o produto encontrado"
 }
 
-Se NÃO encontrar preço confiável, retorne:
+Se não encontrar preço confiável:
 
 {
   "preco_encontrado": false,
-  "motivo": "Produto muito específico sem referências de preço online"
+  "motivo": "explicação breve"
 }
 
-IMPORTANTE: 
-- Retorne APENAS JSON, sem markdown
-- valor_mercado deve ser em reais (R$)
-- Procure por produtos NOVOS para ter referência de mercado`;
+IMPORTANTE: valor_mercado deve ser em reais (R$) e representar produto NOVO.`;
 
-        console.log('🤖 [ETAPA2] Inicializando modelo com Google Search...');
+        console.log('🤖 [ETAPA2] Inicializando Vertex AI com Google Search...');
         
-        // Modelo COM Google Search (grounding)
-        const model = genAI.getGenerativeModel({
+        const generativeModel = vertexAI.getGenerativeModel({
             model: MODEL,
+        });
+        
+        const request = {
+            contents: [{
+                role: 'user',
+                parts: [{ text: promptGrounding }]
+            }],
             tools: [{
-                googleSearchRetrieval: {
-                    dynamicRetrievalConfig: {
-                        mode: 'MODE_DYNAMIC',
-                        dynamicThreshold: 0.3
-                    }
-                }
+                googleSearch: {}
             }],
             generationConfig: {
+                maxOutputTokens: 2048,
                 temperature: 0.2,
                 responseMimeType: 'application/json'
             }
-        });
+        };
         
-        console.log('📤 [ETAPA2] Enviando para Gemini com Google Search...');
+        console.log('📤 [ETAPA2] Enviando para Vertex AI com Google Search...');
         
-        // Chamar Gemini com grounding
-        const result = await model.generateContent(promptBuscaPreco);
-        const response = result.response;
-        const text = response.text();
+        const response = await generativeModel.generateContent(request);
+        const result = response.response;
         
-        console.log('📥 [ETAPA2] Resposta recebida:', text.substring(0, 200));
+        console.log('📥 [ETAPA2] Resposta recebida do Vertex AI');
+        
+        const resultText = result.candidates[0].content.parts[0].text;
+        
+        console.log('📝 [ETAPA2] Texto bruto:', resultText.substring(0, 200));
         
         // Parse JSON
         let resultadoBusca;
         try {
-            const jsonText = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            const jsonText = resultText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
             resultadoBusca = JSON.parse(jsonText);
             console.log('✅ [ETAPA2] JSON parseado:', resultadoBusca);
         } catch (parseError) {
             console.error('❌ [ETAPA2] Erro ao parsear JSON:', parseError.message);
-            throw new Error('Resposta da busca não é um JSON válido');
+            console.log('📋 [ETAPA2] Texto completo:', resultText);
+            throw new Error('Resposta não é um JSON válido');
         }
         
         // Verificar se encontrou preço
@@ -191,13 +203,14 @@ IMPORTANTE:
                 valor_atual_estimado: parseFloat(valorAtual.toFixed(2)),
                 fator_depreciacao: fatorDepreciacao,
                 percentual_depreciacao: `${((1 - fatorDepreciacao) * 100).toFixed(0)}%`,
-                fonte_preco: resultadoBusca.fonte || 'Google Search',
-                observacoes: resultadoBusca.observacoes || 'Valor estimado'
+                fonte_preco: resultadoBusca.fonte || 'Google Search via Vertex AI',
+                observacoes: resultadoBusca.observacoes || 'Preço encontrado via busca na web'
             },
             metadados: {
                 data_busca: new Date().toISOString(),
                 query_utilizada: queryBusca,
-                modelo_ia: MODEL
+                modelo_ia: MODEL,
+                metodo: 'Google Search Grounding (Vertex AI)'
             }
         };
         
@@ -206,7 +219,7 @@ IMPORTANTE:
         return res.status(200).json({
             status: 'Sucesso',
             dados: dadosCompletos,
-            mensagem: 'Valores calculados com sucesso via Google Search'
+            mensagem: 'Valores encontrados via Google Search'
         });
         
     } catch (error) {
