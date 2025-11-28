@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Teste API</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1a1a1a; color: #0f0; }
+        .log { margin: 10px 0; padding: 10px; background: #000; border-left: 3px solid #0f0; }
+        .error { border-color: #f00; color: #f00; }
+        button { padding: 10px 20px; margin: 10px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Teste API PatriGestor</h1>
+    
+    <button onclick="testarHealth()">1. Testar Health</button>
+    <button onclick="testarProcessamento()">2. Testar Processamento</button>
+    <button onclick="limparLogs()">Limpar Logs</button>
+    
+    <div id="logs"></div>
+    
+    <script>
+        const logs = document.getElementById('logs');
+        
+        function log(msg, isError = false) {
+            const div = document.createElement('div');
+            div.className = isError ? 'log error' : 'log';
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            logs.prepend(div);
+        }
+        
+        function limparLogs() {
+            logs.innerHTML = '';
+        }
+        
+        async function testarHealth() {
+            try {
+                log('🔍 Testando /api/health...');
+                const response = await fetch('/api/health');
+                const data = await response.json();
+                log(`✅ Health OK: ${JSON.stringify(data)}`);
+            } catch (error) {
+                log(`❌ Erro health: ${error.message}`, true);
+            }
+        }
+        
+        async function testarProcessamento() {
+            try {
+                log('🔍 Testando /api/processar-etapa1...');
+                
+                // Imagem 1x1 pixel em base64 (PNG válido)
+                const imagemTeste = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+                
+                const response = await fetch('/api/processar-etapa1', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        imagens: [
+                            { data: imagemTeste, nome: 'test1.png' },
+                            { data: imagemTeste, nome: 'test2.png' }
+                        ]
+                    })
+                });
+                
+                log(`📥 Status: ${response.status}`);
+                const result = await response.json();
+                log(`✅ Resultado: ${JSON.stringify(result, null, 2)}`);
+                
+            } catch (error) {
+                log(`❌ Erro processamento: ${error.message}`, true);
+            }
+        }
+    </script>
+</body>
+</html>

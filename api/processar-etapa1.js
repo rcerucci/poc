@@ -1,21 +1,11 @@
-const { VertexAI } = require('@google-cloud/vertexai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 // Configuração
-const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT_ID;
-const LOCATION = process.env.GOOGLE_CLOUD_LOCATION || 'us-central1';
+const API_KEY = process.env.GOOGLE_API_KEY;
 const MODEL = process.env.VERTEX_MODEL || 'gemini-2.5-flash';
 
-// Parse das credenciais
-const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS || '{}');
-
-// Inicializar Vertex AI
-const vertexAI = new VertexAI({
-    project: PROJECT_ID,
-    location: LOCATION,
-    googleAuthOptions: {
-        credentials: credentials
-    }
-});
+// Inicializar Google AI
+const genAI = new GoogleGenerativeAI(API_KEY);
 
 // Function Calling Tool
 const classificacaoTool = {
@@ -103,8 +93,13 @@ module.exports = async (req, res) => {
             });
         }
         
-        const generativeModel = vertexAI.getGenerativeModel({
+        // Inicializar modelo
+        const model = genAI.getGenerativeModel({
             model: MODEL,
+            tools: [classificacaoTool],
+            generationConfig: {
+                temperature: 0.1,
+            }
         });
         
         // Preparar imagens
@@ -115,26 +110,18 @@ module.exports = async (req, res) => {
             }
         }));
         
-        const request = {
-            contents: [{
-                role: 'user',
-                parts: [
-                    { text: PROMPT_SISTEMA },
-                    ...imageParts
-                ]
-            }],
-            tools: [classificacaoTool],
-            generationConfig: {
-                temperature: 0.1,
-            }
-        };
+        // Preparar conteúdo
+        const contents = [
+            { text: PROMPT_SISTEMA },
+            ...imageParts
+        ];
         
         // Chamar Gemini
-        const response = await generativeModel.generateContent(request);
-        const result = response.response;
+        const result = await model.generateContent(contents);
+        const response = result.response;
         
         // Verificar function call
-        const functionCall = result.candidates?.[0]?.content?.parts?.find(
+        const functionCall = response.candidates?.[0]?.content?.parts?.find(
             part => part.functionCall
         );
         
