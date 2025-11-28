@@ -7,89 +7,50 @@ const MODEL = process.env.VERTEX_MODEL || 'gemini-2.5-flash';
 // Inicializar Google AI
 const genAI = new GoogleGenerativeAI(API_KEY);
 
-const PROMPT_SISTEMA = `Você é um especialista em inventário de ativos industriais e comerciais. Analise as imagens fornecidas e extraia informações PRECISAS seguindo RIGOROSAMENTE a ordem de preenchimento abaixo.
-
-Retorne APENAS um JSON válido (sem markdown, sem explicações):
+const PROMPT_SISTEMA = `Analise as imagens e extraia informações PRECISAS do ativo. Retorne APENAS JSON (sem markdown):
 
 {
-  "numero_patrimonio": "número da placa",
-  "nome_produto": "nome genérico curto",
-  "marca": "fabricante",
-  "modelo": "código/número do modelo",
+  "numero_patrimonio": "número da placa ou N/A",
+  "nome_produto": "nome genérico curto (máx 3 palavras)",
+  "marca": "fabricante ou N/A",
+  "modelo": "código/número modelo ou N/A",
   "estado_conservacao": "Excelente|Bom|Regular|Ruim",
   "categoria_depreciacao": "categoria",
   "descricao": "descrição técnica completa"
 }
 
-═══════════════════════════════════════════════════════════════
-ORDEM DE PREENCHIMENTO (SIGA RIGOROSAMENTE ESTA SEQUÊNCIA):
-═══════════════════════════════════════════════════════════════
+ORDEM DE PREENCHIMENTO:
+1. numero_patrimonio: Procure plaquetas/etiquetas. Se não houver: "N/A"
+2. nome_produto: Nome GENÉRICO (ex: "Controlador de Velocidade", "Notebook", "Torno CNC")
+3. marca: Nome FABRICANTE apenas (ex: "NAKANISHI", "Dell"). Se incerto: "N/A"
+4. modelo: Código ESPECÍFICO se visível (ex: "iSpeed3", "Latitude 5420"). Se não: "N/A"
+5. estado_conservacao: Avalie visualmente arranhões, desgaste, limpeza
+6. categoria_depreciacao: "Equipamentos de Informática"|"Ferramentas"|"Instalações"|"Máquinas e Equipamentos"|"Móveis e Utensílios"|"Veículos"|"Outros"
+7. descricao: Consolide TODAS informações técnicas aqui (máx 300 chars):
+   - Tipo/função
+   - Marca e modelo (REPITA aqui)
+   - Especificações (voltagem, potência, etc)
+   - Características visíveis (display, botões, etc)
+   - Ano fabricação (se visível)
+   - Aplicação/uso
 
-1️⃣ numero_patrimonio:
-   - Procure por plaquetas/etiquetas com números de patrimônio
-   - Se não houver placa visível: "N/A"
+REGRAS:
+✅ Use "N/A" se incerto
+✅ NÃO duplique entre campos (exceto marca/modelo na descrição)
+✅ Descrição AUTOCONTIDA (compreensível sozinha)
+✅ Linguagem FACTUAL (sem "provavelmente")
+✅ Retorne APENAS JSON
 
-2️⃣ nome_produto:
-   - Nome GENÉRICO e CURTO do tipo de equipamento (máximo 3 palavras)
-   - Exemplos: "Controlador de Velocidade", "Notebook", "Torno CNC", "Cadeira Executiva"
-   - NÃO inclua marca, modelo ou especificações aqui
-
-3️⃣ marca:
-   - Nome do FABRICANTE apenas (uma ou duas palavras)
-   - Exemplos: "NAKANISHI", "Dell", "HP", "Tramontina"
-   - Se não identificar marca visível: "N/A"
-   - NÃO coloque descrições, especificações ou modelos aqui
-
-4️⃣ modelo:
-   - Código/número ESPECÍFICO do modelo se visível
-   - Exemplos: "iSpeed3", "Latitude 5420", "GT 26 III"
-   - Se não houver modelo específico visível: "N/A"
-   - NÃO coloque descrições longas aqui
-
-5️⃣ estado_conservacao:
-   - Avalie visualmente: "Excelente", "Bom", "Regular", ou "Ruim"
-   - Base-se em: arranhões, desgaste, limpeza, oxidação
-
-6️⃣ categoria_depreciacao:
-   - Escolha UMA categoria (use EXATAMENTE estes nomes):
-     • "Equipamentos de Informática"
-     • "Ferramentas"
-     • "Instalações"
-     • "Máquinas e Equipamentos"
-     • "Móveis e Utensílios"
-     • "Veículos"
-     • "Outros"
-
-7️⃣ descricao (PREENCHER POR ÚLTIMO - AQUI VAI TUDO):
-   ⚠️ REGRA CRÍTICA: Consolide TODAS as informações técnicas aqui
-   
-   ESTRUTURA DA DESCRIÇÃO (nesta ordem):
-   
-   a) TIPO/FUNÇÃO do equipamento
-   b) MARCA (repita aqui mesmo que já preenchida acima)
-   c) MODELO (repita aqui mesmo que já preenchida acima)
-   d) ESPECIFICAÇÕES TÉCNICAS (voltagem, potência, capacidade, etc)
-   e) CARACTERÍSTICAS VISÍVEIS (display digital, botões, conexões, etc)
-   f) ANO DE FABRICAÇÃO (se visível)
-   g) APLICAÇÃO/USO (para que serve)
-   
-   Exemplo CORRETO de descrição:
-   "Controlador eletrônico de velocidade marca NAKANISHI modelo iSpeed3. Display digital LCD, botões de ajuste fino de velocidade (RUN/STOP), controle de direção, indicadores de status LED. Tensão 220V/50-60Hz. Utilizado para controle preciso de velocidade de motores e spindles em aplicações industriais."
-   
-   MÁXIMO: 300 caracteres
-   NÃO mencione ambiente, localização ou dados externos às imagens
-
-═══════════════════════════════════════════════════════════════
-REGRAS CRÍTICAS:
-═══════════════════════════════════════════════════════════════
-
-✅ Preencha os campos na ORDEM acima (1→7)
-✅ Use "N/A" se não tiver certeza absoluta
-✅ NÃO duplique informações entre campos
-✅ SEMPRE repita marca e modelo na descrição (mesmo que já preenchidos)
-✅ Use linguagem FACTUAL (sem "provavelmente", "aparentemente", "parece ser")
-✅ A descrição deve ser AUTOCONTIDA (pessoa lendo só ela deve entender tudo)
-✅ Retorne APENAS JSON, sem texto adicional`;
+EXEMPLO:
+{
+  "numero_patrimonio": "01815",
+  "nome_produto": "Controlador de Velocidade",
+  "marca": "NAKANISHI",
+  "modelo": "iSpeed3",
+  "estado_conservacao": "Bom",
+  "categoria_depreciacao": "Máquinas e Equipamentos",
+  "descricao": "Controlador eletrônico NAKANISHI iSpeed3. Display LCD, botões RUN/STOP, ajuste velocidade. 220V 50/60Hz. Para motores e spindles industriais."
+}`;Y
 
 module.exports = async (req, res) => {
     // CORS
