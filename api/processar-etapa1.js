@@ -16,14 +16,15 @@ const PROMPT_SISTEMA = `Você é um especialista em inventário de ativos. Anali
   "marca": "fabricante ou N/A",
   "descricao": "descrição técnica objetiva com máximo 200 caracteres",
   "estado_conservacao": "Excelente|Bom|Regular|Ruim",
-  "categoria_depreciacao": "Computadores e Informática|Ferramentas|Instalações|Máquinas e Equipamentos|Móveis e Utensílios|Veículos|Outros"
+  "categoria_depreciacao": "Equipamentos de Informática|Ferramentas|Instalações|Máquinas e Equipamentos|Móveis e Utensílios|Veículos|Outros"
 }
 
 REGRAS:
 1. Use linguagem FACTUAL (sem "provavelmente", "aparentemente")
 2. Se incerto: retorne "N/A"
 3. Descrição: APENAS características técnicas, SEM mencionar ambiente
-4. Responda APENAS com o JSON, nada mais`;
+4. Para categoria_depreciacao, use EXATAMENTE um dos valores: "Equipamentos de Informática", "Ferramentas", "Instalações", "Máquinas e Equipamentos", "Móveis e Utensílios", "Veículos", "Outros"
+5. Responda APENAS com o JSON, nada mais`;
 
 module.exports = async (req, res) => {
     // CORS
