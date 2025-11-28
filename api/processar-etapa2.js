@@ -2,7 +2,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 // --- Configuração da IA e Autenticação ---
 const API_KEY = process.env.GOOGLE_API_KEY;
-const MODEL = process.env.VERTEX_MODEL || 'gemini-2.5-flash';
+const MODEL = process.env.VERTEX_MODEL || 'gemini-1.5-flash';
 
 // Inicializar Google AI
 const genAI = new GoogleGenerativeAI(API_KEY);
