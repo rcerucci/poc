@@ -226,32 +226,26 @@ module.exports = async (req, res) => {
         console.log('🔎 [ETAPA2] Query de busca:', queryBusca);
 
         // --- PROMPT OTIMIZADO (REDUZIDO) ---
-        const promptBuscaPreco = `Busque preços B2B NOVOS para: ${nome_produto} ${marca || ''} ${modelo || ''}.
-Categoria: ${categoria_depreciacao}
+        const promptBuscaPreco = `Busque APENAS PRODUTOS NOVOS (de fábrica) para: ${nome_produto} ${marca || ''} ${modelo || ''}.
+        Categoria: ${categoria_depreciacao}
 
-PRIORIDADE:
-1. Fornecedores B2B Brasil (atacado, distribuidores)
-2. Varejo B2C Brasil (Amazon, Mercado Livre)
-3. Internacional B2B (converta: USD×5.0, EUR×5.4, +20% importação)
+        🔍 BUSCA: Use especificações técnicas e IGNORE completamente descrições de estado físico (arranhões, manchas, desgaste, etc).
+        Exemplo: "Notebook Intel Core i3" → busque "Notebook Intel Core i3 NOVO"
 
-RETORNE 5-7 PREÇOS em JSON (sem markdown):
-{
-  "preco_encontrado": true,
-  "coleta_de_precos": [
-    {"valor": 1500.00, "tipo_fonte": "B2B", "site": "Nome do fornecedor", "data_oferta": "2025-11-28"},
-    {"valor": 1650.00, "tipo_fonte": "B2C", "site": "Amazon", "data_oferta": "2025-11-27"}
-  ],
-  "observacoes": "Breve descrição das fontes"
-}
+        PRIORIDADE:
+        1. B2B Brasil (atacado/distribuidores)
+        2. B2C Brasil (Amazon/Mercado Livre - filtro "NOVO")
+        3. Internacional (USD×5.0, EUR×5.4, +20%)
 
-Se não encontrar:
-{"preco_encontrado": false, "motivo": "explicação"}
+        JSON (sem markdown):
+        {
+        "preco_encontrado": true,
+        "coleta_de_precos": [
+            {"valor": 1500.00, "tipo_fonte": "B2B", "site": "Fornecedor X", "data_oferta": "2025-11-28"}
+        ]
+        }
 
-REGRAS: 
-- Apenas produtos INDIVIDUAIS (não kits/combos)
-- Preços em R$ (número puro)
-- Datas no formato YYYY-MM-DD
-- Mínimo 3 preços diferentes`;
+        REGRAS: Produto NOVO | Individual | R$ | YYYY-MM-DD | Mínimo 3 preços`;
 
         console.log('🤖 [ETAPA2] Inicializando modelo com Google Search...');
 
