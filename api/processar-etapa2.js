@@ -1,59 +1,49 @@
-const { VertexAI } = require('@google-cloud/vertexai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-// Configuração
-const PROJECT_ID = 'gestech-imobilizados'; // seu project ID
-const LOCATION = 'us-central1';
-const MODEL = 'gemini-2.5-flash';
+// --- Configuração da IA e Autenticação ---
+const API_KEY = process.env.GOOGLE_API_KEY;
+const MODEL = process.env.VERTEX_MODEL || 'gemini-2.5-flash';
 
-// Parse das credenciais da variável de ambiente
-const credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON || '{}');
+// Inicializar Google AI
+const genAI = new GoogleGenerativeAI(API_KEY);
 
-// Inicializar Vertex AI
-const vertexAI = new VertexAI({
-    project: PROJECT_ID,
-    location: LOCATION,
-    googleAuthOptions: {
-        credentials: credentials
-    }
-});
-
-// Dicionário de depreciação
+// --- Dicionário de Fatores de Depreciação ---
 const FATORES_DEPRECIACAO = {
-    'Excelente': {
-        'Equipamentos de Informática': 0.90,
-        'Ferramentas': 0.85,
-        'Instalações': 0.80,
+    Excelente: {
+        'Equipamentos de Informática': 0.9,
+        Ferramentas: 0.85,
+        Instalações: 0.8,
         'Máquinas e Equipamentos': 0.85,
-        'Móveis e Utensílios': 0.80,
-        'Veículos': 0.85,
-        'Outros': 0.75
+        'Móveis e Utensílios': 0.8,
+        Veículos: 0.85,
+        Outros: 0.75
     },
-    'Bom': {
+    Bom: {
         'Equipamentos de Informática': 0.75,
-        'Ferramentas': 0.70,
-        'Instalações': 0.65,
-        'Máquinas e Equipamentos': 0.70,
+        Ferramentas: 0.7,
+        Instalações: 0.65,
+        'Máquinas e Equipamentos': 0.7,
         'Móveis e Utensílios': 0.65,
-        'Veículos': 0.70,
-        'Outros': 0.60
+        Veículos: 0.7,
+        Outros: 0.6
     },
-    'Regular': {
+    Regular: {
         'Equipamentos de Informática': 0.55,
-        'Ferramentas': 0.50,
-        'Instalações': 0.45,
-        'Máquinas e Equipamentos': 0.50,
+        Ferramentas: 0.5,
+        Instalações: 0.45,
+        'Máquinas e Equipamentos': 0.5,
         'Móveis e Utensílios': 0.45,
-        'Veículos': 0.50,
-        'Outros': 0.40
+        Veículos: 0.5,
+        Outros: 0.4
     },
-    'Ruim': {
+    Ruim: {
         'Equipamentos de Informática': 0.35,
-        'Ferramentas': 0.30,
-        'Instalações': 0.25,
-        'Máquinas e Equipamentos': 0.30,
+        Ferramentas: 0.3,
+        Instalações: 0.25,
+        'Máquinas e Equipamentos': 0.3,
         'Móveis e Utensílios': 0.25,
-        'Veículos': 0.30,
-        'Outros': 0.20
+        Veículos: 0.3,
+        Outros: 0.2
     }
 };
 
@@ -62,23 +52,35 @@ module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    
+
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
-    
+
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method not allowed' });
     }
-    
-    console.log('🔍 [ETAPA2] Iniciando busca de preços com Grounding...');
-    
+
+    console.log('🔍 [ETAPA2] Iniciando busca de preços...');
+
     try {
-        const { nome_produto, modelo, marca, estado_conservacao, categoria_depreciacao, numero_patrimonio } = req.body;
-        
-        console.log('📥 [ETAPA2] Dados recebidos:', { nome_produto, modelo, marca, estado_conservacao, categoria_depreciacao });
-        
-        // Validar campos obrigatórios
+        const {
+            nome_produto,
+            modelo,
+            marca,
+            estado_conservacao,
+            categoria_depreciacao,
+            numero_patrimonio
+        } = req.body;
+
+        console.log('📥 [ETAPA2] Dados recebidos:', {
+            nome_produto,
+            modelo,
+            marca,
+            estado_conservacao,
+            categoria_depreciacao
+        });
+
         if (!nome_produto || nome_produto === 'N/A') {
             return res.status(400).json({
                 status: 'Falha',
@@ -86,111 +88,117 @@ module.exports = async (req, res) => {
                 dados: {}
             });
         }
-        
-        // Construir query de busca
+
         const queryBusca = [nome_produto, marca, modelo]
             .filter(x => x && x !== 'N/A')
-            .join(' ') + ' preço novo Brasil 2024 site:mercadolivre.com.br OR site:amazon.com.br';
-        
+            .join(' ') + ' preço novo Brasil 2024';
+
         console.log('🔎 [ETAPA2] Query de busca:', queryBusca);
-        
-        // Prompt para Google Search Grounding
-        const promptGrounding = `Pesquise na web o preço de mercado atual para o seguinte produto NOVO no Brasil:
+
+        const promptBuscaPreco = `Pesquise na web o preço de mercado atual (2024/2025) para o seguinte produto NOVO no Brasil:
 
 Produto: ${nome_produto}
 Marca: ${marca || 'qualquer marca confiável'}
 Modelo: ${modelo || 'modelo padrão'}
 
-Busque em sites brasileiros como Mercado Livre, Amazon Brasil, Magazine Luiza, Americanas.
+Busque em sites brasileiros confiáveis (Mercado Livre, Amazon, etc.) para encontrar o preço de venda mais próximo do NOVO.
 
-Retorne APENAS um JSON válido:
+Retorne APENAS um JSON válido (sem markdown, sem explicações):
 
 {
   "preco_encontrado": true,
   "valor_mercado": 1500.00,
-  "fonte": "nome do site onde encontrou",
-  "observacoes": "detalhes sobre o produto encontrado"
+  "fonte": "site onde encontrou",
+  "observacoes": "detalhes do produto"
 }
 
-Se não encontrar preço confiável:
+Se não encontrar, retorne:
 
 {
   "preco_encontrado": false,
   "motivo": "explicação breve"
 }
 
-IMPORTANTE: valor_mercado deve ser em reais (R$) e representar produto NOVO.`;
+IMPORTANTE: Responda APENAS com o JSON puro, sem nenhum texto adicional antes ou depois.`;
 
-        console.log('🤖 [ETAPA2] Inicializando Vertex AI com Google Search...');
-        
-        const generativeModel = vertexAI.getGenerativeModel({
+        console.log('🤖 [ETAPA2] Inicializando modelo com Google Search...');
+
+        const model = genAI.getGenerativeModel({
             model: MODEL,
-        });
-        
-        const request = {
-            contents: [{
-                role: 'user',
-                parts: [{ text: promptGrounding }]
-            }],
-            tools: [{
-                googleSearch: {}
-            }],
+            tools: [{ googleSearch: {} }],
             generationConfig: {
-                maxOutputTokens: 2048,
                 temperature: 0.2,
                 responseMimeType: 'application/json'
             }
-        };
-        
-        console.log('📤 [ETAPA2] Enviando para Vertex AI com Google Search...');
-        
-        const response = await generativeModel.generateContent(request);
-        const result = response.response;
-        
-        console.log('📥 [ETAPA2] Resposta recebida do Vertex AI');
-        
-        const resultText = result.candidates[0].content.parts[0].text;
-        
-        console.log('📝 [ETAPA2] Texto bruto:', resultText.substring(0, 200));
-        
-        // Parse JSON
+        });
+
+        console.log('📤 [ETAPA2] Enviando requisição para Gemini...');
+
+        const result = await model.generateContent(promptBuscaPreco);
+        const response = result.response;
+        const text = response.text();
+
+        console.log('📥 [ETAPA2] Resposta BRUTA recebida:');
+        console.log('═══════════════════════════════════════');
+        console.log(text);
+        console.log('═══════════════════════════════════════');
+        console.log('📏 [ETAPA2] Tamanho da resposta:', text.length, 'caracteres');
+        console.log('🔤 [ETAPA2] Primeiros 500 chars:', text.substring(0, 500));
+        console.log('🔤 [ETAPA2] Últimos 100 chars:', text.substring(text.length - 100));
+
         let resultadoBusca;
+
         try {
-            const jsonText = resultText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            // Tentar limpar o texto
+            let jsonText = text.trim();
+            
+            // Remover markdown se existir
+            jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+            
+            // Remover possíveis espaços em branco extras
+            jsonText = jsonText.trim();
+            
+            console.log('🧹 [ETAPA2] Texto limpo para parse:');
+            console.log('═══════════════════════════════════════');
+            console.log(jsonText);
+            console.log('═══════════════════════════════════════');
+
             resultadoBusca = JSON.parse(jsonText);
-            console.log('✅ [ETAPA2] JSON parseado:', resultadoBusca);
+            console.log('✅ [ETAPA2] JSON parseado com sucesso!');
+            console.log('📊 [ETAPA2] Objeto resultante:', JSON.stringify(resultadoBusca, null, 2));
+            
         } catch (parseError) {
-            console.error('❌ [ETAPA2] Erro ao parsear JSON:', parseError.message);
-            console.log('📋 [ETAPA2] Texto completo:', resultText);
-            throw new Error('Resposta não é um JSON válido');
+            console.error('❌ [ETAPA2] ERRO ao parsear JSON!');
+            console.error('❌ [ETAPA2] Mensagem do erro:', parseError.message);
+            console.error('❌ [ETAPA2] Stack trace:', parseError.stack);
+            console.error('❌ [ETAPA2] Texto que tentou parsear:', text);
+            
+            throw new Error(`Resposta não é um JSON válido: ${parseError.message}`);
         }
-        
-        // Verificar se encontrou preço
+
         if (!resultadoBusca.preco_encontrado) {
-            console.log('⚠️ [ETAPA2] Preço não encontrado:', resultadoBusca.motivo);
+            console.log('⚠️ [ETAPA2] Preço não encontrado');
             return res.status(200).json({
                 status: 'Falha',
-                mensagem: `Não foi possível encontrar preço online. ${resultadoBusca.motivo || 'Insira manualmente.'}`,
-                dados: {
-                    preco_encontrado: false
-                }
+                mensagem: `Não foi possível encontrar preço: ${resultadoBusca.motivo || 'Motivo não especificado'}`,
+                dados: { preco_encontrado: false }
             });
         }
-        
-        // Calcular depreciação
-        const valorMercado = resultadoBusca.valor_mercado;
+
+        console.log('💰 [ETAPA2] Preço encontrado:', resultadoBusca.valor_mercado);
+
+        const valorMercado = parseFloat(resultadoBusca.valor_mercado);
         const estado = estado_conservacao || 'Bom';
         const categoria = categoria_depreciacao || 'Outros';
-        
-        const fatorDepreciacao = FATORES_DEPRECIACAO[estado]?.[categoria] || 0.70;
+
+        console.log('📊 [ETAPA2] Calculando depreciação - Estado:', estado, 'Categoria:', categoria);
+
+        const fatorDepreciacao = FATORES_DEPRECIACAO[estado]?.[categoria] || 0.7;
         const valorAtual = valorMercado * fatorDepreciacao;
-        
-        console.log('💰 [ETAPA2] Valores calculados:', {
-            valorMercado,
-            fatorDepreciacao,
-            valorAtual
-        });
-        
+
+        console.log('📉 [ETAPA2] Fator de depreciação:', fatorDepreciacao);
+        console.log('💵 [ETAPA2] Valor atual calculado:', valorAtual);
+
         const dadosCompletos = {
             numero_patrimonio,
             nome_produto,
@@ -203,35 +211,32 @@ IMPORTANTE: valor_mercado deve ser em reais (R$) e representar produto NOVO.`;
                 valor_atual_estimado: parseFloat(valorAtual.toFixed(2)),
                 fator_depreciacao: fatorDepreciacao,
                 percentual_depreciacao: `${((1 - fatorDepreciacao) * 100).toFixed(0)}%`,
-                fonte_preco: resultadoBusca.fonte || 'Google Search via Vertex AI',
-                observacoes: resultadoBusca.observacoes || 'Preço encontrado via busca na web'
+                fonte_preco: resultadoBusca.fonte || 'Google Search',
+                observacoes: resultadoBusca.observacoes || 'Valor estimado'
             },
             metadados: {
                 data_busca: new Date().toISOString(),
                 query_utilizada: queryBusca,
-                modelo_ia: MODEL,
-                metodo: 'Google Search Grounding (Vertex AI)'
+                modelo_ia: MODEL
             }
         };
-        
+
         console.log('✅ [ETAPA2] Processamento concluído com sucesso!');
-        
+
         return res.status(200).json({
             status: 'Sucesso',
             dados: dadosCompletos,
-            mensagem: 'Valores encontrados via Google Search'
+            mensagem: 'Valores calculados com sucesso via Google Search'
         });
         
     } catch (error) {
-        console.error('❌ [ETAPA2] Erro:', error.message);
-        console.error('❌ [ETAPA2] Stack:', error.stack);
-        
+        console.error('❌ [ETAPA2] ERRO GERAL:', error.message);
+        console.error('❌ [ETAPA2] Stack completo:', error.stack);
+
         return res.status(500).json({
             status: 'Falha',
             mensagem: 'Erro ao buscar preço: ' + error.message,
-            dados: {
-                preco_encontrado: false
-            }
+            dados: { preco_encontrado: false }
         });
     }
 };
