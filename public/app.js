@@ -91,29 +91,51 @@ function comprimirImagem(file, maxWidth = 1200, quality = 0.8) {
 // ============================================
 
 function inicializarCtrlV() {
+    console.log('🎯 Inicializando Ctrl+V...');
+    
     document.addEventListener('paste', async (e) => {
+        console.log('📋 Evento paste detectado!');
+        
         const items = e.clipboardData?.items;
-        if (!items) return;
+        console.log('📦 Items:', items);
+        
+        if (!items) {
+            console.log('⚠️ Nenhum item na área de transferência');
+            return;
+        }
         
         for (let i = 0; i < items.length; i++) {
+            console.log(`📌 Item ${i}:`, items[i].type);
+            
             if (items[i].type.indexOf('image') !== -1) {
                 e.preventDefault();
                 
                 const blob = items[i].getAsFile();
-                console.log('📋 Imagem colada:', blob.name, `${(blob.size / 1024).toFixed(0)}KB`);
+                console.log('✅ Imagem detectada:', blob.name, `${(blob.size / 1024).toFixed(0)}KB`);
                 
                 // Encontra próximo slot vazio
                 const index = encontrarProximoSlotVazio();
+                console.log('🎰 Slot vazio encontrado:', index);
                 
                 if (index !== -1) {
                     const slot = document.querySelector(`.photo-slot[data-index="${index}"]`);
+                    console.log('📍 Slot DOM:', slot);
+                    
+                    if (!slot) {
+                        console.error('❌ Slot não encontrado no DOM!');
+                        return;
+                    }
+                    
                     const preview = slot.querySelector('.photo-preview');
                     const placeholder = slot.querySelector('.photo-placeholder');
                     const btnRemove = slot.querySelector('.btn-remove');
                     
+                    console.log('🔍 Elementos:', { preview, placeholder, btnRemove });
+                    
                     await adicionarFotoComCompressao(blob, preview, placeholder, btnRemove, index);
                     exibirAlerta('success', `✅ Imagem colada no slot ${index}! Total: ${contarFotos()} fotos`);
                 } else {
+                    console.log('⚠️ Nenhum slot vazio disponível');
                     exibirAlerta('warning', '⚠️ Máximo de 4 fotos atingido');
                 }
                 
@@ -121,6 +143,8 @@ function inicializarCtrlV() {
             }
         }
     });
+    
+    console.log('✅ Ctrl+V inicializado');
 }
 
 function encontrarProximoSlotVazio() {
