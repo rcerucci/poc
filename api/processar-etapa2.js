@@ -47,6 +47,136 @@ const FATORES_DEPRECIACAO = {
     }
 };
 
+// --- Função de Cálculo de Média Exponencial ---
+function calcularMediaExponencial(coleta_precos) {
+    console.log('📊 [EMA] Iniciando cálculo de média exponencial...');
+    console.log('📥 [EMA] Preços coletados:', JSON.stringify(coleta_precos, null, 2));
+
+    if (!coleta_precos || coleta_precos.length === 0) {
+        console.log('⚠️ [EMA] Nenhum preço coletado');
+        return { sucesso: false, motivo: 'Nenhum preço coletado' };
+    }
+
+    // 1. Filtrar e validar preços
+    const precosValidos = coleta_precos
+        .map(item => ({
+            ...item,
+            valor: parseFloat(String(item.valor).replace(/[^\d,.]/g, '').replace(',', '.'))
+        }))
+        .filter(item => !isNaN(item.valor) && item.valor > 0);
+
+    if (precosValidos.length === 0) {
+        console.log('⚠️ [EMA] Nenhum preço válido após filtragem');
+        return { sucesso: false, motivo: 'Nenhum preço válido encontrado' };
+    }
+
+    console.log(`✅ [EMA] ${precosValidos.length} preços válidos`);
+
+    // 2. Remover outliers usando IQR (Interquartile Range)
+    const valores = precosValidos.map(p => p.valor).sort((a, b) => a - b);
+    const q1 = valores[Math.floor(valores.length * 0.25)];
+    const q3 = valores[Math.floor(valores.length * 0.75)];
+    const iqr = q3 - q1;
+    const limiteInferior = q1 - 1.5 * iqr;
+    const limiteSuperior = q3 + 1.5 * iqr;
+
+    console.log(`📐 [EMA] IQR: Q1=${q1.toFixed(2)}, Q3=${q3.toFixed(2)}, IQR=${iqr.toFixed(2)}`);
+    console.log(`📐 [EMA] Limites: [${limiteInferior.toFixed(2)}, ${limiteSuperior.toFixed(2)}]`);
+
+    const precosFiltrados = precosValidos.filter(p => 
+        p.valor >= limiteInferior && p.valor <= limiteSuperior
+    );
+
+    if (precosFiltrados.length === 0) {
+        console.log('⚠️ [EMA] Todos os preços foram considerados outliers, usando preços válidos');
+        precosFiltrados.push(...precosValidos);
+    }
+
+    console.log(`✅ [EMA] ${precosFiltrados.length} preços após remoção de outliers`);
+
+    // 3. Calcular pesos (Fonte + Recência)
+    const dataAtual = new Date();
+    const precosComPeso = precosFiltrados.map(item => {
+        // Peso por tipo de fonte
+        const pesoFonte = item.tipo_fonte === 'B2B' ? 1.5 : 1.0;
+
+        // Peso por recência (últimos 30 dias = peso 1.0, decai exponencialmente)
+        let pesoRecencia = 1.0;
+        if (item.data_oferta) {
+            try {
+                const dataOferta = new Date(item.data_oferta);
+                const diasPassados = (dataAtual - dataOferta) / (1000 * 60 * 60 * 24);
+                pesoRecencia = Math.exp(-diasPassados / 60); // Decai para ~0.6 após 30 dias
+            } catch (e) {
+                console.log('⚠️ [EMA] Data inválida:', item.data_oferta);
+            }
+        }
+
+        const pesoTotal = pesoFonte * pesoRecencia;
+
+        return {
+            ...item,
+            peso_fonte: pesoFonte,
+            peso_recencia: pesoRecencia,
+            peso_total: pesoTotal
+        };
+    });
+
+    console.log('⚖️ [EMA] Pesos calculados:', precosComPeso.map(p => ({
+        valor: p.valor,
+        tipo: p.tipo_fonte,
+        peso: p.peso_total.toFixed(3)
+    })));
+
+    // 4. Calcular Média Exponencial Ponderada (EMA)
+    const somaPonderada = precosComPeso.reduce((acc, item) => 
+        acc + (item.valor * item.peso_total), 0
+    );
+    const somaPesos = precosComPeso.reduce((acc, item) => 
+        acc + item.peso_total, 0
+    );
+
+    const mediaExponencial = somaPonderada / somaPesos;
+
+    // 5. Calcular desvio padrão para score de confiança
+    const media = precosComPeso.reduce((acc, item) => acc + item.valor, 0) / precosComPeso.length;
+    const variancia = precosComPeso.reduce((acc, item) => 
+        acc + Math.pow(item.valor - media, 2), 0
+    ) / precosComPeso.length;
+    const desvioPadrao = Math.sqrt(variancia);
+    const coeficienteVariacao = (desvioPadrao / media) * 100;
+
+    // Score de confiança (0-100): menor variação = maior confiança
+    const scoreConfianca = Math.max(0, Math.min(100, 100 - coeficienteVariacao));
+
+    console.log('💰 [EMA] Resultado final:');
+    console.log(`   Média Exponencial: R$ ${mediaExponencial.toFixed(2)}`);
+    console.log(`   Desvio Padrão: R$ ${desvioPadrao.toFixed(2)}`);
+    console.log(`   Confiança: ${scoreConfianca.toFixed(1)}%`);
+
+    return {
+        sucesso: true,
+        valor_mercado: parseFloat(mediaExponencial.toFixed(2)),
+        estatisticas: {
+            num_precos_coletados: coleta_precos.length,
+            num_precos_validos: precosValidos.length,
+            num_precos_apos_outliers: precosFiltrados.length,
+            preco_minimo: Math.min(...precosFiltrados.map(p => p.valor)),
+            preco_maximo: Math.max(...precosFiltrados.map(p => p.valor)),
+            desvio_padrao: parseFloat(desvioPadrao.toFixed(2)),
+            coeficiente_variacao: parseFloat(coeficienteVariacao.toFixed(2)),
+            score_confianca: parseFloat(scoreConfianca.toFixed(1))
+        },
+        detalhes_precos: precosComPeso.map(p => ({
+            valor: p.valor,
+            fonte: p.site || p.fonte,
+            tipo: p.tipo_fonte,
+            peso: parseFloat(p.peso_total.toFixed(3)),
+            data: p.data_oferta || 'N/A'
+        }))
+    };
+}
+
 module.exports = async (req, res) => {
     // CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -95,41 +225,41 @@ module.exports = async (req, res) => {
 
         console.log('🔎 [ETAPA2] Query de busca:', queryBusca);
 
-        const promptBuscaPreco = `Você tem acesso à ferramenta Google Search. Encontre o preço de AQUISIÇÃO CORPORATIVA (B2B) NOVO para: ${nome_produto} ${marca || ''} ${modelo || ''}.
+        // --- PROMPT OTIMIZADO (REDUZIDO) ---
+        const promptBuscaPreco = `Busque preços B2B NOVOS para: ${nome_produto} ${marca || ''} ${modelo || ''}.
+Categoria: ${categoria_depreciacao}
 
-        CONTEXTO: Sistema de gestão patrimonial. Preço deve refletir custo B2B que EMPRESA pagaria.
-        CATEGORIA: ${categoria_depreciacao}
+PRIORIDADE:
+1. Fornecedores B2B Brasil (atacado, distribuidores)
+2. Varejo B2C Brasil (Amazon, Mercado Livre)
+3. Internacional B2B (converta: USD×5.0, EUR×5.4, +20% importação)
 
-        ESTRATÉGIA (nesta ordem):
-        1. PRIORIDADE: Fornecedores B2B/Corporativos BR, Fabricantes Oficiais, Atacadistas. Use R$.
-        2. SEGUNDO: Varejo B2C BR (Mercado Livre, Amazon). Use R$.
-        3. TERCEIRO: Internacional B2B (Alibaba, Fabricantes). Converta (1 USD=5.00, 1 EUR=5.40) e ADICIONE 20% (importação).
-        4. FALLBACK: Estime com produto SIMILAR B2B da mesma categoria.
+RETORNE 5-7 PREÇOS em JSON (sem markdown):
+{
+  "preco_encontrado": true,
+  "coleta_de_precos": [
+    {"valor": 1500.00, "tipo_fonte": "B2B", "site": "Nome do fornecedor", "data_oferta": "2025-11-28"},
+    {"valor": 1650.00, "tipo_fonte": "B2C", "site": "Amazon", "data_oferta": "2025-11-27"}
+  ],
+  "observacoes": "Breve descrição das fontes"
+}
 
-        FORMATO (APENAS JSON):
-        {
-        "preco_encontrado": true,
-        "valor_mercado": 15000.00,
-        "fonte": "Nome Fornecedor/Distribuidor",
-        "observacoes": "Tipo: [B2B/B2C/Estimativa]. Origem: [BR/Internacional]. Detalhes.",
-        "tipo_fonte": "B2B"
-        }
-        OU
-        {
-        "preco_encontrado": false,
-        "motivo": "explicação breve"
-        }
+Se não encontrar:
+{"preco_encontrado": false, "motivo": "explicação"}
 
-        REGRAS: Priorize B2B. Use todas estratégias antes de retornar false. valor_mercado = número puro sem símbolos. Retorne APENAS JSON.`;
+REGRAS: 
+- Apenas produtos INDIVIDUAIS (não kits/combos)
+- Preços em R$ (número puro)
+- Datas no formato YYYY-MM-DD
+- Mínimo 3 preços diferentes`;
 
-
-        console.log('🤖 [ETAPA2] Inicializando modelo com Google Search (foco B2B)...');
+        console.log('🤖 [ETAPA2] Inicializando modelo com Google Search...');
 
         const model = genAI.getGenerativeModel({
             model: MODEL,
             tools: [{ googleSearch: {} }],
             generationConfig: {
-                temperature: 0.3
+                temperature: 0.2
             }
         });
 
@@ -150,7 +280,6 @@ module.exports = async (req, res) => {
             let jsonText = text.trim();
             jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
             
-            // 💡 Isola o bloco JSON para lidar com texto antes/depois
             const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
                 jsonText = jsonMatch[0];
@@ -163,18 +292,6 @@ module.exports = async (req, res) => {
             resultadoBusca = JSON.parse(jsonText);
             console.log('✅ [ETAPA2] JSON parseado:', JSON.stringify(resultadoBusca, null, 2));
             
-            // Validar e limpar valor_mercado
-            if (resultadoBusca.preco_encontrado && resultadoBusca.valor_mercado) {
-                // Se o valor_mercado é uma string, limpe-o
-                if (typeof resultadoBusca.valor_mercado === 'string') {
-                    console.log('🧹 [ETAPA2] Limpando valor_mercado (string):', resultadoBusca.valor_mercado);
-                    resultadoBusca.valor_mercado = resultadoBusca.valor_mercado
-                        .replace(/[^\d,\.]/g, '') // Remove tudo exceto dígitos, vírgulas e pontos
-                        .replace(',', '.');        // Substitui vírgula por ponto (formato brasileiro)
-                    console.log('✨ [ETAPA2] Valor limpo:', resultadoBusca.valor_mercado);
-                }
-            }
-            
         } catch (parseError) {
             console.error('❌ [ETAPA2] ERRO ao parsear JSON:', parseError.message);
             console.error('📋 [ETAPA2] Texto original:', text);
@@ -182,7 +299,7 @@ module.exports = async (req, res) => {
         }
 
         if (!resultadoBusca.preco_encontrado) {
-            console.log('⚠️ [ETAPA2] Preço não encontrado após todas as estratégias');
+            console.log('⚠️ [ETAPA2] Preço não encontrado');
             return res.status(200).json({
                 status: 'Falha',
                 mensagem: `Não foi possível encontrar preço B2B: ${resultadoBusca.motivo || 'Produto muito específico'}. Insira valor manualmente.`,
@@ -190,19 +307,23 @@ module.exports = async (req, res) => {
             });
         }
 
-        console.log('💰 [ETAPA2] Preço encontrado:', resultadoBusca.valor_mercado);
-        console.log('📊 [ETAPA2] Tipo de fonte:', resultadoBusca.tipo_fonte || 'Não especificado');
+        // --- NOVA ETAPA: CALCULAR MÉDIA EXPONENCIAL ---
+        console.log('📊 [ETAPA2] Calculando média exponencial dos preços coletados...');
+        
+        const resultadoEMA = calcularMediaExponencial(resultadoBusca.coleta_de_precos);
 
-        // Converter para número e validar
-        const valorMercado = parseFloat(resultadoBusca.valor_mercado);
-
-        if (isNaN(valorMercado) || valorMercado <= 0) {
-            console.error('❌ [ETAPA2] Valor inválido:', resultadoBusca.valor_mercado);
-            throw new Error('Valor de mercado retornado pela IA não é um número válido.');
+        if (!resultadoEMA.sucesso) {
+            return res.status(200).json({
+                status: 'Falha',
+                mensagem: `Erro ao processar preços: ${resultadoEMA.motivo}`,
+                dados: { preco_encontrado: false }
+            });
         }
 
-        console.log('✅ [ETAPA2] Valor validado:', valorMercado);
+        const valorMercado = resultadoEMA.valor_mercado;
+        console.log('✅ [ETAPA2] Valor de mercado (EMA):', valorMercado);
 
+        // --- APLICAR DEPRECIAÇÃO ---
         const estado = estado_conservacao || 'Bom';
         const categoria = categoria_depreciacao || 'Outros';
 
@@ -223,15 +344,18 @@ module.exports = async (req, res) => {
                 valor_atual_estimado: parseFloat(valorAtual.toFixed(2)),
                 fator_depreciacao: fatorDepreciacao,
                 percentual_depreciacao: `${((1 - fatorDepreciacao) * 100).toFixed(0)}%`,
-                fonte_preco: resultadoBusca.fonte || 'Google Search B2B',
-                tipo_fonte: resultadoBusca.tipo_fonte || 'Não especificado',
-                observacoes: resultadoBusca.observacoes || 'Valor estimado para aquisição corporativa'
+                fonte_preco: 'Média Exponencial Ponderada',
+                metodo_calculo: 'EMA com filtro IQR e pesos B2B/recência',
+                score_confianca: resultadoEMA.estatisticas.score_confianca,
+                observacoes: resultadoBusca.observacoes || 'Calculado via média exponencial de múltiplas fontes'
             },
+            analise_estatistica: resultadoEMA.estatisticas,
+            precos_coletados: resultadoEMA.detalhes_precos,
             metadados: {
                 data_busca: new Date().toISOString(),
                 query_utilizada: queryBusca,
                 modelo_ia: MODEL,
-                estrategia: 'Busca B2B prioritária com fallback B2C'
+                estrategia: 'Busca B2B → Média Exponencial → Depreciação'
             }
         };
 
@@ -240,7 +364,7 @@ module.exports = async (req, res) => {
         return res.status(200).json({
             status: 'Sucesso',
             dados: dadosCompletos,
-            mensagem: 'Valores B2B encontrados via busca corporativa'
+            mensagem: `Valores calculados via média exponencial (confiança: ${resultadoEMA.estatisticas.score_confianca.toFixed(0)}%)`
         });
         
     } catch (error) {
