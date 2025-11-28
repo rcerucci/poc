@@ -36,8 +36,80 @@ const elementos = {
 document.addEventListener('DOMContentLoaded', () => {
     inicializarEventosUpload();
     inicializarBotoes();
+    inicializarCtrlV();
     carregarCacheSeExistir();
 });
+
+// ============================================
+// CTRL+V - COLAR IMAGENS
+// ============================================
+
+function inicializarCtrlV() {
+    document.addEventListener('paste', (e) => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].type.indexOf('image') !== -1) {
+                const blob = items[i].getAsFile();
+                
+                // Encontra próximo slot vazio
+                const proximoSlot = encontrarProximoSlotVazio();
+                
+                if (proximoSlot) {
+                    adicionarFotoNoSlot(blob, proximoSlot);
+                    exibirAlerta('success', '✅ Imagem colada! Total: ' + contarFotos() + ' fotos');
+                } else {
+                    exibirAlerta('warning', '⚠️ Máximo de 4 fotos atingido');
+                }
+                
+                e.preventDefault();
+                break;
+            }
+        }
+    });
+}
+
+function encontrarProximoSlotVazio() {
+    for (let i = 1; i <= 4; i++) {
+        if (!AppState.fotosColetadas[i - 1]) {
+            const input = document.getElementById(`photo${i}`);
+            return input.closest('.photo-slot');
+        }
+    }
+    return null;
+}
+
+function adicionarFotoNoSlot(file, slot) {
+    const preview = slot.querySelector('.photo-preview');
+    const placeholder = slot.querySelector('.photo-placeholder');
+    const btnRemove = slot.querySelector('.btn-remove');
+    const index = parseInt(slot.dataset.index);
+    
+    const reader = new FileReader();
+    
+    reader.onload = (e) => {
+        preview.src = e.target.result;
+        preview.style.display = 'block';
+        placeholder.style.display = 'none';
+        btnRemove.style.display = 'flex';
+        
+        AppState.fotosColetadas[index - 1] = {
+            file: file,
+            dataURL: e.target.result,
+            nome: file.name || `clipboard-${Date.now()}.png`,
+            tamanho: file.size
+        };
+        
+        verificarFotosMinimas();
+    };
+    
+    reader.readAsDataURL(file);
+}
+
+function contarFotos() {
+    return AppState.fotosColetadas.filter(f => f).length;
+}
 
 // ============================================
 // GESTÃO DE FOTOS
@@ -99,7 +171,7 @@ function removerFoto(input, slot, preview, placeholder, btnRemove, index) {
 }
 
 function verificarFotosMinimas() {
-    const totalFotos = AppState.fotosColetadas.filter(f => f).length;
+    const totalFotos = contarFotos();
     elementos.btnProcessarEtapa1.disabled = totalFotos < 2;
     
     if (totalFotos >= 2) {
@@ -108,22 +180,20 @@ function verificarFotosMinimas() {
 }
 
 // ============================================
-// PROCESSAMENTO ETAPA 1 - CHAMADA API VERCEL
+// PROCESSAMENTO ETAPA 1
 // ============================================
 
 async function processarEtapa1() {
     try {
         exibirLoading('Processando IA: Etapa 1/2 - Extraindo dados...');
         
-        // Prepara imagens em base64
         const imagensBase64 = AppState.fotosColetadas
             .filter(f => f)
             .map(foto => ({
-                data: foto.dataURL.split(',')[1], // Remove prefixo data:image/...
+                data: foto.dataURL.split(',')[1],
                 nome: foto.nome
             }));
         
-        // Chamada para API Vercel
         const response = await fetch('/api/processar-etapa1', {
             method: 'POST',
             headers: {
@@ -167,8 +237,8 @@ function preencherFormulario(dados) {
     elementos.numeroPatrimonio.value = dados.numero_patrimonio || '';
     elementos.nomeProduto.value = dados.nome_produto || '';
     elementos.descricao.value = dados.descricao || '';
-    elementos.estado.value = dados.classificacao_automatica?.estado_conservacao || '';
-    elementos.depreciacao.value = dados.classificacao_automatica?.categoria_depreciacao || '';
+    elementos.estado.value = dados.estado_conservacao || '';
+    elementos.depreciacao.value = dados.categoria_depreciacao || '';
 }
 
 function destacarCamposCriticos() {
@@ -181,12 +251,11 @@ function habilitarEdicaoManual() {
 }
 
 // ============================================
-// PROCESSAMENTO ETAPA 2 - CHAMADA API VERCEL
+// PROCESSAMENTO ETAPA 2
 // ============================================
 
 async function processarEtapa2() {
     try {
-        // Validação
         if (!elementos.numeroPatrimonio.value || elementos.numeroPatrimonio.value === 'N/A') {
             exibirAlerta('error', 'Número de Patrimônio inválido. Corrija antes de continuar.');
             return;
@@ -199,7 +268,6 @@ async function processarEtapa2() {
         
         exibirLoading('Processando IA: Etapa 2/2 - Buscando preço de reposição...');
         
-        // Dados para grounding
         const dadosParaGrounding = {
             nome_produto: elementos.nomeProduto.value,
             modelo: AppState.dadosEtapa1?.modelo,
@@ -208,7 +276,6 @@ async function processarEtapa2() {
             numero_patrimonio: elementos.numeroPatrimonio.value
         };
         
-        // Chamada para API Vercel
         const response = await fetch('/api/processar-etapa2', {
             method: 'POST',
             headers: {
@@ -264,7 +331,7 @@ function habilitarEdicaoManualValores() {
 }
 
 // ============================================
-// FINALIZAÇÃO E RESULTADOS
+// FINALIZAÇÃO
 // ============================================
 
 function finalizarProcessamento() {
@@ -317,7 +384,7 @@ function exibirResultado(dados) {
     document.getElementById('resultMetadados').innerHTML = `
         <p><strong>Data:</strong> ${new Date().toLocaleString('pt-BR')}</p>
         <p><strong>Origem:</strong> Sistema IA Automatizado</p>
-        <p><strong>Confiança OCR:</strong> ${dados.metadados?.confianca_ocr || 'N/A'}%</p>
+        <p><strong>Confiança OCR:</strong> ${dados.metadados?.confianca_ia || 'N/A'}%</p>
         <p><strong>Versão:</strong> 1.0-POC</p>
     `;
     
