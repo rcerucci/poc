@@ -7,66 +7,23 @@ const MODEL = process.env.VERTEX_MODEL || 'gemini-2.5-flash';
 // Inicializar Google AI
 const genAI = new GoogleGenerativeAI(API_KEY);
 
-// Function Calling Tool (formato correto para Google AI)
-const classificacaoTool = {
-    name: 'classificar_ativo',
-    description: 'Retorna dados extraídos e classificados de um ativo',
-    parameters: {
-        type: 'OBJECT',
-        properties: {
-            numero_patrimonio: {
-                type: 'STRING',
-                description: 'Número da placa de patrimônio (N/A se não visível)'
-            },
-            nome_produto: {
-                type: 'STRING',
-                description: 'Nome genérico do produto'
-            },
-            modelo: {
-                type: 'STRING',
-                description: 'Modelo específico'
-            },
-            marca: {
-                type: 'STRING',
-                description: 'Fabricante'
-            },
-            descricao: {
-                type: 'STRING',
-                description: 'Descrição técnica objetiva (máx 200 caracteres)'
-            },
-            estado_conservacao: {
-                type: 'STRING',
-                enum: ['Excelente', 'Bom', 'Regular', 'Ruim'],
-                description: 'Estado visual do ativo'
-            },
-            categoria_depreciacao: {
-                type: 'STRING',
-                enum: [
-                    'Computadores e Informática',
-                    'Ferramentas',
-                    'Instalações',
-                    'Máquinas e Equipamentos',
-                    'Móveis e Utensílios',
-                    'Veículos',
-                    'Outros'
-                ],
-                description: 'Categoria contábil'
-            }
-        },
-        required: ['numero_patrimonio', 'nome_produto', 'estado_conservacao', 'categoria_depreciacao']
-    }
-};
+const PROMPT_SISTEMA = `Você é um especialista em inventário de ativos. Analise as imagens fornecidas e retorne APENAS um JSON válido (sem markdown, sem explicações) com os seguintes campos:
 
-const PROMPT_SISTEMA = `Você é um especialista em inventário de ativos. Analise as imagens e extraia os dados usando OBRIGATORIAMENTE a função 'classificar_ativo'.
-
-IMPORTANTE: Você DEVE chamar a função classificar_ativo com os dados extraídos.
+{
+  "numero_patrimonio": "número da placa de patrimônio ou N/A se não visível",
+  "nome_produto": "nome genérico do produto",
+  "modelo": "modelo específico ou N/A",
+  "marca": "fabricante ou N/A",
+  "descricao": "descrição técnica objetiva com máximo 200 caracteres",
+  "estado_conservacao": "Excelente|Bom|Regular|Ruim",
+  "categoria_depreciacao": "Computadores e Informática|Ferramentas|Instalações|Máquinas e Equipamentos|Móveis e Utensílios|Veículos|Outros"
+}
 
 REGRAS:
 1. Use linguagem FACTUAL (sem "provavelmente", "aparentemente")
 2. Se incerto: retorne "N/A"
 3. Descrição: APENAS características técnicas, SEM mencionar ambiente
-4. Máximo 200 caracteres na descrição
-5. OBRIGATÓRIO: Chame a função classificar_ativo com todos os campos preenchidos`;
+4. Responda APENAS com o JSON, nada mais`;
 
 module.exports = async (req, res) => {
     // CORS
@@ -110,12 +67,12 @@ module.exports = async (req, res) => {
         
         console.log('🤖 [ETAPA1] Inicializando modelo:', MODEL);
         
-        // Inicializar modelo COM function calling
+        // Inicializar modelo SEM function calling
         const model = genAI.getGenerativeModel({
             model: MODEL,
-            tools: [{ functionDeclarations: [classificacaoTool] }],
             generationConfig: {
                 temperature: 0.1,
+                responseMimeType: 'application/json'
             }
         });
         
@@ -123,7 +80,7 @@ module.exports = async (req, res) => {
         
         // Preparar imagens
         const imageParts = imagens.map((img, index) => {
-            console.log(`  📷 Imagem ${index + 1}: ${img.data.substring(0, 50)}...`);
+            console.log(`  📷 Imagem ${index + 1}: ${img.data.substring(0, 30)}...`);
             return {
                 inlineData: {
                     data: img.data,
@@ -143,32 +100,22 @@ module.exports = async (req, res) => {
         console.log('📥 [ETAPA1] Resposta recebida do Gemini');
         
         const response = result.response;
+        const text = response.text();
         
-        console.log('🔍 [ETAPA1] Analisando resposta...');
-        console.log('📋 [ETAPA1] Candidates:', response.candidates?.length);
+        console.log('📝 [ETAPA1] Texto recebido:', text.substring(0, 200));
         
-        // Verificar function call
-        const functionCall = response.candidates?.[0]?.content?.parts?.find(
-            part => part.functionCall
-        );
-        
-        if (!functionCall) {
-            console.error('❌ [ETAPA1] Nenhum function call encontrado');
-            console.log('📋 [ETAPA1] Parts:', JSON.stringify(response.candidates?.[0]?.content?.parts, null, 2));
-            
-            // Tentar extrair texto se não houver function call
-            const textPart = response.candidates?.[0]?.content?.parts?.find(part => part.text);
-            if (textPart) {
-                console.log('📝 [ETAPA1] Texto recebido:', textPart.text);
-            }
-            
-            throw new Error('IA não retornou function call esperado');
+        // Parse JSON
+        let dadosExtraidos;
+        try {
+            // Remover markdown se existir
+            const jsonText = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            dadosExtraidos = JSON.parse(jsonText);
+            console.log('✅ [ETAPA1] JSON parseado com sucesso');
+        } catch (parseError) {
+            console.error('❌ [ETAPA1] Erro ao parsear JSON:', parseError.message);
+            console.log('📋 [ETAPA1] Texto completo:', text);
+            throw new Error('Resposta da IA não é um JSON válido');
         }
-        
-        console.log('✅ [ETAPA1] Function call encontrado!');
-        console.log('📊 [ETAPA1] Nome da função:', functionCall.functionCall.name);
-        
-        const dadosExtraidos = functionCall.functionCall.args;
         
         console.log('📊 [ETAPA1] Dados extraídos:', JSON.stringify(dadosExtraidos, null, 2));
         
