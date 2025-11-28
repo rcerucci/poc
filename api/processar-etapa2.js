@@ -101,9 +101,9 @@ Produto: ${nome_produto}
 Marca: ${marca || 'qualquer marca confiável'}
 Modelo: ${modelo || 'modelo padrão'}
 
-Busque em sites brasileiros confiáveis (Mercado Livre, Amazon, etc.) para encontrar o preço de venda mais próximo do NOVO.
+Busque em sites brasileiros confiáveis (Mercado Livre, Amazon, Magazine Luiza, etc.).
 
-Retorne APENAS um JSON válido (sem markdown, sem explicações):
+Retorne sua resposta APENAS em formato JSON válido (sem markdown, sem texto adicional):
 
 {
   "preco_encontrado": true,
@@ -112,14 +112,14 @@ Retorne APENAS um JSON válido (sem markdown, sem explicações):
   "observacoes": "detalhes do produto"
 }
 
-Se não encontrar, retorne:
+Se não encontrar preço confiável:
 
 {
   "preco_encontrado": false,
   "motivo": "explicação breve"
 }
 
-IMPORTANTE: Responda APENAS com o JSON puro, sem nenhum texto adicional antes ou depois.`;
+CRÍTICO: Retorne APENAS o JSON, nada mais.`;
 
         console.log('🤖 [ETAPA2] Inicializando modelo com Google Search...');
 
@@ -127,8 +127,8 @@ IMPORTANTE: Responda APENAS com o JSON puro, sem nenhum texto adicional antes ou
             model: MODEL,
             tools: [{ googleSearch: {} }],
             generationConfig: {
-                temperature: 0.2,
-                responseMimeType: 'application/json'
+                temperature: 0.2
+                // NÃO usar responseMimeType com tools!
             }
         });
 
@@ -142,36 +142,32 @@ IMPORTANTE: Responda APENAS com o JSON puro, sem nenhum texto adicional antes ou
         console.log('═══════════════════════════════════════');
         console.log(text);
         console.log('═══════════════════════════════════════');
-        console.log('📏 [ETAPA2] Tamanho da resposta:', text.length, 'caracteres');
-        console.log('🔤 [ETAPA2] Primeiros 500 chars:', text.substring(0, 500));
-        console.log('🔤 [ETAPA2] Últimos 100 chars:', text.substring(text.length - 100));
 
         let resultadoBusca;
 
         try {
-            // Tentar limpar o texto
+            // Limpar o texto
             let jsonText = text.trim();
             
-            // Remover markdown se existir
+            // Remover markdown
             jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
             
-            // Remover possíveis espaços em branco extras
+            // Remover texto antes e depois do JSON
+            const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                jsonText = jsonMatch[0];
+            }
+            
             jsonText = jsonText.trim();
             
-            console.log('🧹 [ETAPA2] Texto limpo para parse:');
-            console.log('═══════════════════════════════════════');
-            console.log(jsonText);
-            console.log('═══════════════════════════════════════');
+            console.log('🧹 [ETAPA2] Texto limpo para parse:', jsonText);
 
             resultadoBusca = JSON.parse(jsonText);
-            console.log('✅ [ETAPA2] JSON parseado com sucesso!');
-            console.log('📊 [ETAPA2] Objeto resultante:', JSON.stringify(resultadoBusca, null, 2));
+            console.log('✅ [ETAPA2] JSON parseado:', JSON.stringify(resultadoBusca, null, 2));
             
         } catch (parseError) {
-            console.error('❌ [ETAPA2] ERRO ao parsear JSON!');
-            console.error('❌ [ETAPA2] Mensagem do erro:', parseError.message);
-            console.error('❌ [ETAPA2] Stack trace:', parseError.stack);
-            console.error('❌ [ETAPA2] Texto que tentou parsear:', text);
+            console.error('❌ [ETAPA2] ERRO ao parsear JSON:', parseError.message);
+            console.error('❌ [ETAPA2] Texto original:', text);
             
             throw new Error(`Resposta não é um JSON válido: ${parseError.message}`);
         }
@@ -191,13 +187,10 @@ IMPORTANTE: Responda APENAS com o JSON puro, sem nenhum texto adicional antes ou
         const estado = estado_conservacao || 'Bom';
         const categoria = categoria_depreciacao || 'Outros';
 
-        console.log('📊 [ETAPA2] Calculando depreciação - Estado:', estado, 'Categoria:', categoria);
-
         const fatorDepreciacao = FATORES_DEPRECIACAO[estado]?.[categoria] || 0.7;
         const valorAtual = valorMercado * fatorDepreciacao;
 
-        console.log('📉 [ETAPA2] Fator de depreciação:', fatorDepreciacao);
-        console.log('💵 [ETAPA2] Valor atual calculado:', valorAtual);
+        console.log('📉 [ETAPA2] Depreciação:', fatorDepreciacao, 'Valor atual:', valorAtual);
 
         const dadosCompletos = {
             numero_patrimonio,
@@ -221,7 +214,7 @@ IMPORTANTE: Responda APENAS com o JSON puro, sem nenhum texto adicional antes ou
             }
         };
 
-        console.log('✅ [ETAPA2] Processamento concluído com sucesso!');
+        console.log('✅ [ETAPA2] Processamento concluído!');
 
         return res.status(200).json({
             status: 'Sucesso',
@@ -230,8 +223,8 @@ IMPORTANTE: Responda APENAS com o JSON puro, sem nenhum texto adicional antes ou
         });
         
     } catch (error) {
-        console.error('❌ [ETAPA2] ERRO GERAL:', error.message);
-        console.error('❌ [ETAPA2] Stack completo:', error.stack);
+        console.error('❌ [ETAPA2] ERRO:', error.message);
+        console.error('❌ [ETAPA2] Stack:', error.stack);
 
         return res.status(500).json({
             status: 'Falha',
