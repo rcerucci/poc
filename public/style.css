@@ -450,3 +450,27 @@ kbd {
     font-size: 12px;
     color: #2d3748;
 }
+
+/* Campos Readonly (Somente Leitura) */
+input[readonly],
+textarea[readonly],
+select:disabled {
+    background-color: #f7fafc !important;
+    cursor: pointer !important;
+    user-select: none;
+    border-color: #cbd5e0;
+}
+
+input[readonly]:hover,
+textarea[readonly]:hover,
+select:disabled:hover {
+    background-color: #edf2f7 !important;
+    border-color: #a0aec0;
+}
+
+input[readonly]:active,
+textarea[readonly]:active,
+select:disabled:active {
+    background-color: #d1fae5 !important;
+    border-color: #10b981;
+}

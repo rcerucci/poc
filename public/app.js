@@ -10,7 +10,8 @@ const AppState = {
     fotosColetadas: [],
     dadosEtapa1: null,
     dadosCompletos: null,
-    processandoEtapa: null
+    processandoEtapa: null,
+    camposBloqueados: false
 };
 
 // Elementos DOM
@@ -27,6 +28,8 @@ const elementos = {
     alertBox: document.getElementById('alertBox'),
     loadingOverlay: document.getElementById('loadingOverlay'),
     loadingText: document.getElementById('loadingText'),
+    helpTextForm: document.getElementById('helpTextForm'),
+    btnDesbloquearContainer: document.getElementById('btnDesbloquearContainer'),
     
     numeroPatrimonio: document.getElementById('numeroPatrimonio'),
     nomeProduto: document.getElementById('nomeProduto'),
@@ -284,6 +287,11 @@ function verificarFotosMinimas() {
 
 async function processarEtapa1() {
     try {
+        // CRÍTICO: Desbloquear campos antes de processar nova consulta
+        if (AppState.camposBloqueados) {
+            desbloquearCampos();
+        }
+        
         exibirLoading('Processando IA: Etapa 1/2 - Extraindo dados...');
         
         const imagensBase64 = AppState.fotosColetadas
@@ -324,9 +332,14 @@ async function processarEtapa1() {
             preencherFormulario(resposta.dados);
             habilitarEdicaoManual();
         } else {
-            exibirAlerta('success', '✅ Dados extraídos com sucesso! Valide os campos.');
+            exibirAlerta('success', '✅ Dados extraídos! Campos bloqueados - clique para copiar.');
             preencherFormulario(resposta.dados);
             destacarCamposCriticos();
+            
+            // Mostrar hint de campos bloqueados
+            if (elementos.helpTextForm) {
+                elementos.helpTextForm.style.display = 'block';
+            }
         }
         
         AppState.dadosEtapa1 = resposta.dados;
@@ -347,6 +360,10 @@ function preencherFormulario(dados) {
     elementos.descricao.value = dados.descricao || '';
     elementos.estado.value = dados.estado_conservacao || '';
     elementos.depreciacao.value = dados.categoria_depreciacao || '';
+    
+    // Tornar campos somente leitura após extração da IA
+    tornarCamposSomenteLeitura();
+    adicionarBotaoDesbloquear();
 }
 
 function destacarCamposCriticos() {
@@ -356,6 +373,139 @@ function destacarCamposCriticos() {
 
 function habilitarEdicaoManual() {
     exibirAlerta('warning', '⚠️ Extração automática falhou. Preencha os campos manualmente.');
+}
+
+// ============================================
+// BLOQUEIO/DESBLOQUEIO DE CAMPOS
+// ============================================
+
+function tornarCamposSomenteLeitura() {
+    if (AppState.camposBloqueados) return; // Já está bloqueado
+    
+    // Lista de campos que ficarão bloqueados
+    const camposBloqueados = [
+        elementos.numeroPatrimonio,
+        elementos.nomeProduto,
+        elementos.estado,
+        elementos.depreciacao,
+        elementos.descricao
+    ];
+    
+    camposBloqueados.forEach(campo => {
+        if (campo.tagName === 'SELECT') {
+            // Para select, desabilitar
+            campo.disabled = true;
+            campo.style.cursor = 'pointer';
+            campo.style.backgroundColor = '#f7fafc';
+            campo.title = 'Clique para copiar';
+        } else {
+            // Para input e textarea
+            campo.readOnly = true;
+            campo.style.cursor = 'pointer';
+            campo.style.backgroundColor = '#f7fafc';
+            campo.title = 'Clique para copiar';
+        }
+        
+        // Adicionar evento de clique para copiar
+        campo.addEventListener('click', copiarConteudoCampo);
+    });
+    
+    AppState.camposBloqueados = true;
+    console.log('🔒 Campos bloqueados para edição (clique para copiar)');
+}
+
+function desbloquearCampos() {
+    const camposBloqueados = [
+        elementos.numeroPatrimonio,
+        elementos.nomeProduto,
+        elementos.estado,
+        elementos.depreciacao,
+        elementos.descricao
+    ];
+    
+    camposBloqueados.forEach(campo => {
+        if (campo.tagName === 'SELECT') {
+            campo.disabled = false;
+        } else {
+            campo.readOnly = false;
+        }
+        campo.style.cursor = '';
+        campo.style.backgroundColor = '';
+        campo.title = '';
+        
+        // Remover evento de clique
+        campo.removeEventListener('click', copiarConteudoCampo);
+    });
+    
+    // Remover botão de desbloquear se existir
+    const btnDesbloquear = document.getElementById('btnDesbloquear');
+    if (btnDesbloquear) {
+        btnDesbloquear.remove();
+    }
+    
+    // Esconder hint
+    if (elementos.helpTextForm) {
+        elementos.helpTextForm.style.display = 'none';
+    }
+    
+    AppState.camposBloqueados = false;
+    console.log('🔓 Campos desbloqueados');
+}
+
+function copiarConteudoCampo(event) {
+    const campo = event.currentTarget;
+    const valor = campo.value;
+    
+    if (!valor || valor === 'N/A' || valor === '') {
+        exibirAlerta('warning', '⚠️ Campo vazio, nada para copiar');
+        return;
+    }
+    
+    // Copiar para área de transferência
+    navigator.clipboard.writeText(valor)
+        .then(() => {
+            // Feedback visual
+            const corOriginal = campo.style.backgroundColor;
+            campo.style.backgroundColor = '#d1fae5';
+            campo.style.transition = 'background-color 0.3s';
+            
+            // Mostrar alerta
+            const labelElement = campo.parentElement.querySelector('label');
+            const labelText = labelElement ? labelElement.textContent.replace('*', '').trim() : 'Campo';
+            const valorTruncado = valor.substring(0, 50) + (valor.length > 50 ? '...' : '');
+            exibirAlerta('success', `✅ ${labelText} copiado: "${valorTruncado}"`);
+            
+            // Restaurar cor original
+            setTimeout(() => {
+                campo.style.backgroundColor = corOriginal;
+            }, 500);
+        })
+        .catch(err => {
+            console.error('Erro ao copiar:', err);
+            exibirAlerta('error', '❌ Erro ao copiar. Selecione manualmente.');
+        });
+}
+
+function adicionarBotaoDesbloquear() {
+    // Remover botão existente se houver
+    const btnExistente = document.getElementById('btnDesbloquear');
+    if (btnExistente) {
+        btnExistente.remove();
+    }
+    
+    const btnDesbloquear = document.createElement('button');
+    btnDesbloquear.id = 'btnDesbloquear';
+    btnDesbloquear.className = 'btn-secondary';
+    btnDesbloquear.innerHTML = '🔓 Desbloquear para Edição Manual';
+    btnDesbloquear.style.marginBottom = '15px';
+    btnDesbloquear.style.width = '100%';
+    
+    btnDesbloquear.addEventListener('click', () => {
+        desbloquearCampos();
+        exibirAlerta('info', '🔓 Campos desbloqueados para edição manual');
+    });
+    
+    elementos.btnDesbloquearContainer.appendChild(btnDesbloquear);
 }
 
 // ============================================

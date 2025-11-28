@@ -90,6 +90,11 @@
         <!-- Formulário de Dados -->
         <section class="card" id="formSection" style="display: none;">
             <h3>📋 Dados do Patrimônio</h3>
+            <p class="help-text" id="helpTextForm" style="display: none;">
+                🔒 <strong>Campos bloqueados:</strong> Extraídos pela IA. Clique em qualquer campo para copiar o conteúdo.
+            </p>
+            
+            <div id="btnDesbloquearContainer"></div>
             
             <div class="form-row">
                 <div class="form-group">
@@ -124,7 +129,6 @@
                         <option value="Bom">Bom</option>
                         <option value="Regular">Regular</option>
                         <option value="Ruim">Ruim</option>
-                        <option value="Péssimo">Péssimo</option>
                     </select>
                 </div>
 
@@ -142,16 +146,16 @@
             <div class="form-row">
                 <div class="form-group">
                     <label for="depreciacao">Depreciação</label>
-                        <select id="depreciacao">
-                            <option value="">Selecione a Depreciação</option>
-                            <option value="Equipamentos de Informática">Equipamentos de Informática</option>
-                            <option value="Ferramentas">Ferramentas</option>
-                            <option value="Instalações">Instalações</option>
-                            <option value="Máquinas e Equipamentos">Máquinas e Equipamentos</option>
-                            <option value="Móveis e Utensílios">Móveis e Utensílios</option>
-                            <option value="Veículos">Veículos</option>
-                            <option value="Outros">Outros</option>
-                        </select>
+                    <select id="depreciacao">
+                        <option value="">Selecione a Depreciação</option>
+                        <option value="Equipamentos de Informática">Equipamentos de Informática</option>
+                        <option value="Ferramentas">Ferramentas</option>
+                        <option value="Instalações">Instalações</option>
+                        <option value="Máquinas e Equipamentos">Máquinas e Equipamentos</option>
+                        <option value="Móveis e Utensílios">Móveis e Utensílios</option>
+                        <option value="Veículos">Veículos</option>
+                        <option value="Outros">Outros</option>
+                    </select>
                 </div>
 
                 <div class="form-group">
