@@ -82,16 +82,33 @@ module.exports = async (req, res) => {
         return res.status(405).json({ error: 'Method not allowed' });
     }
     
+    console.log('🔍 [ETAPA1] Iniciando processamento...');
+    
     try {
         const { imagens } = req.body;
         
+        console.log('📥 [ETAPA1] Recebidas', imagens?.length, 'imagens');
+        
         if (!imagens || imagens.length < 2) {
+            console.log('⚠️ [ETAPA1] Mínimo de imagens não atingido');
             return res.status(400).json({
                 status: 'Falha',
                 mensagem: 'Mínimo de 2 imagens necessárias',
                 dados: {}
             });
         }
+        
+        // Verificar API Key
+        if (!API_KEY) {
+            console.error('❌ [ETAPA1] GOOGLE_API_KEY não configurada!');
+            return res.status(500).json({
+                status: 'Falha',
+                mensagem: 'API Key não configurada',
+                dados: {}
+            });
+        }
+        
+        console.log('🤖 [ETAPA1] Inicializando modelo:', MODEL);
         
         // Inicializar modelo
         const model = genAI.getGenerativeModel({
@@ -101,6 +118,8 @@ module.exports = async (req, res) => {
                 temperature: 0.1,
             }
         });
+        
+        console.log('🖼️ [ETAPA1] Preparando', imagens.length, 'imagens...');
         
         // Preparar imagens
         const imageParts = imagens.map(img => ({
@@ -116,9 +135,16 @@ module.exports = async (req, res) => {
             ...imageParts
         ];
         
+        console.log('📤 [ETAPA1] Enviando para Gemini...');
+        
         // Chamar Gemini
         const result = await model.generateContent(contents);
+        
+        console.log('📥 [ETAPA1] Resposta recebida do Gemini');
+        
         const response = result.response;
+        
+        console.log('🔍 [ETAPA1] Procurando function call...');
         
         // Verificar function call
         const functionCall = response.candidates?.[0]?.content?.parts?.find(
@@ -126,10 +152,16 @@ module.exports = async (req, res) => {
         );
         
         if (!functionCall) {
+            console.error('❌ [ETAPA1] Nenhum function call encontrado');
+            console.log('📋 [ETAPA1] Resposta completa:', JSON.stringify(response, null, 2));
             throw new Error('IA não retornou function call esperado');
         }
         
+        console.log('✅ [ETAPA1] Function call encontrado!');
+        
         const dadosExtraidos = functionCall.functionCall.args;
+        
+        console.log('📊 [ETAPA1] Dados extraídos:', dadosExtraidos);
         
         // Adicionar metadados
         const dadosCompletos = {
@@ -143,6 +175,8 @@ module.exports = async (req, res) => {
             }
         };
         
+        console.log('✅ [ETAPA1] Processamento concluído com sucesso!');
+        
         return res.status(200).json({
             status: 'Sucesso',
             dados: dadosCompletos,
@@ -150,7 +184,8 @@ module.exports = async (req, res) => {
         });
         
     } catch (error) {
-        console.error('Erro na Etapa 1:', error);
+        console.error('❌ [ETAPA1] Erro:', error);
+        console.error('❌ [ETAPA1] Stack:', error.stack);
         
         return res.status(500).json({
             status: 'Falha',
