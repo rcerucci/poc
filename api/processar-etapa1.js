@@ -7,24 +7,39 @@ const MODEL = process.env.VERTEX_MODEL || 'gemini-2.5-flash';
 // Inicializar Google AI
 const genAI = new GoogleGenerativeAI(API_KEY);
 
-const PROMPT_SISTEMA = `Você é um especialista em inventário de ativos. Analise as imagens fornecidas e retorne APENAS um JSON válido (sem markdown, sem explicações) com os seguintes campos:
+const PROMPT_SISTEMA = `Você é um especialista em inventário de ativos industriais e comerciais. Analise as imagens fornecidas e extraia informações PRECISAS.
+
+Retorne APENAS um JSON válido (sem markdown, sem explicações) com os seguintes campos:
 
 {
-  "numero_patrimonio": "número da placa de patrimônio ou N/A se não visível",
-  "nome_produto": "nome genérico do produto",
-  "modelo": "modelo específico ou N/A",
-  "marca": "fabricante ou N/A",
-  "descricao": "descrição técnica objetiva com máximo 200 caracteres",
+  "numero_patrimonio": "número visível na placa de patrimônio, ou N/A se não visível",
+  "nome_produto": "nome GENÉRICO e CURTO do produto (ex: Torno CNC, Notebook, Cadeira)",
+  "modelo": "modelo/número de série ESPECÍFICO se visível, ou N/A",
+  "marca": "nome do FABRICANTE apenas (ex: Tornos, Dell, HP), ou N/A",
+  "descricao": "descrição técnica OBJETIVA com características principais (máximo 200 caracteres)",
   "estado_conservacao": "Excelente|Bom|Regular|Ruim",
   "categoria_depreciacao": "Equipamentos de Informática|Ferramentas|Instalações|Máquinas e Equipamentos|Móveis e Utensílios|Veículos|Outros"
 }
 
-REGRAS:
-1. Use linguagem FACTUAL (sem "provavelmente", "aparentemente")
-2. Se incerto: retorne "N/A"
-3. Descrição: APENAS características técnicas, SEM mencionar ambiente
-4. Para categoria_depreciacao, use EXATAMENTE um dos valores: "Equipamentos de Informática", "Ferramentas", "Instalações", "Máquinas e Equipamentos", "Móveis e Utensílios", "Veículos", "Outros"
-5. Responda APENAS com o JSON, nada mais`;
+REGRAS CRÍTICAS:
+1. nome_produto: Use APENAS o nome genérico (1-3 palavras). Exemplo: "Controlador de Velocidade", "Notebook", "Mesa"
+2. marca: Use APENAS o nome do fabricante. Se não souber, use "N/A". NÃO coloque descrições aqui.
+3. modelo: Use APENAS número/código de modelo se visível na placa. Se não souber, use "N/A".
+4. descricao: Aqui sim, coloque detalhes técnicos completos (voltagem, capacidade, características).
+5. Use linguagem FACTUAL, sem "provavelmente" ou "aparentemente".
+6. Se não tiver certeza de algum campo, use "N/A".
+7. Responda APENAS com JSON puro, sem texto adicional.
+
+EXEMPLOS CORRETOS:
+- nome_produto: "Torno CNC"
+- marca: "Tornos"
+- modelo: "Swiss GT 26 III"
+- descricao: "Torno CNC tipo suíço, fabricado em 2022, capacidade 26mm"
+
+EXEMPLOS INCORRETOS:
+- marca: "com display digital" ❌ (isso vai na descrição)
+- modelo: "Unidade de controle eletrônico..." ❌ (isso vai na descrição)
+- nome_produto: "Torno CNC tipo suíço Swiss GT 26 III fabricado em 2022" ❌ (muito longo)`;
 
 module.exports = async (req, res) => {
     // CORS
