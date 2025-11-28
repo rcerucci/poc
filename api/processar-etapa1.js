@@ -7,6 +7,7 @@ const MODEL = process.env.VERTEX_MODEL || 'gemini-2.5-flash';
 // Inicializar Google AI
 const genAI = new GoogleGenerativeAI(API_KEY);
 
+// Prompt de identificação
 const PROMPT_SISTEMA = `Analise as imagens e extraia informações PRECISAS do ativo. Retorne APENAS JSON (sem markdown):
 
 {
@@ -50,7 +51,7 @@ EXEMPLO:
   "estado_conservacao": "Bom",
   "categoria_depreciacao": "Máquinas e Equipamentos",
   "descricao": "Controlador eletrônico NAKANISHI iSpeed3. Display LCD, botões RUN/STOP, ajuste velocidade. 220V 50/60Hz. Para motores e spindles industriais."
-}`;Y
+}`;
 
 module.exports = async (req, res) => {
     // CORS
