@@ -1,57 +1,85 @@
 const { VertexAI } = require('@google-cloud/vertexai');
 
-// Configuração Vertex AI
+// Configuração
 const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT_ID;
 const LOCATION = process.env.GOOGLE_CLOUD_LOCATION || 'us-central1';
-const MODEL = process.env.VERTEX_MODEL || 'gemini-1.5-pro';
+const MODEL = process.env.VERTEX_MODEL || 'gemini-2.5-flash';
+
+// Parse das credenciais
+const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS || '{}');
 
 // Inicializar Vertex AI
 const vertexAI = new VertexAI({
     project: PROJECT_ID,
     location: LOCATION,
     googleAuthOptions: {
-        credentials: JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON || '{}')
+        credentials: credentials
     }
 });
 
-// Prompt Sistema para Etapa 1
-const PROMPT_SISTEMA = `Você é um especialista em inventário de ativos corporativos. Sua tarefa é extrair dados de ativos a partir de imagens e retornar os resultados em formato JSON.
+// Function Calling Tool
+const classificacaoTool = {
+    functionDeclarations: [{
+        name: 'classificar_ativo',
+        description: 'Retorna dados extraídos e classificados de um ativo',
+        parameters: {
+            type: 'object',
+            properties: {
+                numero_patrimonio: {
+                    type: 'string',
+                    description: 'Número da placa de patrimônio (N/A se não visível)'
+                },
+                nome_produto: {
+                    type: 'string',
+                    description: 'Nome genérico do produto'
+                },
+                modelo: {
+                    type: 'string',
+                    description: 'Modelo específico'
+                },
+                marca: {
+                    type: 'string',
+                    description: 'Fabricante'
+                },
+                descricao: {
+                    type: 'string',
+                    description: 'Descrição técnica objetiva (máx 200 caracteres)'
+                },
+                estado_conservacao: {
+                    type: 'string',
+                    enum: ['Excelente', 'Bom', 'Regular', 'Ruim'],
+                    description: 'Estado visual do ativo'
+                },
+                categoria_depreciacao: {
+                    type: 'string',
+                    enum: [
+                        'Computadores e Informática',
+                        'Ferramentas',
+                        'Instalações',
+                        'Máquinas e Equipamentos',
+                        'Móveis e Utensílios',
+                        'Veículos',
+                        'Outros'
+                    ],
+                    description: 'Categoria contábil'
+                }
+            },
+            required: ['numero_patrimonio', 'nome_produto', 'estado_conservacao', 'categoria_depreciacao']
+        }
+    }]
+};
 
-REGRAS OBRIGATÓRIAS:
+const PROMPT_SISTEMA = `Você é um especialista em inventário de ativos. Analise as imagens e extraia os dados usando a função 'classificar_ativo'.
 
-1. LINGUAGEM:
-   - Use linguagem estritamente FACTUAL
-   - NUNCA use adjetivos de incerteza: "provavelmente", "aparentemente", "possivelmente"
-   - Se incerto, retorne "N/A"
-
-2. ESCOPO DA DESCRIÇÃO:
-   - Foque APENAS nas características técnicas e função do ativo
-   - EXCLUA completamente o entorno: mesas, paredes, salas, pessoas
-   - Máximo 200 caracteres
-   - Exemplo BOM: "Notebook Dell Latitude 5420, 14 polegadas, teclado ABNT2"
-   - Exemplo RUIM: "Notebook sobre mesa de madeira em sala de reunião"
-
-3. FALHA/CONFIANÇA:
-   - Se o OCR de um campo primário falhar: retorne "N/A"
-   - Se a confiança na leitura for < 80%: retorne "N/A"
-
-4. RETORNO ESPERADO (JSON):
-{
-  "numero_patrimonio": "string (leia da placa)",
-  "nome_produto": "string (ex: Notebook, Cadeira)",
-  "modelo": "string (modelo específico ou N/A)",
-  "marca": "string (fabricante ou N/A)",
-  "descricao": "string (descrição técnica objetiva)",
-  "classificacao_automatica": {
-    "estado_conservacao": "Excelente|Bom|Regular|Ruim|Péssimo",
-    "categoria_depreciacao": "Equipamentos de Informática|Móveis e Utensílios|Veículos|Outros",
-    "justificativa_estado": "string (breve justificativa)",
-    "justificativa_categoria": "string (breve justificativa)"
-  }
-}`;
+REGRAS:
+1. Use linguagem FACTUAL (sem "provavelmente", "aparentemente")
+2. Se incerto: retorne "N/A"
+3. Descrição: APENAS características técnicas, SEM mencionar ambiente
+4. Máximo 200 caracteres na descrição
+5. DEVE chamar a função classificar_ativo`;
 
 module.exports = async (req, res) => {
-    // CORS Headers
+    // CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -75,11 +103,11 @@ module.exports = async (req, res) => {
             });
         }
         
-        // Preparar conteúdo para Gemini
         const generativeModel = vertexAI.getGenerativeModel({
             model: MODEL,
         });
         
+        // Preparar imagens
         const imageParts = imagens.map(img => ({
             inlineData: {
                 data: img.data,
@@ -92,32 +120,36 @@ module.exports = async (req, res) => {
                 role: 'user',
                 parts: [
                     { text: PROMPT_SISTEMA },
-                    ...imageParts,
-                    { text: 'Analise as imagens e retorne APENAS o JSON solicitado, sem markdown ou texto adicional.' }
+                    ...imageParts
                 ]
             }],
+            tools: [classificacaoTool],
             generationConfig: {
-                maxOutputTokens: 2048,
                 temperature: 0.1,
             }
         };
         
         // Chamar Gemini
         const response = await generativeModel.generateContent(request);
-        const resultText = response.response.candidates[0].content.parts[0].text;
+        const result = response.response;
         
-        // Parse JSON (remover markdown se houver)
-        let jsonText = resultText.trim();
-        jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+        // Verificar function call
+        const functionCall = result.candidates?.[0]?.content?.parts?.find(
+            part => part.functionCall
+        );
         
-        const dadosExtraidos = JSON.parse(jsonText);
+        if (!functionCall) {
+            throw new Error('IA não retornou function call esperado');
+        }
+        
+        const dadosExtraidos = functionCall.functionCall.args;
         
         // Adicionar metadados
         const dadosCompletos = {
             ...dadosExtraidos,
             metadados: {
                 data_extracao: new Date().toISOString(),
-                confianca_ocr: 85, // Placeholder - calcular baseado em campos N/A
+                confianca_ia: 95,
                 total_imagens_processadas: imagens.length,
                 modelo_ia: MODEL,
                 versao_sistema: '1.0-POC'
@@ -135,17 +167,15 @@ module.exports = async (req, res) => {
         
         return res.status(500).json({
             status: 'Falha',
-            mensagem: 'Erro ao processar imagens: ' + error.message,
+            mensagem: 'Erro ao processar: ' + error.message,
             dados: {
                 numero_patrimonio: 'N/A',
                 nome_produto: 'N/A',
                 modelo: 'N/A',
                 marca: 'N/A',
-                descricao: '',
-                classificacao_automatica: {
-                    estado_conservacao: 'N/A',
-                    categoria_depreciacao: 'N/A'
-                }
+                descricao: 'N/A',
+                estado_conservacao: 'N/A',
+                categoria_depreciacao: 'N/A'
             }
         });
     }
