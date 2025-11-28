@@ -95,82 +95,33 @@ module.exports = async (req, res) => {
 
         console.log('🔎 [ETAPA2] Query de busca:', queryBusca);
 
-        const promptBuscaPreco = `Você tem acesso à ferramenta Google Search. Use-a para encontrar o preço de AQUISIÇÃO CORPORATIVA (B2B) do seguinte ativo:
+        const promptBuscaPreco = `Você tem acesso à ferramenta Google Search. Encontre o preço de AQUISIÇÃO CORPORATIVA (B2B) NOVO para: ${nome_produto} ${marca || ''} ${modelo || ''}.
 
-PRODUTO: ${nome_produto}
-MARCA: ${marca || 'qualquer marca confiável'}
-MODELO: ${modelo || 'modelo padrão'}
-CATEGORIA: ${categoria_depreciacao}
+        CONTEXTO: Sistema de gestão patrimonial. Preço deve refletir custo B2B que EMPRESA pagaria.
+        CATEGORIA: ${categoria_depreciacao}
 
-CONTEXTO: Este é um sistema de gestão patrimonial CORPORATIVO. Precisamos do preço que uma EMPRESA pagaria para ADQUIRIR este ativo NOVO.
+        ESTRATÉGIA (nesta ordem):
+        1. PRIORIDADE: Fornecedores B2B/Corporativos BR, Fabricantes Oficiais, Atacadistas. Use R$.
+        2. SEGUNDO: Varejo B2C BR (Mercado Livre, Amazon). Use R$.
+        3. TERCEIRO: Internacional B2B (Alibaba, Fabricantes). Converta (1 USD=5.00, 1 EUR=5.40) e ADICIONE 20% (importação).
+        4. FALLBACK: Estime com produto SIMILAR B2B da mesma categoria.
 
-ESTRATÉGIA DE BUSCA (execute nesta ordem até obter sucesso):
+        FORMATO (APENAS JSON):
+        {
+        "preco_encontrado": true,
+        "valor_mercado": 15000.00,
+        "fonte": "Nome Fornecedor/Distribuidor",
+        "observacoes": "Tipo: [B2B/B2C/Estimativa]. Origem: [BR/Internacional]. Detalhes.",
+        "tipo_fonte": "B2B"
+        }
+        OU
+        {
+        "preco_encontrado": false,
+        "motivo": "explicação breve"
+        }
 
-1️⃣ PRIMEIRA TENTATIVA - Fornecedores B2B/Corporativos Brasileiros:
-   Busque em:
-   - Sites de fabricantes oficiais (ex: Dell, HP, Lenovo para TI)
-   - Distribuidores autorizados e atacadistas
-   - Fornecedores industriais especializados
-   - Cotações B2B de grandes fornecedores
-   Use o preço B2B em reais (R$)
-   ⚠️ PRIORIZE esta fonte! Preços B2B são mais realistas para patrimônio corporativo.
+        REGRAS: Priorize B2B. Use todas estratégias antes de retornar false. valor_mercado = número puro sem símbolos. Retorne APENAS JSON.`;
 
-2️⃣ SEGUNDA TENTATIVA - Varejo B2C Brasileiro:
-   Se não encontrar canais B2B, busque em varejistas:
-   - Mercado Livre (anúncios de lojas oficiais, não pessoas físicas)
-   - Amazon.com.br
-   - Magazine Luiza, Americanas (seção empresarial se houver)
-   Use o preço de varejo em reais (R$)
-   💡 Mencione que é preço de varejo, não B2B
-
-3️⃣ TERCEIRA TENTATIVA - Fornecedores Internacionais:
-   Busque em sites B2B internacionais:
-   - Alibaba, Global Sources (para equipamentos industriais)
-   - Sites de fabricantes internacionais
-   - Amazon.com, eBay (seção business)
-   Conversões: 1 USD = 5.00 BRL | 1 EUR = 5.40 BRL
-   💡 Adicione 15-20% sobre o preço convertido (importação + impostos)
-
-4️⃣ QUARTA TENTATIVA - Produto Similar B2B ou Estimativa Técnica:
-   Se modelo específico não existir:
-   - Busque equipamento SIMILAR da mesma categoria em canais B2B
-   - Use conhecimento de mercado corporativo para estimar
-   - Base a estimativa em produtos da mesma faixa de complexidade
-   
-   Referências de preço B2B por categoria:
-   - Equipamentos industriais especializados: R$ 8.000 - R$ 150.000
-   - Máquinas CNC/Tornos: R$ 50.000 - R$ 500.000
-   - Equipamentos de TI corporativos: R$ 3.000 - R$ 25.000
-   - Móveis corporativos: R$ 800 - R$ 8.000
-   - Ferramentas industriais: R$ 500 - R$ 15.000
-   - Veículos corporativos: R$ 50.000 - R$ 300.000
-
-FORMATO DE RESPOSTA (retorne APENAS este JSON):
-
-{
-  "preco_encontrado": true,
-  "valor_mercado": 15000.00,
-  "fonte": "Nome do Fornecedor B2B / Fabricante / Distribuidor / Varejo (se B2C)",
-  "observacoes": "Tipo: [B2B/B2C]. Origem: [Brasil/Internacional convertido]. Detalhes: [informações relevantes sobre a cotação]",
-  "tipo_fonte": "B2B"
-}
-
-OU se realmente não conseguir estimar:
-
-{
-  "preco_encontrado": false,
-  "motivo": "explicação muito breve"
-}
-
-REGRAS CRÍTICAS:
-✅ PRIORIZE fontes B2B! São mais adequadas para gestão patrimonial
-✅ NÃO desista facilmente! Use todas as 4 estratégias
-✅ Para equipamentos industriais, é MELHOR estimar baseado em similar B2B do que retornar false
-✅ Sempre mencione se é preço B2B ou B2C no campo "observacoes"
-✅ Para preços internacionais, SEMPRE adicione custo de importação (15-20%)
-✅ Seja realista com valores corporativos (empresas pagam mais que consumidores)
-✅ O campo "valor_mercado" deve ser um NÚMERO puro (ex: 15000.00), sem símbolos de moeda
-✅ Retorne APENAS JSON puro, sem markdown`;
 
         console.log('🤖 [ETAPA2] Inicializando modelo com Google Search (foco B2B)...');
 

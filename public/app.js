@@ -1,3 +1,10 @@
+// ═══════════════════════════════════════════════════════════════
+// CONFIGURAÇÕES DE OTIMIZAÇÃO DE CUSTO
+// ═══════════════════════════════════════════════════════════════
+// maxWidth: 1024px - Reduz tokens de visão (custo) mantendo legibilidade
+// quality: 0.75 - Balanço ideal entre tamanho e qualidade para OCR
+// ═══════════════════════════════════════════════════════════════
+
 // Estado da Aplicação
 const AppState = {
     fotosColetadas: [],
@@ -45,7 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // COMPRESSÃO DE IMAGENS
 // ============================================
 
-function comprimirImagem(file, maxWidth = 1200, quality = 0.8) {
+function comprimirImagem(file, maxWidth = 1024, quality = 0.75) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         
@@ -57,10 +64,15 @@ function comprimirImagem(file, maxWidth = 1200, quality = 0.8) {
                 let width = img.width;
                 let height = img.height;
                 
-                // Redimensionar se maior que maxWidth
-                if (width > maxWidth) {
-                    height = (height * maxWidth) / width;
-                    width = maxWidth;
+                // Redimensionar para máximo de 1024px (otimização de custo!)
+                if (width > maxWidth || height > maxWidth) {
+                    if (width > height) {
+                        height = (height * maxWidth) / width;
+                        width = maxWidth;
+                    } else {
+                        width = (width * maxWidth) / height;
+                        height = maxWidth;
+                    }
                 }
                 
                 canvas.width = width;
@@ -69,10 +81,14 @@ function comprimirImagem(file, maxWidth = 1200, quality = 0.8) {
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, width, height);
                 
-                // Converter para base64 com qualidade reduzida
+                // Converter para base64 com qualidade reduzida (75% é ótimo para texto)
                 const comprimido = canvas.toDataURL('image/jpeg', quality);
                 
-                console.log(`📦 Imagem comprimida: ${(file.size / 1024).toFixed(0)}KB → ${(comprimido.length / 1024).toFixed(0)}KB`);
+                const tamanhoOriginal = (file.size / 1024).toFixed(0);
+                const tamanhoFinal = (comprimido.length / 1024).toFixed(0);
+                const reducao = (((file.size - comprimido.length) / file.size) * 100).toFixed(0);
+                
+                console.log(`📦 Imagem otimizada: ${tamanhoOriginal}KB → ${tamanhoFinal}KB (${reducao}% redução, ${width}x${height}px)`);
                 
                 resolve(comprimido);
             };
