@@ -34,7 +34,7 @@ const FATORES_DEPRECIACAO = {
         'Máquinas e Equipamentos': 0.5,
         'Móveis e Utensílios': 0.45,
         'Veículos': 0.5,
-        Outros: 0.4
+        'Outros': 0.4
     },
     Ruim: {
         'Equipamentos de Informática': 0.35,
@@ -43,7 +43,7 @@ const FATORES_DEPRECIACAO = {
         'Máquinas e Equipamentos': 0.3,
         'Móveis e Utensílios': 0.25,
         'Veículos': 0.3,
-        Outros: 0.2
+        'Outros': 0.2
     }
 };
 
@@ -169,6 +169,7 @@ REGRAS CRÍTICAS:
 ✅ Sempre mencione se é preço B2B ou B2C no campo "observacoes"
 ✅ Para preços internacionais, SEMPRE adicione custo de importação (15-20%)
 ✅ Seja realista com valores corporativos (empresas pagam mais que consumidores)
+✅ O campo "valor_mercado" deve ser um NÚMERO puro (ex: 15000.00), sem símbolos de moeda
 ✅ Retorne APENAS JSON puro, sem markdown`;
 
         console.log('🤖 [ETAPA2] Inicializando modelo com Google Search (foco B2B)...');
@@ -198,19 +199,34 @@ REGRAS CRÍTICAS:
             let jsonText = text.trim();
             jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
             
+            // 💡 Isola o bloco JSON para lidar com texto antes/depois
             const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
                 jsonText = jsonMatch[0];
+                console.log('🎯 [ETAPA2] JSON isolado do texto');
             }
             
             jsonText = jsonText.trim();
-            console.log('🧹 [ETAPA2] Texto limpo:', jsonText);
+            console.log('🧹 [ETAPA2] Texto limpo para parse:', jsonText);
 
             resultadoBusca = JSON.parse(jsonText);
             console.log('✅ [ETAPA2] JSON parseado:', JSON.stringify(resultadoBusca, null, 2));
             
+            // Validar e limpar valor_mercado
+            if (resultadoBusca.preco_encontrado && resultadoBusca.valor_mercado) {
+                // Se o valor_mercado é uma string, limpe-o
+                if (typeof resultadoBusca.valor_mercado === 'string') {
+                    console.log('🧹 [ETAPA2] Limpando valor_mercado (string):', resultadoBusca.valor_mercado);
+                    resultadoBusca.valor_mercado = resultadoBusca.valor_mercado
+                        .replace(/[^\d,\.]/g, '') // Remove tudo exceto dígitos, vírgulas e pontos
+                        .replace(',', '.');        // Substitui vírgula por ponto (formato brasileiro)
+                    console.log('✨ [ETAPA2] Valor limpo:', resultadoBusca.valor_mercado);
+                }
+            }
+            
         } catch (parseError) {
             console.error('❌ [ETAPA2] ERRO ao parsear JSON:', parseError.message);
+            console.error('📋 [ETAPA2] Texto original:', text);
             throw new Error(`Resposta não é um JSON válido: ${parseError.message}`);
         }
 
@@ -223,10 +239,19 @@ REGRAS CRÍTICAS:
             });
         }
 
-        console.log('💰 [ETAPA2] Preço B2B encontrado:', resultadoBusca.valor_mercado);
+        console.log('💰 [ETAPA2] Preço encontrado:', resultadoBusca.valor_mercado);
         console.log('📊 [ETAPA2] Tipo de fonte:', resultadoBusca.tipo_fonte || 'Não especificado');
 
+        // Converter para número e validar
         const valorMercado = parseFloat(resultadoBusca.valor_mercado);
+
+        if (isNaN(valorMercado) || valorMercado <= 0) {
+            console.error('❌ [ETAPA2] Valor inválido:', resultadoBusca.valor_mercado);
+            throw new Error('Valor de mercado retornado pela IA não é um número válido.');
+        }
+
+        console.log('✅ [ETAPA2] Valor validado:', valorMercado);
+
         const estado = estado_conservacao || 'Bom';
         const categoria = categoria_depreciacao || 'Outros';
 
@@ -269,6 +294,7 @@ REGRAS CRÍTICAS:
         
     } catch (error) {
         console.error('❌ [ETAPA2] ERRO:', error.message);
+        console.error('❌ [ETAPA2] Stack:', error.stack);
 
         return res.status(500).json({
             status: 'Falha',
