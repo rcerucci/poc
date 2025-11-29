@@ -448,3 +448,112 @@ function mostrarMensagem(texto, tipo = 'info') {
 });
 
 console.log('✅ App.js carregado e pronto!');
+
+// ===================================================================
+// CTRL+V PARA COLAR IMAGENS (REABITADO)
+// ===================================================================
+
+let proximoSlotDisponivel = 1;
+
+document.addEventListener('paste', (event) => {
+    const items = event.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+            event.preventDefault();
+            
+            const blob = items[i].getAsFile();
+            const reader = new FileReader();
+            
+            reader.onload = (e) => {
+                // Procurar próximo slot vazio
+                let slotPreenchido = false;
+                
+                for (let slotIndex = 1; slotIndex <= 3; slotIndex++) {
+                    const slot = document.querySelector(`.photo-slot[data-index="${slotIndex}"]`);
+                    const preview = slot.querySelector('.photo-preview');
+                    
+                    // Se o slot está vazio
+                    if (preview.style.display === 'none') {
+                        const placeholder = slot.querySelector('.photo-placeholder');
+                        const btnRemove = slot.querySelector('.btn-remove');
+                        
+                        // Preencher slot
+                        preview.src = e.target.result;
+                        preview.style.display = 'block';
+                        placeholder.style.display = 'none';
+                        btnRemove.style.display = 'flex';
+                        
+                        // Adicionar aos dados
+                        const fotoData = e.target.result.split(',')[1];
+                        AppState.fotos[slotIndex - 1] = {
+                            data: fotoData,
+                            timestamp: new Date().toISOString(),
+                            thumbnail: e.target.result
+                        };
+                        
+                        console.log('✅ Foto colada no slot', slotIndex);
+                        atualizarContadorFotos();
+                        slotPreenchido = true;
+                        break;
+                    }
+                }
+                
+                if (!slotPreenchido) {
+                    mostrarMensagem('⚠️ Todos os slots de fotos estão preenchidos!', 'warning');
+                }
+            };
+            
+            reader.readAsDataURL(blob);
+            break;
+        }
+    }
+});
+
+// ===================================================================
+// ATUALIZAR CONTADOR E BOTÃO PROCESSAR
+// ===================================================================
+
+function atualizarContadorFotos() {
+    const totalFotos = AppState.fotos.filter(f => f !== null && f !== undefined).length;
+    
+    // Habilitar botão se >= 2 fotos
+    if (totalFotos >= CONFIG.minFotos) {
+        elementos.btnProcessarEtapa1 = document.getElementById('processarEtapa1');
+        if (elementos.btnProcessarEtapa1) {
+            elementos.btnProcessarEtapa1.disabled = false;
+        }
+    }
+    
+    console.log('📸 Total de fotos:', totalFotos);
+}
+
+// ===================================================================
+// REMOVER FOTO (Ctrl+V compatível)
+// ===================================================================
+
+window.removerFoto = function(indice) {
+    console.log('🗑️ Removendo foto', indice + 1);
+    
+    const slot = document.querySelector(`.photo-slot[data-index="${indice + 1}"]`);
+    const preview = slot.querySelector('.photo-preview');
+    const placeholder = slot.querySelector('.photo-placeholder');
+    const btnRemove = slot.querySelector('.btn-remove');
+    const input = slot.querySelector('input[type="file"]');
+    
+    // Limpar slot
+    preview.src = '';
+    preview.style.display = 'none';
+    placeholder.style.display = 'flex';
+    btnRemove.style.display = 'none';
+    input.value = '';
+    
+    // Remover dos dados
+    AppState.fotos[indice] = null;
+    
+    atualizarContadorFotos();
+    mostrarMensagem('🗑️ Foto removida', 'info');
+};
+
+console.log('✅ App.js carregado e pronto!');
