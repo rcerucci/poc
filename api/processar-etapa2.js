@@ -99,18 +99,19 @@ Specs: ${dados.especificacoes || 'N/A'}
    - SIMILARES/EQUIVALENTES (±5% specs principais)
    - Exemplos OR:
      * "Gerador Cummins C22D5" OR "gerador 20kVA 22kVA diesel"
-     * "Notebook Dell Latitude 5420" OR "notebook i5 14pol"
 
 3. ***PRIORIDADE DE FONTES:***
    - MÁXIMA: B2B Brasil (atacado/distribuidores)
    - MÉDIA: B2C Brasil (Mercado Livre/Amazon/Magazine Luiza)
    - BAIXA: Internacional (converter moeda + 20% impostos)
 
+4. ***REGRA DE FAIL-FAST E TRANSIÇÃO (NOVO):***
+   - Se a busca na Prioridade MÁXIMA (B2B) retornar apenas resultados não verificáveis ('Solicitar Orçamento', 'Cotação'), a IA DEVE **ignorar esses resultados imediatamente** e priorizar a coleta dos preços verificáveis das fontes de Prioridade MÉDIA (B2C) e BAIXA. **NÃO BLOQUEIE A BUSCA** em fontes opacas.
+
 ***REGRAS CRÍTICAS (GENÉRICAS E FINAIS):***
 - Produtos NOVOS (ignore usados/seminovos)
 - **Equivalentes de Especificação Chave:** A tolerância de **±5%** DEVE ser aplicada à **Especificação Técnica PRINCIPAL** do produto (ex: kVA, HP, Polegadas).
 - **Contingência de Especificações Secundárias:** Diferenças em especificações secundárias (tensão, frequência) devem ser aceitas se a Especificação Técnica PRINCIPAL estiver dentro da tolerância de $\pm5\%$.
-- **Contingência B2B (Análise Interna):** Se a busca retornar apenas "Solicitar Orçamento" (B2B MÁXIMA), a IA DEVE **analisar os resultados daquela ÚNICA busca** procurando por menções a **"preço de tabela"** ou **"preço de catálogo"** para inferir uma cotação de referência. **ESTA NÃO É UMA NOVA BUSCA EXTERNA.**
 - ***NÃO*** aceite kits/promoções/bundles
 - ***MÍNIMO:*** 3 preços REAIS verificáveis
 
@@ -135,7 +136,7 @@ JSON (sem markdown):
   ]
 }
 
-Se < 3: {"preco_encontrado": false, "motivo": "explicação", "termo_busca_utilizado": "termo tentado", "num_precos_encontrados": 1}`;
+Se < 3: {"preco_encontrada": false, "motivo": "explicação", "termo_busca_utilizado": "termo tentado", "num_precos_encontrados": 1}`;
 
 // --- Cálculo EMA com Pesos ---
 function calcularMediaPonderada(coleta_precos) {
