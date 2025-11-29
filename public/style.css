@@ -514,21 +514,21 @@ kbd {
     color: #2d3748;
 }
 
-/* ✅ RESPONSIVE - MOBILE */
+/* ✅ RESPONSIVE - MOBILE (2 COLUNAS SEM ESTOURO) */
 @media (max-width: 768px) {
     body {
-        padding: 10px;
+        padding: 8px; /* Reduzido */
     }
 
     .header {
-        padding: 15px;
+        padding: 12px;
         flex-direction: column;
-        gap: 10px;
+        gap: 8px;
         align-items: flex-start;
     }
 
     .header h1 {
-        font-size: 18px;
+        font-size: 16px;
     }
 
     .header-actions {
@@ -536,40 +536,136 @@ kbd {
         justify-content: space-between;
     }
 
+    .badge {
+        font-size: 10px;
+        padding: 4px 8px;
+    }
+
+    .btn-clear-all {
+        font-size: 11px;
+        padding: 6px 12px;
+    }
+
     .card {
-        padding: 15px;
+        padding: 12px; /* Reduzido para dar espaço */
+    }
+
+    .card h3 {
+        font-size: 16px;
+        margin-bottom: 10px;
+    }
+
+    .help-text {
+        font-size: 12px;
+        padding: 8px;
+        margin-bottom: 10px;
     }
 
     /* ✅ GRID 2x2 NO MOBILE */
     .photos-grid {
         grid-template-columns: repeat(2, 1fr);
-        gap: 10px;
+        gap: 8px;
+        margin: 12px 0;
     }
 
-    /* ✅ FORM-ROW: 1 COLUNA NO MOBILE */
-    .form-row {
-        grid-template-columns: 1fr;
-        gap: 12px;
+    .photo-placeholder {
+        font-size: 28px;
     }
 
-    /* ✅ Inputs e labels ajustados para mobile */
-    .form-group input,
-    .form-group select,
-    .form-group textarea {
-        padding: 10px 12px;
-        font-size: 14px;
+    .photo-placeholder span {
+        font-size: 11px;
     }
 
-    .form-group label {
+    .photo-placeholder small {
+        font-size: 9px;
+    }
+
+    .btn-process-photos {
         font-size: 12px;
     }
 
-    .field-hint {
+    .btn-process-photos .icon {
+        font-size: 24px;
+    }
+
+    .btn-process-photos .text {
         font-size: 10px;
+    }
+
+    /* ✅ FORM-ROW: MANTÉM 2 COLUNAS NO MOBILE */
+    .form-row {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px; /* Gap reduzido */
+        margin-bottom: 10px;
+    }
+
+    /* ✅ FORM-GROUP solo também com margem menor */
+    .form-group:not(.form-row .form-group) {
+        margin-bottom: 10px;
+    }
+
+    /* ✅ Labels compactas */
+    .form-group label {
+        font-size: 11px;
+        margin-bottom: 3px;
+        font-weight: 600;
+    }
+
+    /* ✅ Inputs, selects e textarea MUITO compactos */
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+        padding: 8px 10px; /* Padding reduzido */
+        font-size: 13px;
+        border-width: 1px;
+    }
+
+    /* ✅ Textarea menor */
+    .form-group textarea {
+        rows: 3;
+        min-height: 60px;
+    }
+
+    /* ✅ Field hint menor */
+    .field-hint {
+        font-size: 9px;
+        margin-top: 2px;
+    }
+
+    /* ✅ Botões compactos */
+    .btn-primary,
+    .btn-secondary {
+        padding: 10px 16px;
+        font-size: 13px;
+    }
+
+    .btn-block {
+        margin-top: 8px;
+    }
+
+    /* ✅ Results compactos */
+    .result-section {
+        padding: 12px;
+    }
+
+    .result-section h4 {
+        font-size: 12px;
+        margin-bottom: 10px;
+    }
+
+    .result-section p {
+        font-size: 12px;
+        margin-bottom: 6px;
+    }
+
+    .result-section strong {
+        min-width: 90px;
+        font-size: 11px;
     }
 
     .action-buttons {
         flex-direction: column;
+        gap: 8px;
     }
 
     .action-buttons button {
@@ -578,5 +674,59 @@ kbd {
 
     .result-grid {
         grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    /* ✅ JSON details */
+    .json-details summary {
+        padding: 10px;
+        font-size: 12px;
+    }
+
+    .json-details pre {
+        padding: 12px;
+        font-size: 11px;
+    }
+
+    /* ✅ Loading overlay */
+    .loading-spinner {
+        width: 50px;
+        height: 50px;
+    }
+
+    .loading-overlay p {
+        font-size: 14px;
+    }
+
+    /* ✅ Kbd menor */
+    kbd {
+        font-size: 10px;
+        padding: 1px 4px;
+    }
+}
+
+/* ✅ AJUSTE EXTRA: Telas muito pequenas (<360px) */
+@media (max-width: 360px) {
+    body {
+        padding: 5px;
+    }
+
+    .card {
+        padding: 10px;
+    }
+
+    .form-row {
+        gap: 6px;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+        padding: 7px 8px;
+        font-size: 12px;
+    }
+
+    .form-group label {
+        font-size: 10px;
     }
 }
