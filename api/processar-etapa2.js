@@ -70,7 +70,7 @@ function calcularMediaExponencial(coleta_precos) {
         return { sucesso: false, motivo: 'Nenhum preço válido encontrado' };
     }
 
-    console.log(`✅ [EMA] ${precosValidos.length} preços válidos`);
+    console.log('✅ [EMA] ' + precosValidos.length + ' preços válidos');
 
     // 2. Remover outliers usando IQR (Interquartile Range)
     const valores = precosValidos.map(p => p.valor).sort((a, b) => a - b);
@@ -80,8 +80,8 @@ function calcularMediaExponencial(coleta_precos) {
     const limiteInferior = q1 - 1.5 * iqr;
     const limiteSuperior = q3 + 1.5 * iqr;
 
-    console.log(`📐 [EMA] IQR: Q1=${q1.toFixed(2)}, Q3=${q3.toFixed(2)}, IQR=${iqr.toFixed(2)}`);
-    console.log(`📐 [EMA] Limites: [${limiteInferior.toFixed(2)}, ${limiteSuperior.toFixed(2)}]`);
+    console.log('📐 [EMA] IQR: Q1=' + q1.toFixed(2) + ', Q3=' + q3.toFixed(2) + ', IQR=' + iqr.toFixed(2));
+    console.log('📐 [EMA] Limites: [' + limiteInferior.toFixed(2) + ', ' + limiteSuperior.toFixed(2) + ']');
 
     const precosFiltrados = precosValidos.filter(p => 
         p.valor >= limiteInferior && p.valor <= limiteSuperior
@@ -92,7 +92,7 @@ function calcularMediaExponencial(coleta_precos) {
         precosFiltrados.push(...precosValidos);
     }
 
-    console.log(`✅ [EMA] ${precosFiltrados.length} preços após remoção de outliers`);
+    console.log('✅ [EMA] ' + precosFiltrados.length + ' preços após remoção de outliers');
 
     // 3. Calcular pesos (Fonte + Recência)
     const dataAtual = new Date();
@@ -106,7 +106,7 @@ function calcularMediaExponencial(coleta_precos) {
             try {
                 const dataOferta = new Date(item.data_oferta);
                 const diasPassados = (dataAtual - dataOferta) / (1000 * 60 * 60 * 24);
-                pesoRecencia = Math.exp(-diasPassados / 60); // Decai para ~0.6 após 30 dias
+                pesoRecencia = Math.exp(-diasPassados / 60);
             } catch (e) {
                 console.log('⚠️ [EMA] Data inválida:', item.data_oferta);
             }
@@ -150,9 +150,9 @@ function calcularMediaExponencial(coleta_precos) {
     const scoreConfianca = Math.max(0, Math.min(100, 100 - coeficienteVariacao));
 
     console.log('💰 [EMA] Resultado final:');
-    console.log(`   Média Exponencial: R$ ${mediaExponencial.toFixed(2)}`);
-    console.log(`   Desvio Padrão: R$ ${desvioPadrao.toFixed(2)}`);
-    console.log(`   Confiança: ${scoreConfianca.toFixed(1)}%`);
+    console.log('   Média Exponencial: R$ ' + mediaExponencial.toFixed(2));
+    console.log('   Desvio Padrão: R$ ' + desvioPadrao.toFixed(2));
+    console.log('   Confiança: ' + scoreConfianca.toFixed(1) + '%');
 
     return {
         sucesso: true,
@@ -172,7 +172,8 @@ function calcularMediaExponencial(coleta_precos) {
             fonte: p.site || p.fonte,
             tipo: p.tipo_fonte,
             peso: parseFloat(p.peso_total.toFixed(3)),
-            data: p.data_oferta || 'N/A'
+            data: p.data_oferta || 'N/A',
+            produto: p.produto_encontrado || 'N/A'
         }))
     };
 }
@@ -191,7 +192,7 @@ module.exports = async (req, res) => {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    console.log('🔍 [ETAPA2] Iniciando busca de preços B2B...');
+    console.log('🔍 [ETAPA2] Iniciando busca inteligente de preços...');
 
     try {
         const {
@@ -200,7 +201,8 @@ module.exports = async (req, res) => {
             marca,
             estado_conservacao,
             categoria_depreciacao,
-            numero_patrimonio
+            numero_patrimonio,
+            descricao
         } = req.body;
 
         console.log('📥 [ETAPA2] Dados recebidos:', {
@@ -208,7 +210,8 @@ module.exports = async (req, res) => {
             modelo,
             marca,
             estado_conservacao,
-            categoria_depreciacao
+            categoria_depreciacao,
+            descricao: descricao ? descricao.substring(0, 80) + '...' : 'N/A'
         });
 
         if (!nome_produto || nome_produto === 'N/A') {
@@ -219,41 +222,100 @@ module.exports = async (req, res) => {
             });
         }
 
-        const queryBusca = [nome_produto, marca, modelo]
-            .filter(x => x && x !== 'N/A')
-            .join(' ');
+        const dataAtual = new Date().toISOString().split('T')[0];
+        
+        // --- PROMPT INTELIGENTE (LLM FAZ TODA A ANÁLISE) ---
+        const promptBuscaPreco = `Você é um especialista em precificação de ativos. Analise os dados abaixo e busque preços de mercado de produtos NOVOS equivalentes.
 
-        console.log('🔎 [ETAPA2] Query de busca:', queryBusca);
+DADOS DO PRODUTO:
+Nome: ${nome_produto}
+Marca: ${marca || 'N/A'}
+Modelo: ${modelo || 'N/A'}
+Categoria: ${categoria_depreciacao}
+Descrição: ${descricao || 'N/A'}
 
-        // --- PROMPT OTIMIZADO (REDUZIDO) ---
-        const promptBuscaPreco = `Busque APENAS PRODUTOS NOVOS (de fábrica) para: ${nome_produto} ${marca || ''} ${modelo || ''}.
-        Categoria: ${categoria_depreciacao}
+SUA TAREFA:
 
-        🔍 BUSCA: Use especificações técnicas e IGNORE completamente descrições de estado físico (arranhões, manchas, desgaste, etc).
-        Exemplo: "Notebook Intel Core i3" → busque "Notebook Intel Core i3 NOVO"
+1. ANALISAR a descrição e identificar:
+   - Função principal do produto
+   - Características técnicas essenciais
+   - Sinônimos ou nomes alternativos comuns no mercado
+   - Termos de busca genéricos mais eficazes
 
-        PRIORIDADE:
-        1. B2B Brasil (atacado/distribuidores)
-        2. B2C Brasil (Amazon/Mercado Livre - filtro "NOVO")
-        3. Internacional (USD×5.0, EUR×5.4, +20%)
+2. BUSCAR preços usando estratégia inteligente:
+   - Use termos GENÉRICOS e FUNCIONAIS (ignore cores, tamanhos, acabamentos estéticos)
+   - Exemplo: "Carrinho Porta-Ferramentas azul" deve buscar "carrinho auxiliar rodízios metal", "carrinho porta mandris", "carrinho ferramentas industrial"
+   - Exemplo: "Notebook Dell Latitude 5420" deve buscar "notebook intel core i5 14 polegadas", "notebook empresarial dell"
+   - Aceite produtos EQUIVALENTES da mesma categoria e função
+   - Priorize especificações técnicas, não aparência
 
-        JSON (sem markdown):
-        {
-        "preco_encontrado": true,
-        "coleta_de_precos": [
-            {"valor": 1500.00, "tipo_fonte": "B2B", "site": "Fornecedor X", "data_oferta": "2025-11-28"}
-        ]
-        }
+3. FONTES (em ordem de prioridade):
+   - B2B Brasil (atacado, distribuidores) - tipo_fonte: "B2B"
+   - B2C Brasil (Amazon, Mercado Livre, Magazine Luiza) - tipo_fonte: "B2C"
+   - Internacional (converter: USD x 5.0, EUR x 5.4, adicionar +20% importação) - tipo_fonte: "Internacional"
 
-        REGRAS: Produto NOVO | Individual | R$ | YYYY-MM-DD | Mínimo 3 preços`;
+4. CRITÉRIOS OBRIGATÓRIOS:
+   - APENAS produtos NOVOS (de fábrica, nunca usados)
+   - Mínimo 3 preços, idealmente 5-10 preços
+   - Produtos equivalentes são ACEITOS (mesma função/categoria)
+   - Valores SEMPRE em R$ (reais brasileiros)
+   - Data no formato YYYY-MM-DD (data atual: ${dataAtual})
+   - Preço UNITÁRIO (não pacotes/kits)
 
-        console.log('🤖 [ETAPA2] Inicializando modelo com Google Search...');
+FORMATO DE RESPOSTA (JSON puro, sem markdown, sem crases):
+{
+  "preco_encontrado": true,
+  "termos_busca_utilizados": ["termo1", "termo2", "termo3"],
+  "coleta_de_precos": [
+    {
+      "valor": 450.00,
+      "tipo_fonte": "B2B",
+      "site": "Nome do Fornecedor ou Loja",
+      "data_oferta": "2025-11-28",
+      "produto_encontrado": "Descrição exata do produto encontrado"
+    }
+  ],
+  "observacoes": "Estratégia de busca utilizada e observações relevantes"
+}
+
+Se NÃO encontrar preços suficientes:
+{
+  "preco_encontrado": false,
+  "motivo": "Explicação detalhada do motivo",
+  "termos_busca_utilizados": ["termos que você tentou"]
+}
+
+EXEMPLOS DE BUSCA INTELIGENTE:
+
+Exemplo 1:
+Entrada: "Carrinho Porta-Ferramentas azul de metal"
+Busque: "carrinho auxiliar industrial", "carrinho porta mandris", "mesa rodízios metal oficina"
+Aceite: Carrinhos de serviço, carrinhos auxiliares, mesas com rodízios
+
+Exemplo 2:
+Entrada: "Spindle NAKANISHI iSpeed3 60.000 RPM"
+Busque: "spindle alta rotação 60000 rpm", "motor usinagem nakanishi", "spindle cnc precision"
+Aceite: Spindles de mesma faixa de RPM e potência
+
+Exemplo 3:
+Entrada: "Cadeira de Escritório Ergonômica preta"
+Busque: "cadeira escritório ergonômica", "cadeira giratória executiva"
+Aceite: Cadeiras ergonômicas de qualquer cor
+
+NÃO ACEITE:
+- Produtos usados ou seminovos
+- Produtos claramente de categoria diferente
+- Kits ou pacotes (queremos preço unitário)
+- Produtos muito mais simples ou complexos que o original`;
+
+        console.log('🤖 [ETAPA2] Inicializando modelo Gemini com Google Search...');
 
         const model = genAI.getGenerativeModel({
             model: MODEL,
             tools: [{ googleSearch: {} }],
             generationConfig: {
-                temperature: 0.2
+                temperature: 0.3,
+                responseMimeType: 'application/json'
             }
         });
 
@@ -281,27 +343,34 @@ module.exports = async (req, res) => {
             }
             
             jsonText = jsonText.trim();
-            console.log('🧹 [ETAPA2] Texto limpo para parse:', jsonText);
+            console.log('🧹 [ETAPA2] Texto limpo para parse');
 
             resultadoBusca = JSON.parse(jsonText);
-            console.log('✅ [ETAPA2] JSON parseado:', JSON.stringify(resultadoBusca, null, 2));
+            console.log('✅ [ETAPA2] JSON parseado com sucesso');
+            
+            if (resultadoBusca.termos_busca_utilizados) {
+                console.log('🔍 [ETAPA2] Termos de busca utilizados:', resultadoBusca.termos_busca_utilizados);
+            }
             
         } catch (parseError) {
             console.error('❌ [ETAPA2] ERRO ao parsear JSON:', parseError.message);
             console.error('📋 [ETAPA2] Texto original:', text);
-            throw new Error(`Resposta não é um JSON válido: ${parseError.message}`);
+            throw new Error('Resposta não é um JSON válido: ' + parseError.message);
         }
 
         if (!resultadoBusca.preco_encontrado) {
             console.log('⚠️ [ETAPA2] Preço não encontrado');
             return res.status(200).json({
                 status: 'Falha',
-                mensagem: `Não foi possível encontrar preço B2B: ${resultadoBusca.motivo || 'Produto muito específico'}. Insira valor manualmente.`,
-                dados: { preco_encontrado: false }
+                mensagem: 'Não foi possível encontrar preço de mercado: ' + (resultadoBusca.motivo || 'Produto muito específico') + '. Insira valor manualmente.',
+                dados: { 
+                    preco_encontrado: false,
+                    termos_tentados: resultadoBusca.termos_busca_utilizados || []
+                }
             });
         }
 
-        // --- NOVA ETAPA: CALCULAR MÉDIA EXPONENCIAL ---
+        // --- CALCULAR MÉDIA EXPONENCIAL ---
         console.log('📊 [ETAPA2] Calculando média exponencial dos preços coletados...');
         
         const resultadoEMA = calcularMediaExponencial(resultadoBusca.coleta_de_precos);
@@ -309,7 +378,7 @@ module.exports = async (req, res) => {
         if (!resultadoEMA.sucesso) {
             return res.status(200).json({
                 status: 'Falha',
-                mensagem: `Erro ao processar preços: ${resultadoEMA.motivo}`,
+                mensagem: 'Erro ao processar preços: ' + resultadoEMA.motivo,
                 dados: { preco_encontrado: false }
             });
         }
@@ -324,11 +393,11 @@ module.exports = async (req, res) => {
         const fatorDepreciacao = FATORES_DEPRECIACAO[estado]?.[categoria] || 0.7;
         const valorAtual = valorMercado * fatorDepreciacao;
 
-        console.log('📉 [ETAPA2] Depreciação:', fatorDepreciacao, 'Valor atual:', valorAtual);
+        console.log('📉 [ETAPA2] Depreciação:', fatorDepreciacao, '| Valor atual:', valorAtual);
 
         const dadosCompletos = {
-            numero_patrimonio,
-            nome_produto,
+            numero_patrimonio: numero_patrimonio,
+            nome_produto: nome_produto,
             modelo: modelo || 'N/A',
             marca: marca || 'N/A',
             estado_conservacao: estado,
@@ -337,28 +406,32 @@ module.exports = async (req, res) => {
                 valor_mercado_estimado: parseFloat(valorMercado.toFixed(2)),
                 valor_atual_estimado: parseFloat(valorAtual.toFixed(2)),
                 fator_depreciacao: fatorDepreciacao,
-                percentual_depreciacao: `${((1 - fatorDepreciacao) * 100).toFixed(0)}%`,
-                fonte_preco: 'Média Exponencial Ponderada',
-                metodo_calculo: 'EMA com filtro IQR e pesos B2B/recência',
+                percentual_depreciacao: ((1 - fatorDepreciacao) * 100).toFixed(0) + '%',
+                fonte_preco: 'Média Exponencial Ponderada (Busca Inteligente)',
+                metodo_calculo: 'EMA com filtro IQR, pesos B2B/recência e busca por equivalentes',
                 score_confianca: resultadoEMA.estatisticas.score_confianca,
                 observacoes: resultadoBusca.observacoes || 'Calculado via média exponencial de múltiplas fontes'
             },
             analise_estatistica: resultadoEMA.estatisticas,
             precos_coletados: resultadoEMA.detalhes_precos,
+            estrategia_busca: {
+                termos_utilizados: resultadoBusca.termos_busca_utilizados || [],
+                produtos_equivalentes_aceitos: true
+            },
             metadados: {
                 data_busca: new Date().toISOString(),
-                query_utilizada: queryBusca,
                 modelo_ia: MODEL,
-                estrategia: 'Busca B2B → Média Exponencial → Depreciação'
+                estrategia: 'Busca Inteligente (LLM) → Média Exponencial → Depreciação'
             }
         };
 
         console.log('✅ [ETAPA2] Processamento concluído com sucesso!');
+        console.log('💰 [ETAPA2] Valor mercado: R$ ' + valorMercado + ' | Valor atual: R$ ' + valorAtual.toFixed(2));
 
         return res.status(200).json({
             status: 'Sucesso',
             dados: dadosCompletos,
-            mensagem: `Valores calculados via média exponencial (confiança: ${resultadoEMA.estatisticas.score_confianca.toFixed(0)}%)`
+            mensagem: 'Valores calculados via busca inteligente e média exponencial (confiança: ' + resultadoEMA.estatisticas.score_confianca.toFixed(0) + '%)'
         });
         
     } catch (error) {
