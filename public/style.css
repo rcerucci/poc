@@ -50,6 +50,27 @@ body {
     font-weight: 500;
 }
 
+/* ✅ BOTÃO LIMPAR TUDO */
+.btn-clear-all {
+    background: #ef4444;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-clear-all:hover {
+    background: #dc2626;
+    transform: translateY(-1px);
+}
+
 /* Cards */
 .card {
     background: white;
@@ -100,10 +121,10 @@ body {
     border-left: 4px solid #ef4444;
 }
 
-/* ✅ Photos Grid - RESPONSIVO (4 colunas desktop, 2 mobile) */
+/* Photos Grid */
 .photos-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr); /* ✅ 4 colunas no desktop */
+    grid-template-columns: repeat(4, 1fr);
     gap: 15px;
     margin: 20px 0;
 }
@@ -117,7 +138,6 @@ body {
     background: #f7fafc;
 }
 
-/* Slot de Botão (4º slot) */
 .photo-slot-button {
     border: none;
     background: transparent;
@@ -182,7 +202,7 @@ body {
     align-items: center;
     justify-content: center;
     height: 100%;
-    font-size: 36px; /* ✅ Reduzido de 48px */
+    font-size: 36px;
     color: #cbd5e0;
     transition: all 0.2s;
 }
@@ -238,7 +258,7 @@ body {
     transform: scale(1.1);
 }
 
-/* Form */
+/* ✅ FORM - DESKTOP: 2 COLUNAS, MOBILE: RESPONSIVO */
 .form-row {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -250,6 +270,11 @@ body {
     position: relative;
     display: flex;
     flex-direction: column;
+    margin-bottom: 0; /* Removido margem quando dentro de form-row */
+}
+
+/* ✅ FORM-GROUP SOLO (sem form-row) */
+.form-group:not(.form-row > .form-group) {
     margin-bottom: 15px;
 }
 
@@ -287,7 +312,7 @@ body {
     display: block;
 }
 
-/* ✅ Campos Readonly (Bloqueados) - Estilo de Botão de Cópia */
+/* Campos Readonly (Bloqueados) */
 input[readonly],
 textarea[readonly],
 select:disabled {
@@ -479,7 +504,7 @@ textarea[readonly]:active {
     font-weight: 500;
 }
 
-/* ✅ RESPONSIVE - MOBILE FIRST */
+/* ✅ RESPONSIVE - MOBILE */
 @media (max-width: 768px) {
     body {
         padding: 10px;
@@ -487,24 +512,37 @@ textarea[readonly]:active {
 
     .header {
         padding: 15px;
+        flex-direction: column;
+        gap: 10px;
+        align-items: flex-start;
     }
 
     .header h1 {
         font-size: 18px;
     }
 
+    .header-actions {
+        width: 100%;
+        justify-content: space-between;
+    }
+
     .card {
         padding: 20px;
     }
 
-    /* ✅ 2 colunas no mobile */
+    /* ✅ GRID 2x2 NO MOBILE */
     .photos-grid {
         grid-template-columns: repeat(2, 1fr);
     }
 
-    /* ✅ 1 coluna no mobile para form-row */
+    /* ✅ FORM-ROW: 1 COLUNA NO MOBILE (EXCETO VALORES) */
     .form-row {
         grid-template-columns: 1fr;
+    }
+
+    /* ✅ EXCEÇÃO: VALORES LADO A LADO NO MOBILE */
+    .form-row.valores-row {
+        grid-template-columns: repeat(2, 1fr);
     }
 
     .action-buttons {

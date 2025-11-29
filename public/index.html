@@ -13,6 +13,9 @@
             <h1>Cadastrar Novo Patrimônio</h1>
             <div class="header-actions">
                 <span class="badge">PoC v2.0 - Vercel</span>
+                <button class="btn-clear-all" id="btnLimparTudo">
+                    🗑️ Limpar Tudo
+                </button>
             </div>
         </header>
 
@@ -84,7 +87,7 @@
                 🔒 <strong>Campos bloqueados:</strong> Extraídos pela IA. Clique em qualquer campo para copiar o conteúdo.
             </p>
             
-            <!-- ✅ PLACA E NOME EM LINHA -->
+            <!-- ✅ PLACA E NOME EM LINHA (MOBILE: 1 COLUNA) -->
             <div class="form-row">
                 <div class="form-group">
                     <label for="numeroPatrimonio">Placa *</label>
@@ -98,8 +101,8 @@
                 </div>
             </div>
 
-            <!-- VALORES EM LINHA (2 COLUNAS) -->
-            <div class="form-row">
+            <!-- ✅ VALORES LADO A LADO (MOBILE TAMBÉM) -->
+            <div class="form-row valores-row">
                 <div class="form-group">
                     <label for="valorAtual">Valor Atual</label>
                     <input type="text" id="valorAtual" placeholder="R$ 0,00" readonly>
@@ -111,7 +114,7 @@
                 </div>
             </div>
 
-            <!-- ESTADO E CENTRO DE CUSTO EM LINHA -->
+            <!-- ✅ ESTADO E CENTRO DE CUSTO (MOBILE: 1 COLUNA) -->
             <div class="form-row">
                 <div class="form-group">
                     <label for="estado">Estado</label>
@@ -135,7 +138,7 @@
                 </div>
             </div>
 
-            <!-- DEPRECIAÇÃO E UNIDADE EM LINHA -->
+            <!-- ✅ DEPRECIAÇÃO E UNIDADE (MOBILE: 1 COLUNA) -->
             <div class="form-row">
                 <div class="form-group">
                     <label for="depreciacao">Depreciação</label>
@@ -161,6 +164,7 @@
                 </div>
             </div>
 
+            <!-- ✅ DESCRIÇÃO SOLO (SEM FORM-ROW) -->
             <div class="form-group">
                 <label for="descricao">Descrição</label>
                 <textarea id="descricao" rows="4" placeholder="Descrição técnica do ativo"></textarea>

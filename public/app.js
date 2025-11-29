@@ -62,6 +62,12 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function inicializarEventListeners() {
+    // Botão Limpar Tudo
+    const btnLimparTudo = document.getElementById('btnLimparTudo');
+    if (btnLimparTudo) {
+        btnLimparTudo.addEventListener('click', limparTudo);
+    }
+
     if (elementos.processarEtapa1) {
         elementos.processarEtapa1.addEventListener('click', processarEtapa1);
     }
@@ -76,6 +82,16 @@ function inicializarEventListeners() {
     }
     if (elementos.processarNovo) {
         elementos.processarNovo.addEventListener('click', () => location.reload());
+    }
+}
+
+// ===================================================================
+// LIMPAR TUDO
+// ===================================================================
+
+function limparTudo() {
+    if (confirm('⚠️ Deseja realmente limpar tudo? Esta ação não pode ser desfeita.')) {
+        location.reload();
     }
 }
 

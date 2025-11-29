@@ -79,7 +79,6 @@ function gerarTermosBusca(nome_produto, marca, modelo, descricao) {
     return termos;
 }
 
-// --- Prompt de Busca ---
 const PROMPT_BUSCA_PRECO = (dados) => `Você é um extrator de preços. Colete MÍNIMO 3 preços NOVOS no Brasil.
 
 PRODUTO:
@@ -91,9 +90,9 @@ Specs: ${dados.especificacoes || 'N/A'}
 ***ESTRATÉGIA DE BUSCA (UMA ÚNICA QUERY):***
 
 1. ***ANALISE OS DADOS*** e construa o termo de busca MAIS EFICAZ:
-   - Com Marca + Modelo: use ambos
+   - Se tem Marca + Modelo: use ambos
    - Marca/Modelo = N/A: foque Specs técnicas
-   - Inclua sinônimos e variações do produto
+   - Inclua sinônimos e variações do produto (e termos como "preço de tabela" ou "preço de catálogo" para B2B).
 
 2. ***EXECUTE BUSCA SIMULTÂNEA*** (modelo exato + similares):
    - Modelo EXATO (prioridade máxima)
@@ -101,29 +100,30 @@ Specs: ${dados.especificacoes || 'N/A'}
    - Exemplos OR:
      * "Gerador Cummins C22D5" OR "gerador 20kVA 22kVA diesel"
      * "Notebook Dell Latitude 5420" OR "notebook i5 14pol"
-     * "Carrinho porta-ferramentas metal" OR "carrinho auxiliar rodízios"
 
 3. ***PRIORIDADE DE FONTES:***
    - MÁXIMA: B2B Brasil (atacado/distribuidores)
    - MÉDIA: B2C Brasil (Mercado Livre/Amazon/Magazine Luiza)
    - BAIXA: Internacional (converter moeda + 20% impostos)
 
-***REGRAS CRÍTICAS:***
+***REGRAS CRÍTICAS (GENÉRICAS E FINAIS):***
 - Produtos NOVOS (ignore usados/seminovos)
-- Equivalentes: ±5% spec principal (ex: 20kVA aceita 19-21kVA)
-- ***NÃO*** kits/promoções/bundles
+- **Equivalentes de Especificação Chave:** A tolerância de **±5%** DEVE ser aplicada à **Especificação Técnica PRINCIPAL** do produto (ex: kVA, HP, Polegadas).
+- **Contingência de Especificações Secundárias:** Diferenças em especificações secundárias (tensão, frequência) devem ser aceitas se a Especificação Técnica PRINCIPAL estiver dentro da tolerância de $\pm5\%$.
+- **Contingência B2B (Análise Interna):** Se a busca retornar apenas "Solicitar Orçamento" (B2B MÁXIMA), a IA DEVE **analisar os resultados daquela ÚNICA busca** procurando por menções a **"preço de tabela"** ou **"preço de catálogo"** para inferir uma cotação de referência. **ESTA NÃO É UMA NOVA BUSCA EXTERNA.**
+- ***NÃO*** aceite kits/promoções/bundles
 - ***MÍNIMO:*** 3 preços REAIS verificáveis
 
 ***PRIORIZAÇÃO (peso interno):***
 1. Match EXATO (marca+modelo) = 2.0
 2. Match PARCIAL (marca OU modelo+specs) = 1.5
-3. Equivalente (specs ±5%) = 1.0
+3. Equivalente (specs $\pm5\%$) = 1.0
 
 JSON (sem markdown):
 {
   "preco_encontrado": true,
   "termo_busca_utilizado": "termo exato usado",
-  "estrategia": "Match Exato ou Equivalente: 21kVA",
+  "estrategia": "Match Exato ou Equivalente: [Especificação chave e valor usado]",
   "num_precos_encontrados": 5,
   "precos_coletados": [
     {

@@ -18,20 +18,30 @@ const PROMPT_SISTEMA = `Extraia informações do ativo em JSON (sem markdown):
   "estado_conservacao": "Excelente|Bom|Regular|Ruim",
   "motivo_conservacao": "motivo se Regular/Ruim (max 3 palavras) ou N/A",
   "categoria_depreciacao": "Computadores e Informática|Ferramentas|Instalações|Máquinas e Equipamentos|Móveis e Utensílios|Veículos|Outros",
-  "descricao": "descrição técnica objetiva (max 200 chars)"
+  "descricao": "descrição técnica completa (max 200 chars)"
 }
 
-REGRAS:
+***REGRAS CRÍTICAS:***
+
 1. numero_patrimonio: Plaqueta visível ou N/A
 2. nome_produto: Genérico, técnico, curto
 3. marca/modelo: Exatos da etiqueta ou N/A
-4. especificacoes: Da PLACA (ex: "220V, 60Hz, 20kVA, 0.8FP") ou N/A
+4. especificacoes: Da PLACA (ex: "220V, 60Hz, 20kVA") ou N/A
 5. estado_conservacao: Avaliação visual
-6. motivo_conservacao: Só se Regular/Ruim. Max 3 palavras. Não use "sujidade" ou "poeira"
+6. motivo_conservacao: Só se Regular/Ruim. Max 3 palavras
 7. categoria_depreciacao: UM valor exato da lista
-8. descricao: Técnica, concisa (max 200 chars). Inclua material, dimensões, specs. NÃO inclua: cor, localização, estado de conservação
 
-EXEMPLOS:
+8. ***descricao (FORMATO OBRIGATÓRIO):***
+   - SEMPRE inicie com o nome do produto
+   - SEMPRE inclua marca e modelo (se identificados)
+   - SEMPRE inclua especificacoes (se identificadas)
+   - Formato: "[Nome] [Marca] [Modelo], [specs técnicas], [características físicas]"
+   - Exemplo: "Monitor LCD Samsung S24F350, 24 polegadas Full HD, painel IPS, montado em braço articulado"
+   - NÃO inclua: cor, localização, estado de conservação
+   - Max 200 caracteres
+
+***EXEMPLOS CORRETOS:***
+
 Carrinho: {"numero_patrimonio":"02128","nome_produto":"Carrinho Porta-Ferramentas","marca":"N/A","modelo":"N/A","especificacoes":"N/A","estado_conservacao":"Bom","motivo_conservacao":"N/A","categoria_depreciacao":"Móveis e Utensílios","descricao":"Carrinho metal com prateleiras, gaveta, orifícios para mandris, rodízios"}
 
 Notebook: {"numero_patrimonio":"15432","nome_produto":"Notebook","marca":"Dell","modelo":"Latitude 5420","especificacoes":"Intel i5, 8GB, 256GB SSD","estado_conservacao":"Excelente","motivo_conservacao":"N/A","categoria_depreciacao":"Computadores e Informática","descricao":"14 polegadas, carcaça alumínio, teclado retroiluminado, webcam HD"}
