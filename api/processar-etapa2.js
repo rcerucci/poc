@@ -47,6 +47,45 @@ const FATORES_DEPRECIACAO = {
     }
 };
 
+// --- Função para Gerar Termos de Busca Determinísticos ---
+function gerarTermosBuscaPadronizados(nome_produto, marca, modelo, descricao) {
+    console.log('🔍 [BUSCA] Gerando termos de busca padronizados...');
+    
+    const termos = [];
+    
+    // Termo 1: Nome do produto + marca (se houver)
+    if (marca && marca !== 'N/A') {
+        termos.push(nome_produto + ' ' + marca);
+    } else {
+        termos.push(nome_produto);
+    }
+    
+    // Termo 2: Nome do produto + modelo (se houver)
+    if (modelo && modelo !== 'N/A' && modelo.length < 50) {
+        termos.push(nome_produto + ' ' + modelo);
+    }
+    
+    // Termo 3: Extrair sinônimos da descrição (se houver "também conhecido como")
+    if (descricao && descricao !== 'N/A') {
+        const regexSinonimo = /também\s+conhecido\s+como\s+([^.]+)/i;
+        const match = descricao.match(regexSinonimo);
+        if (match) {
+            const sinonimos = match[1].split(/\s+ou\s+|,\s*/);
+            if (sinonimos.length > 0) {
+                termos.push(sinonimos[0].trim());
+            }
+        }
+    }
+    
+    // Garantir que temos pelo menos 1 termo
+    if (termos.length === 0) {
+        termos.push(nome_produto);
+    }
+    
+    console.log('📋 [BUSCA] Termos padronizados:', termos);
+    return termos;
+}
+
 // --- Função de Cálculo de Média Exponencial ---
 function calcularMediaExponencial(coleta_precos) {
     console.log('📊 [EMA] Iniciando cálculo de média exponencial...');
@@ -222,69 +261,66 @@ module.exports = async (req, res) => {
             });
         }
 
+        // --- GERAR TERMOS DE BUSCA PADRONIZADOS ---
+        const termosBusca = gerarTermosBuscaPadronizados(nome_produto, marca, modelo, descricao);
         const dataAtual = new Date().toISOString().split('T')[0];
         
-        // --- PROMPT INTELIGENTE (LLM FAZ TODA A ANÁLISE) ---
-        const promptBuscaPreco = `Você é um especialista em precificação de ativos. Analise os dados abaixo e busque preços de mercado de produtos NOVOS equivalentes.
+        // --- PROMPT COM TERMOS FIXOS (MAIS DETERMINÍSTICO) ---
+        const promptBuscaPreco = `Você é um especialista em precificação de ativos. Busque preços de mercado de produtos NOVOS no Brasil.
 
-DADOS DO PRODUTO:
+PRODUTO:
 Nome: ${nome_produto}
-Marca: ${marca || 'N/A'}
-Modelo: ${modelo || 'N/A'}
 Categoria: ${categoria_depreciacao}
-Descrição: ${descricao || 'N/A'}
 
-SUA TAREFA:
+TERMOS DE BUSCA OBRIGATÓRIOS (use EXATAMENTE estes termos):
+${termosBusca.map((t, i) => (i + 1) + '. "' + t + '"').join('\n')}
 
-1. ANALISAR a descrição e identificar:
-   - Função principal do produto
-   - Características técnicas essenciais
-   - Sinônimos ou nomes alternativos comuns no mercado
-   - Termos de busca genéricos mais eficazes
+INSTRUÇÕES CRÍTICAS:
 
-2. BUSCAR preços usando estratégia inteligente:
-   - Use termos GENÉRICOS e FUNCIONAIS (ignore cores, tamanhos, acabamentos estéticos)
-   - Exemplo: "Carrinho Porta-Ferramentas azul" deve buscar "carrinho auxiliar rodízios metal", "carrinho porta mandris", "carrinho ferramentas industrial"
-   - Aceite produtos EQUIVALENTES da mesma categoria e função
-   - Priorize especificações técnicas, não aparência
+1. Use APENAS os termos de busca acima (não invente novos termos)
+2. Para cada termo, busque produtos NOVOS (nunca usados)
+3. Aceite produtos EQUIVALENTES (mesma função/categoria)
+4. IGNORE cores, tamanhos específicos, acabamentos
+5. Priorize sites B2B (atacado/distribuidores)
 
-3. FONTES (em ordem de prioridade):
-   - B2B Brasil (atacado, distribuidores) - tipo_fonte: "B2B"
-   - B2C Brasil (Amazon, Mercado Livre, Magazine Luiza) - tipo_fonte: "B2C"
-   - Internacional (converter: USD x 5.0, EUR x 5.4, adicionar +20% importação) - tipo_fonte: "Internacional"
+FONTES VÁLIDAS (Brasil):
+- B2B: Atacado, distribuidores, fornecedores industriais (tipo_fonte: "B2B")
+- B2C: Mercado Livre, Amazon, Magazine Luiza (tipo_fonte: "B2C")
 
-4. CRITÉRIOS OBRIGATÓRIOS:
-   - APENAS produtos NOVOS (de fábrica, nunca usados)
-   - Mínimo 3 preços, idealmente 5-10 preços
-   - Produtos equivalentes são ACEITOS (mesma função/categoria)
-   - Valores SEMPRE em R$ (reais brasileiros)
-   - Data no formato YYYY-MM-DD (data atual: ${dataAtual})
-   - Preço UNITÁRIO (não pacotes/kits)
+REGRAS DE PREÇOS:
+- Mínimo 5 preços, máximo 10 preços
+- Valores em R$ (reais)
+- Preço UNITÁRIO (não kits)
+- Data: YYYY-MM-DD (hoje: ${dataAtual})
+- Produtos NOVOS apenas
 
-FORMATO DE RESPOSTA - RETORNE APENAS JSON PURO (sem crases, sem markdown):
+FORMATO DE RESPOSTA (JSON puro, sem markdown):
 {
   "preco_encontrado": true,
-  "termos_busca_utilizados": ["termo1", "termo2", "termo3"],
+  "termos_busca_utilizados": ["termo exato 1", "termo exato 2"],
   "coleta_de_precos": [
     {
       "valor": 450.00,
       "tipo_fonte": "B2B",
-      "site": "Nome do Fornecedor ou Loja",
+      "site": "Nome da Loja",
       "data_oferta": "2025-11-28",
-      "produto_encontrado": "Descrição exata do produto encontrado"
+      "produto_encontrado": "Descrição produto"
     }
   ],
-  "observacoes": "Estratégia de busca utilizada e observações relevantes"
+  "observacoes": "Metodologia de busca utilizada"
 }
 
-Se NÃO encontrar preços suficientes:
+Se não encontrar:
 {
   "preco_encontrado": false,
-  "motivo": "Explicação detalhada do motivo",
-  "termos_busca_utilizados": ["termos que você tentou"]
+  "motivo": "Explicação",
+  "termos_busca_utilizados": ["termos tentados"]
 }
 
-IMPORTANTE: Retorne APENAS o JSON, sem texto adicional antes ou depois, sem crases de markdown.`;
+IMPORTANTE:
+- Use os MESMOS termos de busca sempre (para consistência)
+- Retorne APENAS JSON
+- Seja DETERMINÍSTICO (mesma busca = mesmos resultados aproximados)`;
 
         console.log('🤖 [ETAPA2] Inicializando modelo Gemini com Google Search...');
 
@@ -292,8 +328,7 @@ IMPORTANTE: Retorne APENAS o JSON, sem texto adicional antes ou depois, sem cras
             model: MODEL,
             tools: [{ googleSearch: {} }],
             generationConfig: {
-                temperature: 0.3
-                // ❌ REMOVIDO: responseMimeType (incompatível com tools)
+                temperature: 0.1  // ⬇️ TEMPERATURA MÍNIMA para mais determinismo
             }
         });
 
@@ -321,13 +356,12 @@ IMPORTANTE: Retorne APENAS o JSON, sem texto adicional antes ou depois, sem cras
             }
             
             jsonText = jsonText.trim();
-            console.log('🧹 [ETAPA2] Texto limpo para parse');
 
             resultadoBusca = JSON.parse(jsonText);
             console.log('✅ [ETAPA2] JSON parseado com sucesso');
             
             if (resultadoBusca.termos_busca_utilizados) {
-                console.log('🔍 [ETAPA2] Termos de busca utilizados:', resultadoBusca.termos_busca_utilizados);
+                console.log('🔍 [ETAPA2] Termos utilizados:', resultadoBusca.termos_busca_utilizados);
             }
             
         } catch (parseError) {
@@ -340,7 +374,7 @@ IMPORTANTE: Retorne APENAS o JSON, sem texto adicional antes ou depois, sem cras
             console.log('⚠️ [ETAPA2] Preço não encontrado');
             return res.status(200).json({
                 status: 'Falha',
-                mensagem: 'Não foi possível encontrar preço de mercado: ' + (resultadoBusca.motivo || 'Produto muito específico') + '. Insira valor manualmente.',
+                mensagem: 'Não foi possível encontrar preço: ' + (resultadoBusca.motivo || 'Produto não encontrado') + '. Insira manualmente.',
                 dados: { 
                     preco_encontrado: false,
                     termos_tentados: resultadoBusca.termos_busca_utilizados || []
@@ -349,7 +383,7 @@ IMPORTANTE: Retorne APENAS o JSON, sem texto adicional antes ou depois, sem cras
         }
 
         // --- CALCULAR MÉDIA EXPONENCIAL ---
-        console.log('📊 [ETAPA2] Calculando média exponencial dos preços coletados...');
+        console.log('📊 [ETAPA2] Calculando média exponencial...');
         
         const resultadoEMA = calcularMediaExponencial(resultadoBusca.coleta_de_precos);
 
@@ -362,7 +396,7 @@ IMPORTANTE: Retorne APENAS o JSON, sem texto adicional antes ou depois, sem cras
         }
 
         const valorMercado = resultadoEMA.valor_mercado;
-        console.log('✅ [ETAPA2] Valor de mercado (EMA):', valorMercado);
+        console.log('✅ [ETAPA2] Valor de mercado: R$ ' + valorMercado);
 
         // --- APLICAR DEPRECIAÇÃO ---
         const estado = estado_conservacao || 'Bom';
@@ -371,7 +405,7 @@ IMPORTANTE: Retorne APENAS o JSON, sem texto adicional antes ou depois, sem cras
         const fatorDepreciacao = FATORES_DEPRECIACAO[estado]?.[categoria] || 0.7;
         const valorAtual = valorMercado * fatorDepreciacao;
 
-        console.log('📉 [ETAPA2] Depreciação:', fatorDepreciacao, '| Valor atual:', valorAtual);
+        console.log('📉 [ETAPA2] Fator depreciação: ' + fatorDepreciacao + ' | Valor atual: R$ ' + valorAtual.toFixed(2));
 
         const dadosCompletos = {
             numero_patrimonio: numero_patrimonio,
@@ -385,31 +419,32 @@ IMPORTANTE: Retorne APENAS o JSON, sem texto adicional antes ou depois, sem cras
                 valor_atual_estimado: parseFloat(valorAtual.toFixed(2)),
                 fator_depreciacao: fatorDepreciacao,
                 percentual_depreciacao: ((1 - fatorDepreciacao) * 100).toFixed(0) + '%',
-                fonte_preco: 'Média Exponencial Ponderada (Busca Inteligente)',
-                metodo_calculo: 'EMA com filtro IQR, pesos B2B/recência e busca por equivalentes',
+                fonte_preco: 'Média Exponencial Ponderada',
+                metodo_calculo: 'Busca padronizada + EMA com IQR + Pesos B2B/recência',
                 score_confianca: resultadoEMA.estatisticas.score_confianca,
-                observacoes: resultadoBusca.observacoes || 'Calculado via média exponencial de múltiplas fontes'
+                observacoes: resultadoBusca.observacoes || 'Calculado via média exponencial'
             },
             analise_estatistica: resultadoEMA.estatisticas,
             precos_coletados: resultadoEMA.detalhes_precos,
             estrategia_busca: {
+                termos_padronizados: termosBusca,
                 termos_utilizados: resultadoBusca.termos_busca_utilizados || [],
                 produtos_equivalentes_aceitos: true
             },
             metadados: {
                 data_busca: new Date().toISOString(),
                 modelo_ia: MODEL,
-                estrategia: 'Busca Inteligente (LLM) → Média Exponencial → Depreciação'
+                temperatura: 0.1,
+                estrategia: 'Busca Padronizada → EMA → Depreciação'
             }
         };
 
-        console.log('✅ [ETAPA2] Processamento concluído com sucesso!');
-        console.log('💰 [ETAPA2] Valor mercado: R$ ' + valorMercado + ' | Valor atual: R$ ' + valorAtual.toFixed(2));
+        console.log('✅ [ETAPA2] Concluído! Mercado: R$ ' + valorMercado + ' | Atual: R$ ' + valorAtual.toFixed(2));
 
         return res.status(200).json({
             status: 'Sucesso',
             dados: dadosCompletos,
-            mensagem: 'Valores calculados via busca inteligente e média exponencial (confiança: ' + resultadoEMA.estatisticas.score_confianca.toFixed(0) + '%)'
+            mensagem: 'Preço calculado (confiança: ' + resultadoEMA.estatisticas.score_confianca.toFixed(0) + '%)'
         });
         
     } catch (error) {
