@@ -9,50 +9,126 @@ const genAI = new GoogleGenerativeAI(API_KEY);
 
 // Prompt de identificação
 const PROMPT_SISTEMA = `Analise as imagens e extraia informações PRECISAS do ativo. Retorne APENAS JSON (sem markdown):
+
 {
-  "numero_patrimonio": "número da placa ou N/A",
-  "nome_produto": "nome GENÉRICO curto (máx 4 palavras)",
-  "marca": "fabricante ou N/A",
-  "modelo": "código/número modelo ou N/A",
-  "estado_conservacao": "Excelente|Bom|Regular|Ruim",
-  "categoria_depreciacao": "categoria",
-  "descricao": "descrição técnica completa"
+  "numero_patrimonio": "número da placa ou N/A",
+  "nome_produto": "nome genérico do produto",
+  "marca": "fabricante ou N/A",
+  "modelo": "código do modelo ou N/A",
+  "estado_conservacao": "Excelente|Bom|Regular|Ruim",
+  "categoria_depreciacao": "categoria",
+  "descricao": "descrição técnica completa"
 }
 
-ORDEM DE PREENCHIMENTO:
-1. numero_patrimonio: Procure plaquetas/etiquetas. Se não houver **CLARAMENTE visível**: "N/A"
-2. nome_produto: Nome GENÉRICO curto (máx 4 palavras). Use a **terminologia mais técnica/formal** ou a **função principal** do equipamento para garantir consistência.
-3. marca: Nome FABRICANTE apenas (ex: "NAKANISHI", "Dell"). Se **NÃO for identificado com CLAREZA**: "N/A"
-4. modelo: Código ESPECÍFICO se visível (ex: "iSpeed3", "Latitude 5420"). Se **NÃO for um código/número claro**: "N/A"
-5. estado_conservacao: Avalie visualmente arranhões, desgaste, limpeza
-6. categoria_depreciacao: "Equipamentos de Informática"|"Ferramentas"|"Instalações"|"Máquinas e Equipamentos"|"Móveis e Utensílios"|"Veículos"|"Outros"
-7. descricao: Consolide TODAS informações técnicas aqui (máx 300 chars):
-   - Tipo/função
-   - Marca e modelo (REPITA aqui)
-   - Especificações (voltagem, potência, etc)
-   - Características visíveis (display, botões, etc)
-   - Outros nomes ou sinônimos comuns no mercado (ex: Coletor, Extrator, Aspirador Industrial)
-   - Ano fabricação (se visível)
-   - Aplicação/uso
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+INSTRUÇÕES POR CAMPO (LEIA COM ATENÇÃO):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-REGRAS:
-✅ Use **"N/A"** sempre que a informação for ausente, ambígua ou incerta.
-🛑 JAMAIS use texto da descrição visual/função do produto para preencher os campos **"marca"** ou **"modelo"**.
-✅ NÃO duplique entre campos (exceto marca/modelo e sinônimos na descrição)
-✅ Descrição AUTOCONTIDA (compreensível sozinha)
-✅ Linguagem FACTUAL (sem "provavelmente")
-✅ Retorne APENAS JSON
+1️⃣ numero_patrimonio:
+   - Procure plaquetas/etiquetas de patrimônio
+   - Se NÃO estiver CLARAMENTE visível: "N/A"
+   - Exemplo: "02128", "PAT-5432"
 
-EXEMPLO CORRETO PARA O CARRINHO (com N/A):
+2️⃣ nome_produto:
+   - Nome GENÉRICO e CURTO (máximo 4 palavras)
+   - Use terminologia técnica/comercial padrão
+   - Exemplos: "Cadeira de Escritório", "Notebook", "Carrinho Porta-Ferramentas"
+   - ❌ NÃO use descrições longas aqui
+
+3️⃣ marca:
+   - APENAS o nome do FABRICANTE
+   - Exemplos válidos: "NAKANISHI", "Dell", "HP", "Tramontina"
+   - ❌ NÃO use: características físicas, cores, materiais
+   - ❌ NÃO use: partes da descrição como "alça lateral", "metal azul"
+   - Se NÃO identificar marca: "N/A"
+
+4️⃣ modelo:
+   - APENAS código/número ESPECÍFICO do modelo
+   - Exemplos válidos: "iSpeed3", "Latitude 5420", "PRO-X500"
+   - ❌ NÃO use: descrições, características, tamanhos
+   - ❌ NÃO use: "carrinho móvel azul" ou similar
+   - Se NÃO houver código visível: "N/A"
+
+5️⃣ estado_conservacao:
+   - Avalie visualmente: arranhões, desgaste, limpeza, pintura
+   - Escolha UMA opção: "Excelente", "Bom", "Regular", "Ruim"
+
+6️⃣ categoria_depreciacao:
+   - Escolha UMA categoria:
+     • "Equipamentos de Informática" (PCs, notebooks, impressoras)
+     • "Ferramentas" (chaves, furadeiras, alicates)
+     • "Instalações" (ar-condicionado, portas, janelas)
+     • "Máquinas e Equipamentos" (tornos, fresadoras, spindles)
+     • "Móveis e Utensílios" (mesas, cadeiras, armários, carrinhos)
+     • "Veículos" (carros, motos, empilhadeiras)
+     • "Outros" (itens que não se encaixam acima)
+
+7️⃣ descricao:
+   - Descrição COMPLETA e TÉCNICA (máximo 300 caracteres)
+   - ⚡ INICIE SEMPRE com o nome do produto (repita "nome_produto" no começo)
+   - Inclua TUDO relevante:
+     ✓ Nome do produto (OBRIGATÓRIO no início)
+     ✓ Material e cor
+     ✓ Dimensões aproximadas (se relevante)
+     ✓ Características físicas (prateleiras, gavetas, rodízios, etc)
+     ✓ Especificações técnicas (voltagem, potência, RPM, etc)
+     ✓ Marca e modelo (se identificados, repita aqui também)
+     ✓ Sinônimos/nomes alternativos
+     ✓ Aplicação/uso típico
+   - Seja FACTUAL (sem "provavelmente", "parece")
+   - A descrição deve ser compreensível SOZINHA, sem precisar ler outros campos
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ REGRAS CRÍTICAS - NÃO QUEBRE:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ Use "N/A" quando informação NÃO estiver CLARAMENTE visível
+✅ NÃO coloque descrições nos campos "marca" ou "modelo"
+✅ NÃO coloque características físicas (cor, tamanho, material) em "marca"
+✅ Cada campo tem propósito específico - respeite isso
+✅ SEMPRE inicie a descrição com o nome do produto
+✅ Descrição deve ser autocontida (compreensível sem outros campos)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📝 EXEMPLOS CORRETOS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+EXEMPLO 1 - Carrinho sem marca identificada:
 {
-  "numero_patrimonio": "02128",
-  "nome_produto": "Carrinho Porta-Ferramentas",
-  "marca": "N/A",
-  "modelo": "N/A",
-  "estado_conservacao": "Bom",
-  "categoria_depreciacao": "Móveis e Utensílios",
-  "descricao": "Carrinho móvel azul de metal com duas prateleiras. Projetado para armazenamento e transporte de ferramentas de usinagem ou spindles. Possui múltiplos orifícios para encaixe, alça lateral e rodízios. Também conhecido como carrinho porta-mandris."
-}`
+  "numero_patrimonio": "02128",
+  "nome_produto": "Carrinho Porta-Ferramentas",
+  "marca": "N/A",
+  "modelo": "N/A",
+  "estado_conservacao": "Bom",
+  "categoria_depreciacao": "Móveis e Utensílios",
+  "descricao": "Carrinho Porta-Ferramentas móvel de metal na cor azul com duas prateleiras principais e uma gaveta lateral. Projetado para armazenamento e transporte de ferramentas de usinagem ou spindles, possui múltiplos orifícios com anéis de borracha para encaixe de cones. Equipado com alça lateral e rodízios para mobilidade. Também conhecido como carrinho porta-mandris ou porta-cones."
+}
+
+EXEMPLO 2 - Notebook com marca/modelo:
+{
+  "numero_patrimonio": "15432",
+  "nome_produto": "Notebook",
+  "marca": "Dell",
+  "modelo": "Latitude 5420",
+  "estado_conservacao": "Excelente",
+  "categoria_depreciacao": "Equipamentos de Informática",
+  "descricao": "Notebook Dell Latitude 5420 com tela 14 polegadas, processador Intel Core i5, 8GB RAM, 256GB SSD. Carcaça preta em policarbonato, teclado retroiluminado, webcam HD integrada. Usado para trabalho de escritório e desenvolvimento."
+}
+
+EXEMPLO 3 - Spindle com marca:
+{
+  "numero_patrimonio": "N/A",
+  "nome_produto": "Spindle de Alta Rotação",
+  "marca": "NAKANISHI",
+  "modelo": "iSpeed3",
+  "estado_conservacao": "Bom",
+  "categoria_depreciacao": "Máquinas e Equipamentos",
+  "descricao": "Spindle de Alta Rotação NAKANISHI modelo iSpeed3 para operações de usinagem de precisão. Potência 400W, rotação máxima 60.000 RPM, refrigeração a ar. Display digital integrado, corpo em alumínio anodizado. Aplicação em fresamento CNC e gravação."
+}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚡ RETORNE APENAS O JSON, SEM TEXTO ADICIONAL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
 
 module.exports = async (req, res) => {
     // CORS
