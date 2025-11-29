@@ -527,22 +527,32 @@ textarea[readonly]:active {
     }
 
     .card {
-        padding: 20px;
+        padding: 15px; /* ← Reduzido de 20px */
     }
 
     /* ✅ GRID 2x2 NO MOBILE */
     .photos-grid {
         grid-template-columns: repeat(2, 1fr);
+        gap: 10px; /* ← Reduzido de 15px */
     }
 
-    /* ✅ FORM-ROW: 1 COLUNA NO MOBILE (EXCETO VALORES) */
+    /* ✅ FORM-ROW: 2 COLUNAS COM GAP MENOR NO MOBILE */
     .form-row {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px; /* ← Gap menor para não estourar */
     }
 
-    /* ✅ EXCEÇÃO: VALORES LADO A LADO NO MOBILE */
-    .form-row.valores-row {
-        grid-template-columns: repeat(2, 1fr);
+    /* ✅ Inputs menores no mobile */
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+        padding: 10px 12px; /* ← Reduzido de 12px 15px */
+        font-size: 14px;
+    }
+
+    /* ✅ Labels menores */
+    .form-group label {
+        font-size: 12px; /* ← Reduzido de 13px */
     }
 
     .action-buttons {

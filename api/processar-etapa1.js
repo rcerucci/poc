@@ -36,7 +36,7 @@ const PROMPT_SISTEMA = `Extraia informações do ativo em JSON (sem markdown):
    - SEMPRE inclua marca e modelo (se identificados)
    - SEMPRE inclua especificacoes (se identificadas)
    - Formato: "[Nome] [Marca] [Modelo], [specs técnicas], [características físicas]"
-   - Exemplo: "Monitor LCD Samsung S24F350, 24 polegadas Full HD, painel IPS, montado em braço articulado"
+   - Exemplo: "Monitor LCD Samsung S24F350, 24 polegadas Full HD, painel IPS, montado em braço articulado."
    - NÃO inclua: cor, localização, estado de conservação
    - Max 200 caracteres
 
