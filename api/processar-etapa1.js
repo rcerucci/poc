@@ -8,32 +8,31 @@ const MODEL = process.env.VERTEX_MODEL || 'gemini-2.5-flash';
 const genAI = new GoogleGenerativeAI(API_KEY);
 
 // Prompt de identificação
-const PROMPT_SISTEMA = `
-Analise as imagens e extraia informações PRECISAS do ativo. Responda APENAS com JSON (sem markdown):
+const PROMPT_SISTEMA = `Analise as imagens e extraia informações PRECISAS do ativo. Retorne APENAS JSON (sem markdown):
 
 {
-  "numero_patrimonio": "",
-  "nome_produto": "",
-  "marca": "",
-  "modelo": "",
-  "estado_conservacao": "",
-  "categoria_depreciacao": "",
-  "descricao": ""
+  "numero_patrimonio": "número da placa ou N/A",
+  "nome_produto": "nome GENÉRICO curto (máx 4 palavras)",
+  "marca": "fabricante ou N/A",
+  "modelo": "código/número modelo ou N/A",
+  "estado_conservacao": "Excelente|Bom|Regular|Ruim",
+  "categoria_depreciacao": "categoria",
+  "descricao": "descrição técnica completa"
 }
 
 ORDEM DE PREENCHIMENTO:
-1. numero_patrimonio: Ler plaquetas/etiquetas. Se não houver: "N/A".
-2. nome_produto: Nome genérico e curto (máx 3 palavras) em PT-BR. Traduza nomes ingleses para o genérico em português.
-3. marca: Apenas fabricante. Se incerto: "N/A".
-4. modelo: Código/número específico visível. Se não houver: "N/A".
-5. estado_conservacao: Excelente | Bom | Regular | Ruim.
-6. categoria_depreciacao: "Equipamentos de Informática" | "Ferramentas" | "Instalações" | "Máquinas e Equipamentos" | "Móveis e Utensílios" | "Veículos" | "Outros".
-7. descricao (máx 300 chars): Texto autônomo incluindo:
-   - Função/tipo
-   - Marca e modelo (repita aqui)
-   - Especificações visíveis (V, W, Hz etc.)
-   - Características físicas (botões, visor, conexões)
-   - Ano se aparecer
+1. numero_patrimonio: Procure plaquetas/etiquetas. Se não houver: "N/A"
+2. nome_produto: Nome GENÉRICO (ex: "Controlador de Velocidade", "Notebook", "Torno CNC")
+3. marca: Nome FABRICANTE apenas (ex: "NAKANISHI", "Dell"). Se incerto: "N/A"
+4. modelo: Código ESPECÍFICO se visível (ex: "iSpeed3", "Latitude 5420"). Se não: "N/A"
+5. estado_conservacao: Avalie visualmente arranhões, desgaste, limpeza
+6. categoria_depreciacao: "Equipamentos de Informática"|"Ferramentas"|"Instalações"|"Máquinas e Equipamentos"|"Móveis e Utensílios"|"Veículos"|"Outros"
+7. descricao: Consolide TODAS informações técnicas aqui (máx 300 chars):
+   - Tipo/função
+   - Marca e modelo (REPITA aqui)
+   - Especificações (voltagem, potência, etc)
+   - Características visíveis (display, botões, etc)
+   - Ano fabricação (se visível)
    - Aplicação/uso
 
 REGRAS:
@@ -51,9 +50,8 @@ EXEMPLO:
   "modelo": "iSpeed3",
   "estado_conservacao": "Bom",
   "categoria_depreciacao": "Máquinas e Equipamentos",
-  "descricao": "Controlador eletrônico NAKANISHI iSpeed3. Display LCD, botões RUN/STOP e ajuste de velocidade. 220V 50/60Hz. Usado para acionar spindles industriais."
-}
-`;
+  "descricao": "Controlador eletrônico NAKANISHI iSpeed3. Display LCD, botões RUN/STOP, ajuste velocidade. 220V 50/60Hz. Para motores e spindles industriais."
+}`;
 
 module.exports = async (req, res) => {
     // CORS
