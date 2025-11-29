@@ -20,10 +20,10 @@ const PROMPT_SISTEMA = `Analise as imagens e extraia informações PRECISAS do a
 }
 
 ORDEM DE PREENCHIMENTO:
-1. numero_patrimonio: Procure plaquetas/etiquetas. Se não houver: "N/A"
+1. numero_patrimonio: Procure plaquetas/etiquetas. Se não houver **CLARAMENTE visível**: "N/A"
 2. nome_produto: Nome GENÉRICO curto (máx 4 palavras). Use a **terminologia mais técnica/formal** ou a **função principal** do equipamento para garantir consistência.
-3. marca: Nome FABRICANTE apenas (ex: "NAKANISHI", "Dell"). Se incerto: "N/A"
-4. modelo: Código ESPECÍFICO se visível (ex: "iSpeed3", "Latitude 5420"). Se não: "N/A"
+3. marca: Nome FABRICANTE apenas (ex: "NAKANISHI", "Dell"). Se **NÃO for identificado com CLAREZA**: "N/A"
+4. modelo: Código ESPECÍFICO se visível (ex: "iSpeed3", "Latitude 5420"). Se **NÃO for um código/número claro**: "N/A"
 5. estado_conservacao: Avalie visualmente arranhões, desgaste, limpeza
 6. categoria_depreciacao: "Equipamentos de Informática"|"Ferramentas"|"Instalações"|"Máquinas e Equipamentos"|"Móveis e Utensílios"|"Veículos"|"Outros"
 7. descricao: Consolide TODAS informações técnicas aqui (máx 300 chars):
@@ -36,22 +36,24 @@ ORDEM DE PREENCHIMENTO:
    - Aplicação/uso
 
 REGRAS:
-✅ Use "N/A" se incerto
+✅ Use **"N/A"** sempre que a informação for ausente, ambígua ou incerta.
+🛑 JAMAIS use texto da descrição visual/função do produto para preencher os campos **"marca"** ou **"modelo"**.
 ✅ NÃO duplique entre campos (exceto marca/modelo e sinônimos na descrição)
 ✅ Descrição AUTOCONTIDA (compreensível sozinha)
 ✅ Linguagem FACTUAL (sem "provavelmente")
 ✅ Retorne APENAS JSON
 
-EXEMPLO:
+EXEMPLO CORRETO PARA O CARRINHO (com N/A):
 {
-  "numero_patrimonio": "01815",
-  "nome_produto": "Controlador de Velocidade",
-  "marca": "NAKANISHI",
-  "modelo": "iSpeed3",
+  "numero_patrimonio": "02128",
+  "nome_produto": "Carrinho Porta-Ferramentas",
+  "marca": "N/A",
+  "modelo": "N/A",
   "estado_conservacao": "Bom",
-  "categoria_depreciacao": "Máquinas e Equipamentos",
-  "descricao": "Controlador eletrônico NAKANISHI iSpeed3. Display LCD, botões RUN/STOP, ajuste velocidade. 220V 50/60Hz. Também conhecido como drive de motor/spindle. Para motores e spindles industriais."
+  "categoria_depreciacao": "Móveis e Utensílios",
+  "descricao": "Carrinho móvel azul de metal com duas prateleiras. Projetado para armazenamento e transporte de ferramentas de usinagem ou spindles. Possui múltiplos orifícios para encaixe, alça lateral e rodízios. Também conhecido como carrinho porta-mandris."
 }`
+
 module.exports = async (req, res) => {
     // CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
