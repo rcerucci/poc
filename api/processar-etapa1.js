@@ -1,134 +1,42 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-// Configuração
+// --- Configuração ---
 const API_KEY = process.env.GOOGLE_API_KEY;
 const MODEL = process.env.VERTEX_MODEL || 'gemini-2.5-flash';
 
-// Inicializar Google AI
 const genAI = new GoogleGenerativeAI(API_KEY);
 
-// Prompt de identificação
-const PROMPT_SISTEMA = `Analise as imagens e extraia informações PRECISAS do ativo. Retorne APENAS JSON (sem markdown):
+// --- Prompt Otimizado (450 tokens) ---
+const PROMPT_SISTEMA = `Extraia informações do ativo em JSON (sem markdown):
 
 {
-  "numero_patrimonio": "número da placa ou N/A",
-  "nome_produto": "nome genérico do produto",
+  "numero_patrimonio": "placa/etiqueta ou N/A",
+  "nome_produto": "nome genérico (max 4 palavras)",
   "marca": "fabricante ou N/A",
-  "modelo": "código do modelo ou N/A",
+  "modelo": "código ou N/A",
+  "especificacoes": "specs técnicas da placa ou N/A",
   "estado_conservacao": "Excelente|Bom|Regular|Ruim",
-  "categoria_depreciacao": "categoria",
-  "descricao": "descrição técnica completa"
+  "motivo_conservacao": "motivo se Regular/Ruim (max 3 palavras) ou N/A",
+  "categoria_depreciacao": "Computadores e Informática|Ferramentas|Instalações|Máquinas e Equipamentos|Móveis e Utensílios|Veículos|Outros",
+  "descricao": "descrição técnica objetiva (max 200 chars)"
 }
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-INSTRUÇÕES POR CAMPO (LEIA COM ATENÇÃO):
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REGRAS:
+1. numero_patrimonio: Plaqueta visível ou N/A
+2. nome_produto: Genérico, técnico, curto
+3. marca/modelo: Exatos da etiqueta ou N/A
+4. especificacoes: Da PLACA (ex: "220V, 60Hz, 20kVA, 0.8FP") ou N/A
+5. estado_conservacao: Avaliação visual
+6. motivo_conservacao: Só se Regular/Ruim. Max 3 palavras. Não use "sujidade" ou "poeira"
+7. categoria_depreciacao: UM valor exato da lista
+8. descricao: Técnica, concisa (max 200 chars). Inclua material, dimensões, specs. NÃO inclua: cor, localização, estado de conservação
 
-1️⃣ numero_patrimonio:
-   - Procure plaquetas/etiquetas de patrimônio
-   - Se NÃO estiver CLARAMENTE visível: "N/A"
-   - Exemplo: "02128", "PAT-5432"
+EXEMPLOS:
+Carrinho: {"numero_patrimonio":"02128","nome_produto":"Carrinho Porta-Ferramentas","marca":"N/A","modelo":"N/A","especificacoes":"N/A","estado_conservacao":"Bom","motivo_conservacao":"N/A","categoria_depreciacao":"Móveis e Utensílios","descricao":"Carrinho metal com prateleiras, gaveta, orifícios para mandris, rodízios"}
 
-2️⃣ nome_produto:
-   - Nome GENÉRICO e CURTO (máximo 4 palavras)
-   - Use terminologia técnica/comercial padrão
-   - Exemplos: "Cadeira de Escritório", "Notebook", "Carrinho Porta-Ferramentas"
-   - ❌ NÃO use descrições longas aqui
+Notebook: {"numero_patrimonio":"15432","nome_produto":"Notebook","marca":"Dell","modelo":"Latitude 5420","especificacoes":"Intel i5, 8GB, 256GB SSD","estado_conservacao":"Excelente","motivo_conservacao":"N/A","categoria_depreciacao":"Computadores e Informática","descricao":"14 polegadas, carcaça alumínio, teclado retroiluminado, webcam HD"}
 
-3️⃣ marca:
-   - APENAS o nome do FABRICANTE
-   - Exemplos válidos: "NAKANISHI", "Dell", "HP", "Tramontina"
-   - ❌ NÃO use: características físicas, cores, materiais
-   - ❌ NÃO use: partes da descrição como "alça lateral", "metal azul"
-   - Se NÃO identificar marca: "N/A"
-
-4️⃣ modelo:
-   - APENAS código/número ESPECÍFICO do modelo
-   - Exemplos válidos: "iSpeed3", "Latitude 5420", "PRO-X500"
-   - ❌ NÃO use: descrições, características, tamanhos
-   - ❌ NÃO use: "carrinho móvel azul" ou similar
-   - Se NÃO houver código visível: "N/A"
-
-5️⃣ estado_conservacao:
-   - Avalie visualmente: arranhões, desgaste, limpeza, pintura
-   - Escolha UMA opção: "Excelente", "Bom", "Regular", "Ruim"
-
-6️⃣ categoria_depreciacao:
-   - Escolha UMA categoria:
-     • "Equipamentos de Informática" (PCs, notebooks, impressoras)
-     • "Ferramentas" (chaves, furadeiras, alicates)
-     • "Instalações" (ar-condicionado, portas, janelas)
-     • "Máquinas e Equipamentos" (tornos, fresadoras, spindles)
-     • "Móveis e Utensílios" (mesas, cadeiras, armários, carrinhos)
-     • "Veículos" (carros, motos, empilhadeiras)
-     • "Outros" (itens que não se encaixam acima)
-
-7️⃣ descricao:
-   - Descrição COMPLETA e TÉCNICA (máximo 300 caracteres)
-   - ⚡ INICIE SEMPRE com o nome do produto (repita "nome_produto" no começo)
-   - Inclua TUDO relevante:
-     ✓ Nome do produto (OBRIGATÓRIO no início)
-     ✓ Material e cor
-     ✓ Dimensões aproximadas (se relevante)
-     ✓ Características físicas (prateleiras, gavetas, rodízios, etc)
-     ✓ Especificações técnicas (voltagem, potência, RPM, etc)
-     ✓ Marca e modelo (se identificados, repita aqui também)
-     ✓ Sinônimos/nomes alternativos
-     ✓ Aplicação/uso típico
-   - Seja FACTUAL (sem "provavelmente", "parece")
-   - A descrição deve ser compreensível SOZINHA, sem precisar ler outros campos
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚠️ REGRAS CRÍTICAS - NÃO QUEBRE:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-✅ Use "N/A" quando informação NÃO estiver CLARAMENTE visível
-✅ NÃO coloque descrições nos campos "marca" ou "modelo"
-✅ NÃO coloque características físicas (cor, tamanho, material) em "marca"
-✅ Cada campo tem propósito específico - respeite isso
-✅ SEMPRE inicie a descrição com o nome do produto
-✅ Descrição deve ser autocontida (compreensível sem outros campos)
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📝 EXEMPLOS CORRETOS:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-EXEMPLO 1 - Carrinho sem marca identificada:
-{
-  "numero_patrimonio": "02128",
-  "nome_produto": "Carrinho Porta-Ferramentas",
-  "marca": "N/A",
-  "modelo": "N/A",
-  "estado_conservacao": "Bom",
-  "categoria_depreciacao": "Móveis e Utensílios",
-  "descricao": "Carrinho Porta-Ferramentas móvel de metal na cor azul com duas prateleiras principais e uma gaveta lateral. Projetado para armazenamento e transporte de ferramentas de usinagem ou spindles, possui múltiplos orifícios com anéis de borracha para encaixe de cones. Equipado com alça lateral e rodízios para mobilidade. Também conhecido como carrinho porta-mandris ou porta-cones."
-}
-
-EXEMPLO 2 - Notebook com marca/modelo:
-{
-  "numero_patrimonio": "15432",
-  "nome_produto": "Notebook",
-  "marca": "Dell",
-  "modelo": "Latitude 5420",
-  "estado_conservacao": "Excelente",
-  "categoria_depreciacao": "Equipamentos de Informática",
-  "descricao": "Notebook Dell Latitude 5420 com tela 14 polegadas, processador Intel Core i5, 8GB RAM, 256GB SSD. Carcaça preta em policarbonato, teclado retroiluminado, webcam HD integrada. Usado para trabalho de escritório e desenvolvimento."
-}
-
-EXEMPLO 3 - Spindle com marca:
-{
-  "numero_patrimonio": "N/A",
-  "nome_produto": "Spindle de Alta Rotação",
-  "marca": "NAKANISHI",
-  "modelo": "iSpeed3",
-  "estado_conservacao": "Bom",
-  "categoria_depreciacao": "Máquinas e Equipamentos",
-  "descricao": "Spindle de Alta Rotação NAKANISHI modelo iSpeed3 para operações de usinagem de precisão. Potência 400W, rotação máxima 60.000 RPM, refrigeração a ar. Display digital integrado, corpo em alumínio anodizado. Aplicação em fresamento CNC e gravação."
-}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚡ RETORNE APENAS O JSON, SEM TEXTO ADICIONAL
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+Gerador: {"numero_patrimonio":"N/A","nome_produto":"Gerador Diesel","marca":"Cummins","modelo":"C22D5","especificacoes":"220V, 60Hz, 22kVA, 0.8FP","estado_conservacao":"Regular","motivo_conservacao":"Desgaste pintura","categoria_depreciacao":"Máquinas e Equipamentos","descricao":"Gerador trifásico, tanque 100L, automático, silenciado"}`;
 
 module.exports = async (req, res) => {
     // CORS
@@ -144,12 +52,12 @@ module.exports = async (req, res) => {
         return res.status(405).json({ error: 'Method not allowed' });
     }
     
-    console.log('🔍 [ETAPA1] Iniciando processamento...');
+    console.log('🔍 [ETAPA1] Iniciando extração...');
     
     try {
         const { imagens } = req.body;
         
-        console.log('📥 [ETAPA1] Recebidas', imagens?.length, 'imagens');
+        console.log('📥 [ETAPA1] Recebidas ' + (imagens?.length || 0) + ' imagens');
         
         if (!imagens || imagens.length < 2) {
             console.log('⚠️ [ETAPA1] Mínimo de imagens não atingido');
@@ -161,7 +69,7 @@ module.exports = async (req, res) => {
         }
         
         if (!API_KEY) {
-            console.error('❌ [ETAPA1] GOOGLE_API_KEY não configurada!');
+            console.error('❌ [ETAPA1] GOOGLE_API_KEY não configurada');
             return res.status(500).json({
                 status: 'Falha',
                 mensagem: 'API Key não configurada',
@@ -179,9 +87,9 @@ module.exports = async (req, res) => {
             }
         });
         
-        console.log('🖼️ [ETAPA1] Preparando', imagens.length, 'imagens...');
+        console.log('🖼️ [ETAPA1] Preparando ' + imagens.length + ' imagens...');
         
-        const imageParts = imagens.map((img, index) => ({
+        const imageParts = imagens.map(img => ({
             inlineData: {
                 data: img.data,
                 mimeType: 'image/jpeg'
@@ -200,30 +108,82 @@ module.exports = async (req, res) => {
         const response = result.response;
         const text = response.text();
         
-        console.log('📝 [ETAPA1] Texto recebido (primeiros 300 chars):', text.substring(0, 300));
+        console.log('📝 [ETAPA1] Texto (primeiros 300 chars):', text.substring(0, 300));
         
-        // Parse JSON com validação reforçada
+        // Parse JSON
         let dadosExtraidos;
         try {
             let jsonText = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
             
-            // 💡 Isola o bloco JSON para lidar com texto antes/depois
             const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
-                jsonText = jsonMatch[0]; // Pega o primeiro e único bloco JSON
-                console.log('🎯 [ETAPA1] JSON isolado do texto');
+                jsonText = jsonMatch[0];
+                console.log('🎯 [ETAPA1] JSON isolado');
             }
             
-            console.log('🧹 [ETAPA1] Texto limpo para parse:', jsonText.substring(0, 200));
+            console.log('🧹 [ETAPA1] Parseando JSON...');
             
             dadosExtraidos = JSON.parse(jsonText);
             console.log('✅ [ETAPA1] JSON parseado com sucesso');
-            console.log('📊 [ETAPA1] Dados extraídos:', JSON.stringify(dadosExtraidos, null, 2));
+            console.log('📊 [ETAPA1] Dados:', JSON.stringify(dadosExtraidos, null, 2));
             
         } catch (parseError) {
-            console.error('❌ [ETAPA1] Erro ao parsear JSON:', parseError.message);
-            console.error('📋 [ETAPA1] Texto completo recebido:', text);
-            throw new Error(`Resposta da IA não é um JSON válido: ${parseError.message}`);
+            console.error('❌ [ETAPA1] Erro ao parsear:', parseError.message);
+            console.error('📋 [ETAPA1] Texto completo:', text);
+            throw new Error('JSON inválido: ' + parseError.message);
+        }
+        
+        // Validação básica dos campos obrigatórios
+        const camposObrigatorios = [
+            'numero_patrimonio',
+            'nome_produto',
+            'marca',
+            'modelo',
+            'especificacoes',
+            'estado_conservacao',
+            'motivo_conservacao',
+            'categoria_depreciacao',
+            'descricao'
+        ];
+        
+        const camposFaltando = camposObrigatorios.filter(campo => 
+            dadosExtraidos[campo] === undefined
+        );
+        
+        if (camposFaltando.length > 0) {
+            console.warn('⚠️ [ETAPA1] Campos faltando:', camposFaltando);
+            // Preencher com N/A
+            camposFaltando.forEach(campo => {
+                dadosExtraidos[campo] = 'N/A';
+            });
+        }
+        
+        // Validação do estado de conservação
+        const estadosValidos = ['Excelente', 'Bom', 'Regular', 'Ruim'];
+        if (!estadosValidos.includes(dadosExtraidos.estado_conservacao)) {
+            console.warn('⚠️ [ETAPA1] Estado inválido:', dadosExtraidos.estado_conservacao);
+            dadosExtraidos.estado_conservacao = 'Bom'; // Default
+        }
+        
+        // Validação do motivo_conservacao
+        if (['Excelente', 'Bom'].includes(dadosExtraidos.estado_conservacao)) {
+            dadosExtraidos.motivo_conservacao = 'N/A';
+        }
+        
+        // Validação da categoria
+        const categoriasValidas = [
+            'Computadores e Informática',
+            'Ferramentas',
+            'Instalações',
+            'Máquinas e Equipamentos',
+            'Móveis e Utensílios',
+            'Veículos',
+            'Outros'
+        ];
+        
+        if (!categoriasValidas.includes(dadosExtraidos.categoria_depreciacao)) {
+            console.warn('⚠️ [ETAPA1] Categoria inválida:', dadosExtraidos.categoria_depreciacao);
+            dadosExtraidos.categoria_depreciacao = 'Outros'; // Default
         }
         
         // Adicionar metadados
@@ -234,11 +194,14 @@ module.exports = async (req, res) => {
                 confianca_ia: 95,
                 total_imagens_processadas: imagens.length,
                 modelo_ia: MODEL,
-                versao_sistema: '1.0-POC'
+                versao_sistema: '2.0-Otimizado'
             }
         };
         
-        console.log('✅ [ETAPA1] Processamento concluído!');
+        console.log('✅ [ETAPA1] Extração concluída!');
+        console.log('📦 [ETAPA1] Produto:', dadosExtraidos.nome_produto);
+        console.log('🏷️ [ETAPA1] Marca/Modelo:', dadosExtraidos.marca + ' ' + dadosExtraidos.modelo);
+        console.log('⚙️ [ETAPA1] Specs:', dadosExtraidos.especificacoes);
         
         return res.status(200).json({
             status: 'Sucesso',
@@ -256,11 +219,13 @@ module.exports = async (req, res) => {
             dados: {
                 numero_patrimonio: 'N/A',
                 nome_produto: 'N/A',
-                modelo: 'N/A',
                 marca: 'N/A',
-                descricao: 'N/A',
+                modelo: 'N/A',
+                especificacoes: 'N/A',
                 estado_conservacao: 'N/A',
-                categoria_depreciacao: 'N/A'
+                motivo_conservacao: 'N/A',
+                categoria_depreciacao: 'N/A',
+                descricao: 'N/A'
             }
         });
     }

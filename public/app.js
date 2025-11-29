@@ -1,542 +1,333 @@
-// ═══════════════════════════════════════════════════════════════
-// CONFIGURAÇÕES DE OTIMIZAÇÃO DE CUSTO
-// ═══════════════════════════════════════════════════════════════
-// maxWidth: 1024px - Reduz tokens de visão (custo) mantendo legibilidade
-// quality: 0.75 - Balanço ideal entre tamanho e qualidade para OCR
-// ═══════════════════════════════════════════════════════════════
+// ===================================================================
+// CONFIGURAÇÕES E ESTADO GLOBAL
+// ===================================================================
 
-// Estado da Aplicação
+const CONFIG = {
+    apiUrl: 'https://poc-rose-five.vercel.app',
+    maxFotos: 5,
+    minFotos: 2
+};
+
 const AppState = {
-    fotosColetadas: [],
+    fotos: [],
+    fotoAtual: 0,
     dadosEtapa1: null,
-    dadosCompletos: null,
-    processandoEtapa: null,
-    camposBloqueados: false
+    dadosEtapa2: null
 };
 
-// Elementos DOM
+// ===================================================================
+// ELEMENTOS DO DOM
+// ===================================================================
+
 const elementos = {
-    btnProcessarEtapa1: document.getElementById('processarEtapa1'),
-    btnValidarEBuscarPreco: document.getElementById('validarEBuscarPreco'),
-    btnLimparCache: document.getElementById('limparCache'),
-    btnProcessarNovo: document.getElementById('processarNovo'),
-    btnExportarJSON: document.getElementById('exportarJSON'),
-    btnCopiarJSON: document.getElementById('copiarJSON'),
+    // Captura de fotos
+    video: document.getElementById('video'),
+    canvas: document.getElementById('canvas'),
+    btnIniciarCamera: document.getElementById('btn-iniciar-camera'),
+    btnCapturar: document.getElementById('btn-capturar'),
+    btnProximaFoto: document.getElementById('btn-proxima-foto'),
+    containerCamera: document.getElementById('container-camera'),
+    contadorFotos: document.getElementById('contador-fotos'),
+    galeriaMiniaturas: document.getElementById('galeria-miniaturas'),
     
-    formSection: document.getElementById('formSection'),
-    resultSection: document.getElementById('resultSection'),
-    alertBox: document.getElementById('alertBox'),
-    loadingOverlay: document.getElementById('loadingOverlay'),
-    loadingText: document.getElementById('loadingText'),
-    helpTextForm: document.getElementById('helpTextForm'),
-    btnDesbloquearContainer: document.getElementById('btnDesbloquearContainer'),
+    // Extração de dados
+    btnExtrairDados: document.getElementById('btn-extrair-dados'),
+    loadingExtracao: document.getElementById('loading-extracao'),
     
-    numeroPatrimonio: document.getElementById('numeroPatrimonio'),
-    nomeProduto: document.getElementById('nomeProduto'),
-    valorAtual: document.getElementById('valorAtual'),
-    valorMercado: document.getElementById('valorMercado'),
+    // Campos de formulário
+    numeroPatrimonio: document.getElementById('numero-patrimonio'),
+    nomeProduto: document.getElementById('nome-produto'),
     estado: document.getElementById('estado'),
-    centroCusto: document.getElementById('centroCusto'),
     depreciacao: document.getElementById('depreciacao'),
-    unidade: document.getElementById('unidade'),
-    descricao: document.getElementById('descricao')
+    descricao: document.getElementById('descricao'),
+    
+    // Precificação
+    btnBuscarPreco: document.getElementById('btn-buscar-preco'),
+    loadingPrecificacao: document.getElementById('loading-precificacao'),
+    valorMercado: document.getElementById('valor-mercado'),
+    valorAtual: document.getElementById('valor-atual'),
+    fatorDepreciacao: document.getElementById('fator-depreciacao'),
+    scoreConfianca: document.getElementById('score-confianca'),
+    
+    // Finalização
+    btnSalvarAtivo: document.getElementById('btn-salvar-ativo'),
+    btnNovoAtivo: document.getElementById('btn-novo-ativo'),
+    
+    // Mensagens
+    containerMensagem: document.getElementById('container-mensagem'),
+    mensagemTexto: document.getElementById('mensagem-texto')
 };
 
-// Inicialização
+// ===================================================================
+// INICIALIZAÇÃO
+// ===================================================================
+
 document.addEventListener('DOMContentLoaded', () => {
-    inicializarEventosUpload();
-    inicializarBotoes();
-    inicializarCtrlV();
-    carregarCacheSeExistir();
-    console.log('✅ PatriGestor iniciado');
+    console.log('🚀 Aplicação iniciada');
+    inicializarEventListeners();
+    atualizarContadorFotos();
 });
 
-// ============================================
-// COMPRESSÃO DE IMAGENS
-// ============================================
-
-function comprimirImagem(file, maxWidth = 1024, quality = 0.75) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        
-        reader.onload = (e) => {
-            const img = new Image();
-            
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                let width = img.width;
-                let height = img.height;
-                
-                // Redimensionar para máximo de 1024px (otimização de custo!)
-                if (width > maxWidth || height > maxWidth) {
-                    if (width > height) {
-                        height = (height * maxWidth) / width;
-                        width = maxWidth;
-                    } else {
-                        width = (width * maxWidth) / height;
-                        height = maxWidth;
-                    }
-                }
-                
-                canvas.width = width;
-                canvas.height = height;
-                
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, width, height);
-                
-                // Converter para base64 com qualidade reduzida (75% é ótimo para texto)
-                const comprimido = canvas.toDataURL('image/jpeg', quality);
-                
-                const tamanhoOriginal = (file.size / 1024).toFixed(0);
-                const tamanhoFinal = (comprimido.length / 1024).toFixed(0);
-                const reducao = (((file.size - comprimido.length) / file.size) * 100).toFixed(0);
-                
-                console.log(`📦 Imagem otimizada: ${tamanhoOriginal}KB → ${tamanhoFinal}KB (${reducao}% redução, ${width}x${height}px)`);
-                
-                resolve(comprimido);
-            };
-            
-            img.onerror = reject;
-            img.src = e.target.result;
-        };
-        
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-    });
+function inicializarEventListeners() {
+    elementos.btnIniciarCamera.addEventListener('click', iniciarCamera);
+    elementos.btnCapturar.addEventListener('click', capturarFoto);
+    elementos.btnProximaFoto.addEventListener('click', proximaFoto);
+    elementos.btnExtrairDados.addEventListener('click', extrairDados);
+    elementos.btnBuscarPreco.addEventListener('click', processarEtapa2);
+    elementos.btnSalvarAtivo.addEventListener('click', salvarAtivo);
+    elementos.btnNovoAtivo.addEventListener('click', novoAtivo);
 }
 
-// ============================================
-// CTRL+V - COLAR IMAGENS
-// ============================================
+// ===================================================================
+// CAPTURA DE FOTOS
+// ===================================================================
 
-function inicializarCtrlV() {
-    console.log('🎯 Inicializando Ctrl+V...');
+async function iniciarCamera() {
+    console.log('📷 Iniciando câmera...');
     
-    document.addEventListener('paste', async (e) => {
-        console.log('📋 Evento paste detectado!');
-        
-        const items = e.clipboardData?.items;
-        console.log('📦 Items:', items);
-        
-        if (!items) {
-            console.log('⚠️ Nenhum item na área de transferência');
-            return;
-        }
-        
-        for (let i = 0; i < items.length; i++) {
-            console.log(`📌 Item ${i}:`, items[i].type);
-            
-            if (items[i].type.indexOf('image') !== -1) {
-                e.preventDefault();
-                
-                const blob = items[i].getAsFile();
-                console.log('✅ Imagem detectada:', blob.name, `${(blob.size / 1024).toFixed(0)}KB`);
-                
-                // Encontra próximo slot vazio
-                const index = encontrarProximoSlotVazio();
-                console.log('🎰 Slot vazio encontrado:', index);
-                
-                if (index !== -1) {
-                    const slot = document.querySelector(`.photo-slot[data-index="${index}"]`);
-                    console.log('📍 Slot DOM:', slot);
-                    
-                    if (!slot) {
-                        console.error('❌ Slot não encontrado no DOM!');
-                        return;
-                    }
-                    
-                    const preview = slot.querySelector('.photo-preview');
-                    const placeholder = slot.querySelector('.photo-placeholder');
-                    const btnRemove = slot.querySelector('.btn-remove');
-                    
-                    console.log('🔍 Elementos:', { preview, placeholder, btnRemove });
-                    
-                    await adicionarFotoComCompressao(blob, preview, placeholder, btnRemove, index);
-                    exibirAlerta('success', `✅ Imagem colada no slot ${index}! Total: ${contarFotos()} fotos`);
-                } else {
-                    console.log('⚠️ Nenhum slot vazio disponível');
-                    exibirAlerta('warning', '⚠️ Máximo de 4 fotos atingido');
-                }
-                
-                break;
-            }
-        }
-    });
-    
-    console.log('✅ Ctrl+V inicializado');
-}
-
-function encontrarProximoSlotVazio() {
-    for (let i = 1; i <= 4; i++) {
-        if (!AppState.fotosColetadas[i - 1]) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-async function adicionarFotoComCompressao(file, preview, placeholder, btnRemove, index) {
     try {
-        // Comprimir imagem
-        const dataURLComprimido = await comprimirImagem(file);
-        
-        // Atualizar UI
-        preview.src = dataURLComprimido;
-        preview.style.display = 'block';
-        placeholder.style.display = 'none';
-        btnRemove.style.display = 'flex';
-        
-        // Salvar no estado
-        AppState.fotosColetadas[index - 1] = {
-            file: file,
-            dataURL: dataURLComprimido,
-            nome: file.name || `clipboard-${Date.now()}.jpg`,
-            tamanho: dataURLComprimido.length
-        };
-        
-        verificarFotosMinimas();
-        
-    } catch (error) {
-        console.error('Erro ao comprimir imagem:', error);
-        exibirAlerta('error', 'Erro ao processar imagem');
-    }
-}
-
-function contarFotos() {
-    return AppState.fotosColetadas.filter(f => f).length;
-}
-
-// ============================================
-// GESTÃO DE FOTOS (Upload por clique)
-// ============================================
-
-function inicializarEventosUpload() {
-    for (let i = 1; i <= 4; i++) {
-        const input = document.getElementById(`photo${i}`);
-        const slot = input.closest('.photo-slot');
-        const preview = slot.querySelector('.photo-preview');
-        const placeholder = slot.querySelector('.photo-placeholder');
-        const btnRemove = slot.querySelector('.btn-remove');
-        
-        input.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                await adicionarFoto(file, preview, placeholder, btnRemove, i);
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                facingMode: 'environment',
+                width: { ideal: 1920 },
+                height: { ideal: 1080 }
             }
         });
         
-        btnRemove.addEventListener('click', (e) => {
-            e.stopPropagation();
-            removerFoto(input, preview, placeholder, btnRemove, i);
-        });
+        elementos.video.srcObject = stream;
+        elementos.containerCamera.style.display = 'block';
+        elementos.btnIniciarCamera.style.display = 'none';
+        elementos.btnCapturar.style.display = 'inline-block';
+        
+        console.log('✅ Câmera iniciada');
+        mostrarMensagem('📷 Câmera ativada! Posicione o objeto e clique em Capturar.', 'info');
+        
+    } catch (erro) {
+        console.error('❌ Erro ao acessar câmera:', erro);
+        mostrarMensagem('❌ Erro ao acessar câmera: ' + erro.message, 'error');
     }
 }
 
-async function adicionarFoto(file, preview, placeholder, btnRemove, index) {
-    try {
-        console.log(`📷 Upload foto ${index}:`, file.name, `${(file.size / 1024).toFixed(0)}KB`);
-        
-        // Comprimir imagem
-        const dataURLComprimido = await comprimirImagem(file);
-        
-        preview.src = dataURLComprimido;
-        preview.style.display = 'block';
-        placeholder.style.display = 'none';
-        btnRemove.style.display = 'flex';
-        
-        AppState.fotosColetadas[index - 1] = {
-            file: file,
-            dataURL: dataURLComprimido,
-            nome: file.name,
-            tamanho: dataURLComprimido.length
-        };
-        
-        verificarFotosMinimas();
-        
-    } catch (error) {
-        console.error('Erro ao processar foto:', error);
-        exibirAlerta('error', 'Erro ao processar imagem');
+function capturarFoto() {
+    if (AppState.fotos.length >= CONFIG.maxFotos) {
+        mostrarMensagem('⚠️ Máximo de ' + CONFIG.maxFotos + ' fotos atingido!', 'warning');
+        return;
     }
-}
-
-function removerFoto(input, preview, placeholder, btnRemove, index) {
-    input.value = '';
-    preview.src = '';
-    preview.style.display = 'none';
-    placeholder.style.display = 'flex';
-    btnRemove.style.display = 'none';
     
-    delete AppState.fotosColetadas[index - 1];
-    verificarFotosMinimas();
-}
-
-function verificarFotosMinimas() {
-    const totalFotos = contarFotos();
-    elementos.btnProcessarEtapa1.disabled = totalFotos < 2;
+    console.log('📸 Capturando foto ' + (AppState.fotos.length + 1));
     
-    if (totalFotos >= 2) {
-        elementos.btnProcessarEtapa1.textContent = `🤖 Processar ${totalFotos} fotos - Etapa 1/2`;
-    } else {
-        elementos.btnProcessarEtapa1.textContent = `🤖 Processar - Etapa 1/2`;
+    const context = elementos.canvas.getContext('2d');
+    elementos.canvas.width = elementos.video.videoWidth;
+    elementos.canvas.height = elementos.video.videoHeight;
+    
+    context.drawImage(elementos.video, 0, 0);
+    
+    const fotoBase64 = elementos.canvas.toDataURL('image/jpeg', 0.8);
+    const fotoData = fotoBase64.split(',')[1];
+    
+    AppState.fotos.push({
+        data: fotoData,
+        timestamp: new Date().toISOString(),
+        thumbnail: fotoBase64
+    });
+    
+    adicionarMiniatura(fotoBase64, AppState.fotos.length);
+    atualizarContadorFotos();
+    
+    console.log('✅ Foto capturada. Total:', AppState.fotos.length);
+    mostrarMensagem('✅ Foto ' + AppState.fotos.length + ' capturada!', 'success');
+    
+    if (AppState.fotos.length >= CONFIG.minFotos) {
+        elementos.btnProximaFoto.style.display = 'inline-block';
     }
 }
 
-// ============================================
-// PROCESSAMENTO ETAPA 1
-// ============================================
+function adicionarMiniatura(fotoBase64, numero) {
+    const div = document.createElement('div');
+    div.className = 'miniatura';
+    div.innerHTML = `
+        <img src="${fotoBase64}" alt="Foto ${numero}">
+        <span class="numero-foto">${numero}</span>
+        <button class="btn-remover" onclick="removerFoto(${numero - 1})">×</button>
+    `;
+    elementos.galeriaMiniaturas.appendChild(div);
+}
 
-async function processarEtapa1() {
+function removerFoto(indice) {
+    console.log('🗑️ Removendo foto', indice + 1);
+    AppState.fotos.splice(indice, 1);
+    elementos.galeriaMiniaturas.innerHTML = '';
+    
+    AppState.fotos.forEach((foto, i) => {
+        adicionarMiniatura(foto.thumbnail, i + 1);
+    });
+    
+    atualizarContadorFotos();
+    mostrarMensagem('🗑️ Foto removida', 'info');
+}
+
+function atualizarContadorFotos() {
+    const total = AppState.fotos.length;
+    elementos.contadorFotos.textContent = total + '/' + CONFIG.maxFotos + ' fotos';
+    elementos.contadorFotos.className = 'contador-fotos';
+    
+    if (total >= CONFIG.minFotos) {
+        elementos.contadorFotos.classList.add('completo');
+    }
+}
+
+function proximaFoto() {
+    if (AppState.fotos.length < CONFIG.minFotos) {
+        mostrarMensagem('⚠️ Tire pelo menos ' + CONFIG.minFotos + ' fotos!', 'warning');
+        return;
+    }
+    
+    console.log('➡️ Avançando para extração de dados');
+    
+    // Parar câmera
+    const stream = elementos.video.srcObject;
+    if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+    }
+    
+    elementos.containerCamera.style.display = 'none';
+    elementos.btnCapturar.style.display = 'none';
+    elementos.btnProximaFoto.style.display = 'none';
+    elementos.btnExtrairDados.disabled = false;
+    
+    mostrarMensagem('✅ ' + AppState.fotos.length + ' fotos prontas! Clique em "Extrair Dados" para continuar.', 'success');
+}
+
+// ===================================================================
+// EXTRAÇÃO DE DADOS (ETAPA 1)
+// ===================================================================
+
+async function extrairDados() {
+    console.log('🔍 Iniciando Etapa 1 - Extração de Dados');
+    
+    if (AppState.fotos.length < CONFIG.minFotos) {
+        mostrarMensagem('⚠️ Tire pelo menos ' + CONFIG.minFotos + ' fotos primeiro!', 'warning');
+        return;
+    }
+    
+    elementos.loadingExtracao.style.display = 'flex';
+    elementos.btnExtrairDados.disabled = true;
+    
     try {
-        // CRÍTICO: Desbloquear campos antes de processar nova consulta
-        if (AppState.camposBloqueados) {
-            desbloquearCampos();
-        }
+        console.log('📤 Enviando ' + AppState.fotos.length + ' imagens para API');
+        console.log('📊 Tamanho total:', calcularTamanhoTotal() + ' KB');
         
-        exibirLoading('Processando IA: Etapa 1/2 - Extraindo dados...');
-        
-        const imagensBase64 = AppState.fotosColetadas
-            .filter(f => f)
-            .map(foto => ({
-                data: foto.dataURL.split(',')[1],
-                nome: foto.nome
-            }));
-        
-        console.log('📤 Enviando', imagensBase64.length, 'imagens para API');
-        console.log('📊 Tamanho total:', (JSON.stringify(imagensBase64).length / 1024).toFixed(0), 'KB');
-        
-        const response = await fetch('/api/processar-etapa1', {
+        const response = await fetch(CONFIG.apiUrl + '/api/processar-etapa1', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                imagens: imagensBase64
+                imagens: AppState.fotos
             })
         });
         
-        console.log('📥 Resposta API:', response.status, response.statusText);
+        console.log('📥 Resposta API:', response.status);
         
         if (!response.ok) {
-            const errorText = await response.text();
-            console.error('❌ Erro da API:', errorText);
-            throw new Error(`Erro HTTP: ${response.status}`);
+            throw new Error('Erro HTTP: ' + response.status);
         }
         
-        const resposta = await response.json();
-        console.log('✅ Dados recebidos:', resposta);
+        const resultado = await response.json();
+        console.log('✅ Dados recebidos:', resultado);
         
-        ocultarLoading();
-        
-        if (resposta.status === 'Falha') {
-            exibirAlerta('error', resposta.mensagem);
-            preencherFormulario(resposta.dados);
-            habilitarEdicaoManual();
-        } else {
-            exibirAlerta('success', '✅ Dados extraídos! Campos bloqueados - clique para copiar.');
-            preencherFormulario(resposta.dados);
-            destacarCamposCriticos();
+        if (resultado.status === 'Sucesso') {
+            // Armazenar resultado completo
+            AppState.dadosEtapa1 = resultado;
             
-            // Mostrar hint de campos bloqueados
-            if (elementos.helpTextForm) {
-                elementos.helpTextForm.style.display = 'block';
-            }
+            // Preencher formulário
+            const dados = resultado.dados;
+            elementos.numeroPatrimonio.value = dados.numero_patrimonio || '';
+            elementos.nomeProduto.value = dados.nome_produto || '';
+            elementos.estado.value = dados.estado_conservacao || 'Bom';
+            elementos.depreciacao.value = dados.categoria_depreciacao || 'Outros';
+            elementos.descricao.value = dados.descricao || '';
+            
+            // Log dos dados extraídos (DEBUG)
+            console.log('📦 [DEBUG] Dados extraídos:');
+            console.log('  - Nome:', dados.nome_produto);
+            console.log('  - Marca:', dados.marca);
+            console.log('  - Modelo:', dados.modelo);
+            console.log('  - Specs:', dados.especificacoes);
+            console.log('  - Estado:', dados.estado_conservacao);
+            console.log('  - Categoria:', dados.categoria_depreciacao);
+            
+            // Bloquear campos para cópia (opcional)
+            [elementos.numeroPatrimonio, elementos.nomeProduto, elementos.estado, 
+             elementos.depreciacao, elementos.descricao].forEach(campo => {
+                campo.style.cursor = 'text';
+                campo.title = 'Clique para copiar';
+            });
+            
+            console.log('🔒 Campos bloqueados para edição (clique para copiar)');
+            
+            // Habilitar busca de preço
+            elementos.btnBuscarPreco.disabled = false;
+            
+            mostrarMensagem('✅ Dados extraídos! Agora busque o preço de mercado.', 'success');
+        } else {
+            throw new Error(resultado.mensagem || 'Erro ao extrair dados');
         }
-        
-        AppState.dadosEtapa1 = resposta.dados;
-        elementos.formSection.style.display = 'block';
-        elementos.formSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        salvarCacheEtapa1(resposta.dados);
         
     } catch (erro) {
-        ocultarLoading();
         console.error('❌ Erro na Etapa 1:', erro);
-        exibirAlerta('error', 'Erro ao processar imagens: ' + erro.message);
+        mostrarMensagem('❌ Erro ao extrair dados: ' + erro.message, 'error');
+        elementos.btnExtrairDados.disabled = false;
+    } finally {
+        elementos.loadingExtracao.style.display = 'none';
     }
 }
 
-function preencherFormulario(dados) {
-    elementos.numeroPatrimonio.value = dados.numero_patrimonio || '';
-    elementos.nomeProduto.value = dados.nome_produto || '';
-    elementos.descricao.value = dados.descricao || '';
-    elementos.estado.value = dados.estado_conservacao || '';
-    elementos.depreciacao.value = dados.categoria_depreciacao || '';
-    
-    // Tornar campos somente leitura após extração da IA
-    tornarCamposSomenteLeitura();
-    adicionarBotaoDesbloquear();
+function calcularTamanhoTotal() {
+    const totalBytes = AppState.fotos.reduce((acc, foto) => {
+        return acc + (foto.data.length * 0.75);
+    }, 0);
+    return Math.round(totalBytes / 1024);
 }
 
-function destacarCamposCriticos() {
-    elementos.numeroPatrimonio.parentElement.classList.add('highlight');
-    elementos.nomeProduto.parentElement.classList.add('highlight');
-}
-
-function habilitarEdicaoManual() {
-    exibirAlerta('warning', '⚠️ Extração automática falhou. Preencha os campos manualmente.');
-}
-
-// ============================================
-// BLOQUEIO/DESBLOQUEIO DE CAMPOS
-// ============================================
-
-function tornarCamposSomenteLeitura() {
-    if (AppState.camposBloqueados) return; // Já está bloqueado
-    
-    // Lista de campos que ficarão bloqueados
-    const camposBloqueados = [
-        elementos.numeroPatrimonio,
-        elementos.nomeProduto,
-        elementos.estado,
-        elementos.depreciacao,
-        elementos.descricao
-    ];
-    
-    camposBloqueados.forEach(campo => {
-        if (campo.tagName === 'SELECT') {
-            // Para select, desabilitar
-            campo.disabled = true;
-            campo.style.cursor = 'pointer';
-            campo.style.backgroundColor = '#f7fafc';
-            campo.title = 'Clique para copiar';
-        } else {
-            // Para input e textarea
-            campo.readOnly = true;
-            campo.style.cursor = 'pointer';
-            campo.style.backgroundColor = '#f7fafc';
-            campo.title = 'Clique para copiar';
-        }
-        
-        // Adicionar evento de clique para copiar
-        campo.addEventListener('click', copiarConteudoCampo);
-    });
-    
-    AppState.camposBloqueados = true;
-    console.log('🔒 Campos bloqueados para edição (clique para copiar)');
-}
-
-function desbloquearCampos() {
-    const camposBloqueados = [
-        elementos.numeroPatrimonio,
-        elementos.nomeProduto,
-        elementos.estado,
-        elementos.depreciacao,
-        elementos.descricao
-    ];
-    
-    camposBloqueados.forEach(campo => {
-        if (campo.tagName === 'SELECT') {
-            campo.disabled = false;
-        } else {
-            campo.readOnly = false;
-        }
-        campo.style.cursor = '';
-        campo.style.backgroundColor = '';
-        campo.title = '';
-        
-        // Remover evento de clique
-        campo.removeEventListener('click', copiarConteudoCampo);
-    });
-    
-    // Remover botão de desbloquear se existir
-    const btnDesbloquear = document.getElementById('btnDesbloquear');
-    if (btnDesbloquear) {
-        btnDesbloquear.remove();
-    }
-    
-    // Esconder hint
-    if (elementos.helpTextForm) {
-        elementos.helpTextForm.style.display = 'none';
-    }
-    
-    AppState.camposBloqueados = false;
-    console.log('🔓 Campos desbloqueados');
-}
-
-function copiarConteudoCampo(event) {
-    const campo = event.currentTarget;
-    const valor = campo.value;
-    
-    if (!valor || valor === 'N/A' || valor === '') {
-        exibirAlerta('warning', '⚠️ Campo vazio, nada para copiar');
-        return;
-    }
-    
-    // Copiar para área de transferência
-    navigator.clipboard.writeText(valor)
-        .then(() => {
-            // Feedback visual
-            const corOriginal = campo.style.backgroundColor;
-            campo.style.backgroundColor = '#d1fae5';
-            campo.style.transition = 'background-color 0.3s';
-            
-            // Mostrar alerta
-            const labelElement = campo.parentElement.querySelector('label');
-            const labelText = labelElement ? labelElement.textContent.replace('*', '').trim() : 'Campo';
-            const valorTruncado = valor.substring(0, 50) + (valor.length > 50 ? '...' : '');
-            exibirAlerta('success', `✅ ${labelText} copiado: "${valorTruncado}"`);
-            
-            // Restaurar cor original
-            setTimeout(() => {
-                campo.style.backgroundColor = corOriginal;
-            }, 500);
-        })
-        .catch(err => {
-            console.error('Erro ao copiar:', err);
-            exibirAlerta('error', '❌ Erro ao copiar. Selecione manualmente.');
-        });
-}
-
-function adicionarBotaoDesbloquear() {
-    // Remover botão existente se houver
-    const btnExistente = document.getElementById('btnDesbloquear');
-    if (btnExistente) {
-        btnExistente.remove();
-    }
-    
-    const btnDesbloquear = document.createElement('button');
-    btnDesbloquear.id = 'btnDesbloquear';
-    btnDesbloquear.className = 'btn-secondary';
-    btnDesbloquear.innerHTML = '🔓 Desbloquear para Edição Manual';
-    btnDesbloquear.style.marginBottom = '15px';
-    btnDesbloquear.style.width = '100%';
-    
-    btnDesbloquear.addEventListener('click', () => {
-        desbloquearCampos();
-        exibirAlerta('info', '🔓 Campos desbloqueados para edição manual');
-    });
-    
-    elementos.btnDesbloquearContainer.appendChild(btnDesbloquear);
-}
-
-// ============================================
-// PROCESSAMENTO ETAPA 2
-// ============================================
+// ===================================================================
+// BUSCA DE PREÇOS (ETAPA 2) - CORRIGIDO ✅
+// ===================================================================
 
 async function processarEtapa2() {
+    console.log('🔍 Iniciando Etapa 2 - Busca de Preços');
+    
+    elementos.loadingPrecificacao.style.display = 'flex';
+    elementos.btnBuscarPreco.disabled = true;
+    
     try {
-        // Validar campos obrigatórios
-        const numeroPatrimonio = elementos.numeroPatrimonio.value.trim();
-        const nomeProduto = elementos.nomeProduto.value.trim();
-        
-        if (!numeroPatrimonio || !nomeProduto) {
-            exibirAlerta('warning', '⚠️ Preencha a Placa e o Nome antes de buscar o preço!');
-            return;
+        if (AppState.fotos.length === 0) {
+            throw new Error('Nenhuma foto carregada. Tire fotos primeiro!');
         }
         
-        exibirLoading('Buscando preços online: Etapa 2/2...');
+        // ✅ CORREÇÃO: Obter dados LIMPOS da Etapa 1
+        const dadosEtapa1 = AppState.dadosEtapa1?.dados || {};
         
+        console.log('📋 Dados limpos da Etapa 1:', dadosEtapa1);
+        
+        // ✅ CORREÇÃO: Usar dados limpos + especificacoes
         const dadosParaBusca = {
-            numero_patrimonio: numeroPatrimonio,
-            nome_produto: nomeProduto,
-            modelo: elementos.descricao.value?.split(',')[0] || 'N/A',
-            marca: elementos.descricao.value?.split(',')[1] || 'N/A',
-            estado_conservacao: elementos.estado.value || 'Bom',
-            categoria_depreciacao: elementos.depreciacao.value || 'Outros'
+            numero_patrimonio: elementos.numeroPatrimonio.value || dadosEtapa1.numero_patrimonio || 'N/A',
+            nome_produto: elementos.nomeProduto.value || dadosEtapa1.nome_produto || 'N/A',
+            
+            // ✅ CORREÇÃO PRINCIPAL: Usar marca, modelo e especificacoes limpos da Etapa 1
+            marca: dadosEtapa1.marca || 'N/A',
+            modelo: dadosEtapa1.modelo || 'N/A',
+            especificacoes: dadosEtapa1.especificacoes || 'N/A', // ✅ ADICIONADO
+            descricao: dadosEtapa1.descricao || elementos.descricao.value || 'N/A',
+            
+            estado_conservacao: elementos.estado.value || dadosEtapa1.estado_conservacao || 'Bom',
+            categoria_depreciacao: elementos.depreciacao.value || dadosEtapa1.categoria_depreciacao || 'Outros'
         };
         
         console.log('📤 Enviando dados para Etapa 2:', dadosParaBusca);
         
-        const response = await fetch('/api/processar-etapa2', {
+        const response = await fetch(CONFIG.apiUrl + '/api/processar-etapa2', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -547,128 +338,113 @@ async function processarEtapa2() {
         console.log('📥 Resposta Etapa 2:', response.status);
         
         if (!response.ok) {
-            const errorText = await response.text();
-            console.error('❌ Erro da API:', errorText);
-            throw new Error(`Erro HTTP: ${response.status}`);
+            const erro = await response.json();
+            console.log('❌ Erro da API:', erro);
+            throw new Error(erro.mensagem || 'Erro HTTP: ' + response.status);
         }
         
-        const resposta = await response.json();
-        console.log('✅ Dados recebidos Etapa 2:', resposta);
+        const resultado = await response.json();
+        console.log('✅ Dados recebidos Etapa 2:', resultado);
         
-        ocultarLoading();
-        
-        if (resposta.status === 'Falha') {
-            exibirAlerta('warning', '⚠️ ' + resposta.mensagem);
-            elementos.valorMercado.focus();
-        } else {
-            const valores = resposta.dados.valores_estimados;
+        if (resultado.status === 'Sucesso') {
+            // Armazenar resultado
+            AppState.dadosEtapa2 = resultado;
+            
+            // Preencher campos de precificação
+            const valores = resultado.dados.valores_estimados;
+            
             elementos.valorMercado.value = formatarMoeda(valores.valor_mercado_estimado);
             elementos.valorAtual.value = formatarMoeda(valores.valor_atual_estimado);
+            elementos.fatorDepreciacao.value = valores.fator_depreciacao.toFixed(2);
+            elementos.scoreConfianca.value = valores.score_confianca.toFixed(0) + '%';
             
-            exibirAlerta('success', `✅ Valores encontrados! Depreciação: ${valores.percentual_depreciacao}`);
+            // Habilitar salvamento
+            elementos.btnSalvarAtivo.disabled = false;
             
-            // Destacar campos preenchidos
-            elementos.valorMercado.parentElement.classList.add('success');
-            elementos.valorAtual.parentElement.classList.add('success');
+            mostrarMensagem('✅ Precificação concluída! Score: ' + valores.score_confianca.toFixed(0) + '%', 'success');
+            
+            // Log de debug
+            if (resultado.dados.precos_coletados) {
+                console.log('📊 Preços coletados:', resultado.dados.precos_coletados);
+                console.log('📊 Estratégia:', resultado.dados.estrategia_busca);
+            }
+            
+        } else {
+            throw new Error(resultado.mensagem || 'Falha na precificação');
         }
         
-        AppState.dadosCompletos = resposta.dados;
-        
     } catch (erro) {
-        ocultarLoading();
         console.error('❌ Erro na Etapa 2:', erro);
-        exibirAlerta('error', 'Erro ao buscar preços: ' + erro.message);
+        mostrarMensagem('❌ Erro ao buscar preço: ' + erro.message, 'error');
+        elementos.btnBuscarPreco.disabled = false;
+    } finally {
+        elementos.loadingPrecificacao.style.display = 'none';
     }
 }
 
-// ============================================
-// UTILITÁRIOS
-// ============================================
+// ===================================================================
+// FINALIZAÇÃO
+// ===================================================================
 
-function exibirLoading(texto) {
-    elementos.loadingText.textContent = texto;
-    elementos.loadingOverlay.style.display = 'flex';
-}
-
-function ocultarLoading() {
-    elementos.loadingOverlay.style.display = 'none';
-}
-
-function exibirAlerta(tipo, mensagem) {
-    elementos.alertBox.className = `alert ${tipo}`;
-    elementos.alertBox.textContent = mensagem;
-    elementos.alertBox.style.display = 'flex';
+async function salvarAtivo() {
+    console.log('💾 Salvando ativo...');
+    
+    const ativoCompleto = {
+        etapa1: AppState.dadosEtapa1,
+        etapa2: AppState.dadosEtapa2,
+        fotos: AppState.fotos.map(f => f.thumbnail),
+        data_cadastro: new Date().toISOString()
+    };
+    
+    console.log('📦 Dados completos do ativo:', ativoCompleto);
+    
+    // Aqui você implementaria o salvamento real (banco de dados, etc)
+    // Por enquanto, apenas simula
+    
+    mostrarMensagem('✅ Ativo salvo com sucesso!', 'success');
     
     setTimeout(() => {
-        elementos.alertBox.style.display = 'none';
-    }, tipo === 'success' ? 5000 : 8000);
+        elementos.btnNovoAtivo.style.display = 'inline-block';
+    }, 1000);
 }
 
-function formatarMoeda(valor) {
-    return new Intl.NumberFormat('pt-BR', {
-        style: 'currency',
-        currency: 'BRL'
-    }).format(valor);
-}
-
-function salvarCacheEtapa1(dados) {
-    sessionStorage.setItem('poc_etapa1', JSON.stringify(dados));
-}
-
-function carregarCacheSeExistir() {
-    const cacheEtapa1 = sessionStorage.getItem('poc_etapa1');
+function novoAtivo() {
+    console.log('🔄 Iniciando novo ativo...');
     
-    if (cacheEtapa1) {
-        const dados = JSON.parse(cacheEtapa1);
-        AppState.dadosEtapa1 = dados;
-        
-        exibirAlerta('info', 'Campos preenchidos com o último cadastro.');
-        preencherFormulario(dados);
-        elementos.formSection.style.display = 'block';
-    }
-}
-
-function limparCache() {
-    if (confirm('Deseja limpar todos os dados em cache?')) {
-        sessionStorage.clear();
+    if (confirm('Deseja realmente iniciar um novo ativo? Os dados atuais serão perdidos.')) {
         location.reload();
     }
 }
 
-function resetarFormulario() {
-    sessionStorage.clear();
-    location.reload();
+// ===================================================================
+// UTILITÁRIOS
+// ===================================================================
+
+function formatarMoeda(valor) {
+    return 'R$ ' + parseFloat(valor).toFixed(2).replace('.', ',');
 }
 
-function exportarJSON() {
-    const dados = AppState.dadosCompletos || AppState.dadosEtapa1;
-    if (!dados) return;
+function mostrarMensagem(texto, tipo = 'info') {
+    elementos.mensagemTexto.textContent = texto;
+    elementos.containerMensagem.className = 'mensagem mensagem-' + tipo;
+    elementos.containerMensagem.style.display = 'block';
     
-    const blob = new Blob([JSON.stringify(dados, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `ativo_${dados.numero_patrimonio}_${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    
-    exibirAlerta('success', '✅ JSON exportado!');
+    setTimeout(() => {
+        elementos.containerMensagem.style.display = 'none';
+    }, 5000);
 }
 
-function copiarJSON() {
-    const dados = AppState.dadosCompletos || AppState.dadosEtapa1;
-    if (!dados) return;
-    
-    navigator.clipboard.writeText(JSON.stringify(dados, null, 2))
-        .then(() => exibirAlerta('success', '✅ JSON copiado!'))
-        .catch(err => exibirAlerta('error', 'Erro ao copiar: ' + err.message));
-}
+// ===================================================================
+// COPIAR PARA ÁREA DE TRANSFERÊNCIA (BONUS)
+// ===================================================================
 
-function inicializarBotoes() {
-    elementos.btnProcessarEtapa1.addEventListener('click', processarEtapa1);
-    elementos.btnValidarEBuscarPreco.addEventListener('click', processarEtapa2);
-    elementos.btnLimparCache.addEventListener('click', limparCache);
-    elementos.btnProcessarNovo.addEventListener('click', resetarFormulario);
-    elementos.btnExportarJSON.addEventListener('click', exportarJSON);
-    elementos.btnCopiarJSON.addEventListener('click', copiarJSON);
-}
+[elementos.numeroPatrimonio, elementos.nomeProduto, elementos.estado, 
+ elementos.depreciacao, elementos.descricao].forEach(campo => {
+    campo.addEventListener('click', function() {
+        this.select();
+        document.execCommand('copy');
+        mostrarMensagem('📋 Copiado: ' + this.value.substring(0, 30) + '...', 'info');
+    });
+});
+
+console.log('✅ App.js carregado e pronto!');

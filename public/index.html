@@ -12,8 +12,7 @@
         <header class="header">
             <h1>Cadastrar Novo Patrimônio</h1>
             <div class="header-actions">
-                <span class="badge">PoC v1.0 - Vercel</span>
-                <button class="btn-secondary" id="limparCache">🗑️ Limpar Cache</button>
+                <span class="badge">PoC v2.0 - Vercel</span>
             </div>
         </header>
 
@@ -68,23 +67,14 @@
                     <button class="btn-remove" style="display: none;">✕</button>
                 </div>
                 
-                <div class="photo-slot" data-index="4">
-                    <input type="file" id="photo4" accept="image/*" capture="environment">
-                    <label for="photo4">
-                        <div class="photo-placeholder">
-                            📷
-                            <span>Foto 4</span>
-                            <small>Clique ou Ctrl+V</small>
-                        </div>
-                    </label>
-                    <img class="photo-preview" style="display: none;">
-                    <button class="btn-remove" style="display: none;">✕</button>
+                <!-- SLOT 4 - BOTÃO PROCESSAR -->
+                <div class="photo-slot photo-slot-button">
+                    <button class="btn-process-photos" id="processarEtapa1" disabled>
+                        <span class="icon">🤖</span>
+                        <span class="text">Processar Imagens</span>
+                    </button>
                 </div>
             </div>
-
-            <button class="btn-primary btn-block" id="processarEtapa1" disabled>
-                🤖 Processar - Etapa 1/2
-            </button>
         </section>
 
         <!-- Formulário de Dados -->
@@ -94,12 +84,12 @@
                 🔒 <strong>Campos bloqueados:</strong> Extraídos pela IA. Clique em qualquer campo para copiar o conteúdo.
             </p>
             
-            <div id="btnDesbloquearContainer"></div>
-            
+            <!-- ✅ PLACA E NOME EM LINHA -->
             <div class="form-row">
                 <div class="form-group">
                     <label for="numeroPatrimonio">Placa *</label>
-                    <input type="text" id="numeroPatrimonio" placeholder="Digite ou use scanner">
+                    <input type="text" id="numeroPatrimonio" placeholder="Digite números ou use o scanner">
+                    <small class="field-hint">💡 Digite números ou use o scanner</small>
                 </div>
 
                 <div class="form-group">
@@ -108,18 +98,20 @@
                 </div>
             </div>
 
+            <!-- VALORES EM LINHA (2 COLUNAS) -->
             <div class="form-row">
                 <div class="form-group">
                     <label for="valorAtual">Valor Atual</label>
-                    <input type="text" id="valorAtual" placeholder="R$ 0,00">
+                    <input type="text" id="valorAtual" placeholder="R$ 0,00" readonly>
                 </div>
 
                 <div class="form-group">
                     <label for="valorMercado">Valor de Mercado</label>
-                    <input type="text" id="valorMercado" placeholder="R$ 0,00">
+                    <input type="text" id="valorMercado" placeholder="R$ 0,00" readonly>
                 </div>
             </div>
 
+            <!-- ESTADO E CENTRO DE CUSTO EM LINHA -->
             <div class="form-row">
                 <div class="form-group">
                     <label for="estado">Estado</label>
@@ -143,12 +135,13 @@
                 </div>
             </div>
 
+            <!-- DEPRECIAÇÃO E UNIDADE EM LINHA -->
             <div class="form-row">
                 <div class="form-group">
                     <label for="depreciacao">Depreciação</label>
                     <select id="depreciacao">
                         <option value="">Selecione a Depreciação</option>
-                        <option value="Equipamentos de Informática">Equipamentos de Informática</option>
+                        <option value="Computadores e Informática">Computadores e Informática</option>
                         <option value="Ferramentas">Ferramentas</option>
                         <option value="Instalações">Instalações</option>
                         <option value="Máquinas e Equipamentos">Máquinas e Equipamentos</option>
