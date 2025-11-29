@@ -245,7 +245,6 @@ SUA TAREFA:
 2. BUSCAR preços usando estratégia inteligente:
    - Use termos GENÉRICOS e FUNCIONAIS (ignore cores, tamanhos, acabamentos estéticos)
    - Exemplo: "Carrinho Porta-Ferramentas azul" deve buscar "carrinho auxiliar rodízios metal", "carrinho porta mandris", "carrinho ferramentas industrial"
-   - Exemplo: "Notebook Dell Latitude 5420" deve buscar "notebook intel core i5 14 polegadas", "notebook empresarial dell"
    - Aceite produtos EQUIVALENTES da mesma categoria e função
    - Priorize especificações técnicas, não aparência
 
@@ -262,7 +261,7 @@ SUA TAREFA:
    - Data no formato YYYY-MM-DD (data atual: ${dataAtual})
    - Preço UNITÁRIO (não pacotes/kits)
 
-FORMATO DE RESPOSTA (JSON puro, sem markdown, sem crases):
+FORMATO DE RESPOSTA - RETORNE APENAS JSON PURO (sem crases, sem markdown):
 {
   "preco_encontrado": true,
   "termos_busca_utilizados": ["termo1", "termo2", "termo3"],
@@ -285,28 +284,7 @@ Se NÃO encontrar preços suficientes:
   "termos_busca_utilizados": ["termos que você tentou"]
 }
 
-EXEMPLOS DE BUSCA INTELIGENTE:
-
-Exemplo 1:
-Entrada: "Carrinho Porta-Ferramentas azul de metal"
-Busque: "carrinho auxiliar industrial", "carrinho porta mandris", "mesa rodízios metal oficina"
-Aceite: Carrinhos de serviço, carrinhos auxiliares, mesas com rodízios
-
-Exemplo 2:
-Entrada: "Spindle NAKANISHI iSpeed3 60.000 RPM"
-Busque: "spindle alta rotação 60000 rpm", "motor usinagem nakanishi", "spindle cnc precision"
-Aceite: Spindles de mesma faixa de RPM e potência
-
-Exemplo 3:
-Entrada: "Cadeira de Escritório Ergonômica preta"
-Busque: "cadeira escritório ergonômica", "cadeira giratória executiva"
-Aceite: Cadeiras ergonômicas de qualquer cor
-
-NÃO ACEITE:
-- Produtos usados ou seminovos
-- Produtos claramente de categoria diferente
-- Kits ou pacotes (queremos preço unitário)
-- Produtos muito mais simples ou complexos que o original`;
+IMPORTANTE: Retorne APENAS o JSON, sem texto adicional antes ou depois, sem crases de markdown.`;
 
         console.log('🤖 [ETAPA2] Inicializando modelo Gemini com Google Search...');
 
@@ -314,8 +292,8 @@ NÃO ACEITE:
             model: MODEL,
             tools: [{ googleSearch: {} }],
             generationConfig: {
-                temperature: 0.3,
-                responseMimeType: 'application/json'
+                temperature: 0.3
+                // ❌ REMOVIDO: responseMimeType (incompatível com tools)
             }
         });
 
