@@ -7,7 +7,7 @@ const MODEL = process.env.VERTEX_MODEL || 'gemini-2.5-flash';
 // Inicializar Google AI
 const genAI = new GoogleGenerativeAI(API_KEY);
 
-// Prompt de identificação
+// Prompt de identificação melhrado
 const PROMPT_SISTEMA = `Analise as imagens e extraia informações PRECISAS do ativo. Retorne APENAS JSON (sem markdown):
 
 {
