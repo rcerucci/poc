@@ -5,11 +5,16 @@
 const CONFIG = {
     apiUrl: 'https://poc-rose-five.vercel.app',
     maxFotos: 3,
-    minFotos: 2
+    minFotos: 2,
+    // ✅ PARÂMETROS OTIMIZADOS PARA OCR
+    compressao: {
+        qualidade: 0.75,    // 75% - ideal para OCR
+        maxResolucao: 1024  // 1024px - mantém clareza de texto
+    }
 };
 
 const AppState = {
-    fotos: [null, null, null], // Array fixo de 3 posições
+    fotos: [null, null, null],
     dadosEtapa1: null,
     dadosEtapa2: null
 };
@@ -19,19 +24,14 @@ const AppState = {
 // ===================================================================
 
 const elementos = {
-    // Botões de ação
     processarEtapa1: document.getElementById('processarEtapa1'),
     validarEBuscarPreco: document.getElementById('validarEBuscarPreco'),
     exportarJSON: document.getElementById('exportarJSON'),
     copiarJSON: document.getElementById('copiarJSON'),
     processarNovo: document.getElementById('processarNovo'),
-    
-    // Seções
     formSection: document.getElementById('formSection'),
     resultSection: document.getElementById('resultSection'),
     helpTextForm: document.getElementById('helpTextForm'),
-    
-    // Campos de formulário
     numeroPatrimonio: document.getElementById('numeroPatrimonio'),
     nomeProduto: document.getElementById('nomeProduto'),
     estado: document.getElementById('estado'),
@@ -41,13 +41,9 @@ const elementos = {
     descricao: document.getElementById('descricao'),
     valorAtual: document.getElementById('valorAtual'),
     valorMercado: document.getElementById('valorMercado'),
-    
-    // Alerts e loading
     alertBox: document.getElementById('alertBox'),
     loadingOverlay: document.getElementById('loadingOverlay'),
     loadingText: document.getElementById('loadingText'),
-    
-    // Resultado
     resultIdentificacao: document.getElementById('resultIdentificacao'),
     resultClassificacao: document.getElementById('resultClassificacao'),
     resultValores: document.getElementById('resultValores'),
@@ -66,28 +62,79 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function inicializarEventListeners() {
-    // Processar Etapa 1
     if (elementos.processarEtapa1) {
         elementos.processarEtapa1.addEventListener('click', processarEtapa1);
     }
-    
-    // Processar Etapa 2
     if (elementos.validarEBuscarPreco) {
         elementos.validarEBuscarPreco.addEventListener('click', processarEtapa2);
     }
-    
-    // Botões de resultado
     if (elementos.exportarJSON) {
         elementos.exportarJSON.addEventListener('click', exportarJSON);
     }
-    
     if (elementos.copiarJSON) {
         elementos.copiarJSON.addEventListener('click', copiarJSON);
     }
-    
     if (elementos.processarNovo) {
         elementos.processarNovo.addEventListener('click', () => location.reload());
     }
+}
+
+// ===================================================================
+// COMPRESSÃO DE IMAGENS - OTIMIZADA PARA OCR
+// ===================================================================
+
+async function comprimirImagem(base64, qualidade = 0.75, maxResolucao = 1024) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            
+            // ✅ Redimensionar mantendo aspect ratio
+            // Reduz o lado maior para maxResolucao
+            if (width > height) {
+                if (width > maxResolucao) {
+                    height = Math.round((height * maxResolucao) / width);
+                    width = maxResolucao;
+                }
+            } else {
+                if (height > maxResolucao) {
+                    width = Math.round((width * maxResolucao) / height);
+                    height = maxResolucao;
+                }
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            
+            const ctx = canvas.getContext('2d');
+            
+            // ✅ Aplicar suavização para melhor OCR
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            // ✅ Comprimir em JPEG com qualidade 0.75
+            const comprimido = canvas.toDataURL('image/jpeg', qualidade);
+            
+            const tamanhoOriginal = base64.length;
+            const tamanhoComprimido = comprimido.length;
+            const reducao = ((tamanhoOriginal - tamanhoComprimido) / tamanhoOriginal) * 100;
+            
+            console.log('📦 Compressão:', {
+                resolucao: width + 'x' + height,
+                qualidade: (qualidade * 100) + '%',
+                original: (tamanhoOriginal / 1024).toFixed(0) + ' KB',
+                comprimida: (tamanhoComprimido / 1024).toFixed(0) + ' KB',
+                reducao: reducao.toFixed(1) + '%'
+            });
+            
+            resolve(comprimido);
+        };
+        img.src = base64;
+    });
 }
 
 // ===================================================================
@@ -95,7 +142,6 @@ function inicializarEventListeners() {
 // ===================================================================
 
 function inicializarUploadFotos() {
-    // Eventos de upload para cada slot
     for (let i = 1; i <= 3; i++) {
         const input = document.getElementById('photo' + i);
         const slot = document.querySelector(`.photo-slot[data-index="${i}"]`);
@@ -103,7 +149,6 @@ function inicializarUploadFotos() {
         if (input && slot) {
             input.addEventListener('change', (e) => handleFileSelect(e, i - 1));
             
-            // Botão remover
             const btnRemove = slot.querySelector('.btn-remove');
             if (btnRemove) {
                 btnRemove.addEventListener('click', (e) => {
@@ -113,7 +158,6 @@ function inicializarUploadFotos() {
             }
         }
     }
-    
     console.log('✅ Upload de fotos inicializado');
 }
 
@@ -126,14 +170,16 @@ function handleFileSelect(event, index) {
         return;
     }
     
+    mostrarAlerta('🔄 Comprimindo imagem...', 'info');
+    
     const reader = new FileReader();
-    reader.onload = (e) => {
-        adicionarFoto(e.target.result, index);
+    reader.onload = async (e) => {
+        await adicionarFoto(e.target.result, index);
     };
     reader.readAsDataURL(file);
 }
 
-function adicionarFoto(base64, index) {
+async function adicionarFoto(base64, index) {
     const slot = document.querySelector(`.photo-slot[data-index="${index + 1}"]`);
     if (!slot) return;
     
@@ -141,20 +187,27 @@ function adicionarFoto(base64, index) {
     const placeholder = slot.querySelector('.photo-placeholder');
     const btnRemove = slot.querySelector('.btn-remove');
     
+    // ✅ COMPRIMIR com parâmetros otimizados para OCR
+    const base64Comprimido = await comprimirImagem(
+        base64,
+        CONFIG.compressao.qualidade,      // 0.75
+        CONFIG.compressao.maxResolucao    // 1024px
+    );
+    
     // Atualizar UI
-    preview.src = base64;
+    preview.src = base64Comprimido; // ✅ Mostrar versão comprimida
     preview.style.display = 'block';
     placeholder.style.display = 'none';
     btnRemove.style.display = 'flex';
     
-    // Salvar no state
+    // Salvar no state (versão comprimida)
     AppState.fotos[index] = {
-        data: base64.split(',')[1],
+        data: base64Comprimido.split(',')[1],
         timestamp: new Date().toISOString(),
-        thumbnail: base64
+        thumbnail: base64Comprimido
     };
     
-    console.log('✅ Foto adicionada no slot', index + 1);
+    console.log('✅ Foto ' + (index + 1) + ' adicionada e comprimida');
     verificarFotosMinimas();
 }
 
@@ -167,17 +220,15 @@ function removerFoto(index) {
     const btnRemove = slot.querySelector('.btn-remove');
     const input = document.getElementById('photo' + (index + 1));
     
-    // Limpar UI
     preview.src = '';
     preview.style.display = 'none';
     placeholder.style.display = 'flex';
     btnRemove.style.display = 'none';
     if (input) input.value = '';
     
-    // Limpar state
     AppState.fotos[index] = null;
     
-    console.log('🗑️ Foto removida do slot', index + 1);
+    console.log('🗑️ Foto ' + (index + 1) + ' removida');
     verificarFotosMinimas();
     mostrarAlerta('🗑️ Foto removida', 'info');
 }
@@ -189,7 +240,7 @@ function verificarFotosMinimas() {
         elementos.processarEtapa1.disabled = totalFotos < CONFIG.minFotos;
     }
     
-    console.log('📸 Total de fotos:', totalFotos + '/' + CONFIG.maxFotos);
+    console.log('📸 Total:', totalFotos + '/' + CONFIG.maxFotos);
 }
 
 // ===================================================================
@@ -207,12 +258,12 @@ document.addEventListener('paste', (event) => {
             const blob = items[i].getAsFile();
             const reader = new FileReader();
             
-            reader.onload = (e) => {
-                // Procurar primeiro slot vazio
+            reader.onload = async (e) => {
                 const indexVazio = AppState.fotos.findIndex(f => f === null);
                 
                 if (indexVazio !== -1) {
-                    adicionarFoto(e.target.result, indexVazio);
+                    mostrarAlerta('🔄 Comprimindo imagem colada...', 'info');
+                    await adicionarFoto(e.target.result, indexVazio);
                     mostrarAlerta('✅ Imagem colada no slot ' + (indexVazio + 1), 'success');
                 } else {
                     mostrarAlerta('⚠️ Todos os slots estão preenchidos!', 'warning');
@@ -230,7 +281,7 @@ document.addEventListener('paste', (event) => {
 // ===================================================================
 
 async function processarEtapa1() {
-    console.log('🔍 Iniciando Etapa 1 - Extração');
+    console.log('🔍 Iniciando Etapa 1');
     
     const fotosValidas = AppState.fotos.filter(f => f !== null);
     
@@ -238,6 +289,10 @@ async function processarEtapa1() {
         mostrarAlerta('⚠️ Adicione pelo menos ' + CONFIG.minFotos + ' fotos!', 'warning');
         return;
     }
+    
+    // ✅ Log de tamanho total
+    const tamanhoTotal = fotosValidas.reduce((acc, f) => acc + f.data.length, 0);
+    console.log('📊 Tamanho total:', (tamanhoTotal / 1024).toFixed(0) + ' KB');
     
     mostrarLoading('🤖 Extraindo dados das imagens...');
     
@@ -259,11 +314,10 @@ async function processarEtapa1() {
             AppState.dadosEtapa1 = resultado;
             preencherFormulario(resultado.dados);
             
-            // Mostrar seção de formulário
             elementos.formSection.style.display = 'block';
             elementos.helpTextForm.style.display = 'block';
             
-            mostrarAlerta('✅ Dados extraídos! Agora valide e busque o preço.', 'success');
+            mostrarAlerta('✅ Dados extraídos! Valide e busque o preço.', 'success');
         } else {
             throw new Error(resultado.mensagem || 'Erro na extração');
         }
@@ -277,14 +331,12 @@ async function processarEtapa1() {
 }
 
 function preencherFormulario(dados) {
-    // Preencher campos
     if (elementos.numeroPatrimonio) elementos.numeroPatrimonio.value = dados.numero_patrimonio || '';
     if (elementos.nomeProduto) elementos.nomeProduto.value = dados.nome_produto || '';
     if (elementos.estado) elementos.estado.value = dados.estado_conservacao || '';
     if (elementos.depreciacao) elementos.depreciacao.value = dados.categoria_depreciacao || '';
     if (elementos.descricao) elementos.descricao.value = dados.descricao || '';
     
-    // Bloquear campos (readonly)
     bloquearCampos([
         elementos.numeroPatrimonio,
         elementos.nomeProduto,
@@ -293,7 +345,7 @@ function preencherFormulario(dados) {
         elementos.descricao
     ]);
     
-    console.log('📋 Formulário preenchido:', dados);
+    console.log('📋 Formulário preenchido');
 }
 
 function bloquearCampos(campos) {
@@ -305,7 +357,6 @@ function bloquearCampos(campos) {
                 campo.readOnly = true;
             }
             
-            // Evento de cópia ao clicar
             campo.addEventListener('click', function() {
                 this.select();
                 document.execCommand('copy');
@@ -320,7 +371,7 @@ function bloquearCampos(campos) {
 // ===================================================================
 
 async function processarEtapa2() {
-    console.log('🔍 Iniciando Etapa 2 - Busca de Preços');
+    console.log('🔍 Iniciando Etapa 2');
     
     if (!AppState.dadosEtapa1) {
         mostrarAlerta('⚠️ Execute a Etapa 1 primeiro!', 'warning');
@@ -364,14 +415,11 @@ async function processarEtapa2() {
             
             const valores = resultado.dados.valores_estimados;
             
-            // Preencher valores
             if (elementos.valorMercado) elementos.valorMercado.value = formatarMoeda(valores.valor_mercado_estimado);
             if (elementos.valorAtual) elementos.valorAtual.value = formatarMoeda(valores.valor_atual_estimado);
             
-            // Bloquear campos de valores
             bloquearCampos([elementos.valorMercado, elementos.valorAtual]);
             
-            // Mostrar resultado completo
             mostrarResultado(resultado);
             
             mostrarAlerta('✅ Precificação concluída! Score: ' + valores.score_confianca.toFixed(0) + '%', 'success');
@@ -394,7 +442,6 @@ async function processarEtapa2() {
 function mostrarResultado(resultado) {
     const dados = resultado.dados;
     
-    // Identificação
     elementos.resultIdentificacao.innerHTML = `
         <p><strong>Placa:</strong> ${dados.numero_patrimonio}</p>
         <p><strong>Nome:</strong> ${dados.nome_produto}</p>
@@ -402,13 +449,11 @@ function mostrarResultado(resultado) {
         <p><strong>Modelo:</strong> ${dados.modelo}</p>
     `;
     
-    // Classificação
     elementos.resultClassificacao.innerHTML = `
         <p><strong>Estado:</strong> ${dados.estado_conservacao}</p>
         <p><strong>Categoria:</strong> ${dados.categoria_depreciacao}</p>
     `;
     
-    // Valores
     const valores = dados.valores_estimados;
     elementos.resultValores.innerHTML = `
         <p><strong>Mercado:</strong> R$ ${valores.valor_mercado_estimado.toFixed(2)}</p>
@@ -417,16 +462,13 @@ function mostrarResultado(resultado) {
         <p><strong>Confiança:</strong> ${valores.score_confianca.toFixed(0)}%</p>
     `;
     
-    // Metadados
     elementos.resultMetadados.innerHTML = `
         <p><strong>Data:</strong> ${new Date(dados.metadados.data_busca).toLocaleString('pt-BR')}</p>
         <p><strong>Modelo IA:</strong> ${dados.metadados.modelo_ia}</p>
     `;
     
-    // JSON completo
     elementos.jsonOutput.textContent = JSON.stringify(resultado, null, 2);
     
-    // Mostrar seção
     elementos.resultSection.style.display = 'block';
     elementos.resultSection.scrollIntoView({ behavior: 'smooth' });
 }
@@ -450,13 +492,13 @@ function exportarJSON() {
     a.click();
     URL.revokeObjectURL(url);
     
-    mostrarAlerta('💾 JSON exportado com sucesso!', 'success');
+    mostrarAlerta('💾 JSON exportado!', 'success');
 }
 
 function copiarJSON() {
     const json = elementos.jsonOutput.textContent;
     navigator.clipboard.writeText(json).then(() => {
-        mostrarAlerta('📋 JSON copiado para área de transferência!', 'success');
+        mostrarAlerta('📋 JSON copiado!', 'success');
     });
 }
 
