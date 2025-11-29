@@ -9,50 +9,49 @@ const genAI = new GoogleGenerativeAI(API_KEY);
 
 // Prompt de identificação
 const PROMPT_SISTEMA = `Analise as imagens e extraia informações PRECISAS do ativo. Retorne APENAS JSON (sem markdown):
-
 {
-  "numero_patrimonio": "número da placa ou N/A",
-  "nome_produto": "nome GENÉRICO curto (máx 4 palavras)",
-  "marca": "fabricante ou N/A",
-  "modelo": "código/número modelo ou N/A",
-  "estado_conservacao": "Excelente|Bom|Regular|Ruim",
-  "categoria_depreciacao": "categoria",
-  "descricao": "descrição técnica completa"
+  "numero_patrimonio": "número da placa ou N/A",
+  "nome_produto": "nome GENÉRICO curto (máx 4 palavras)",
+  "marca": "fabricante ou N/A",
+  "modelo": "código/número modelo ou N/A",
+  "estado_conservacao": "Excelente|Bom|Regular|Ruim",
+  "categoria_depreciacao": "categoria",
+  "descricao": "descrição técnica completa"
 }
 
 ORDEM DE PREENCHIMENTO:
 1. numero_patrimonio: Procure plaquetas/etiquetas. Se não houver: "N/A"
-2. nome_produto: Nome GENÉRICO (ex: "Controlador de Velocidade", "Notebook", "Torno CNC")
+2. nome_produto: Nome GENÉRICO curto (máx 4 palavras). Use a **terminologia mais técnica/formal** ou a **função principal** do equipamento para garantir consistência.
 3. marca: Nome FABRICANTE apenas (ex: "NAKANISHI", "Dell"). Se incerto: "N/A"
 4. modelo: Código ESPECÍFICO se visível (ex: "iSpeed3", "Latitude 5420"). Se não: "N/A"
 5. estado_conservacao: Avalie visualmente arranhões, desgaste, limpeza
 6. categoria_depreciacao: "Equipamentos de Informática"|"Ferramentas"|"Instalações"|"Máquinas e Equipamentos"|"Móveis e Utensílios"|"Veículos"|"Outros"
 7. descricao: Consolide TODAS informações técnicas aqui (máx 300 chars):
-   - Tipo/função
-   - Marca e modelo (REPITA aqui)
-   - Especificações (voltagem, potência, etc)
-   - Características visíveis (display, botões, etc)
-   - Ano fabricação (se visível)
-   - Aplicação/uso
+   - Tipo/função
+   - Marca e modelo (REPITA aqui)
+   - Especificações (voltagem, potência, etc)
+   - Características visíveis (display, botões, etc)
+   - Outros nomes ou sinônimos comuns no mercado (ex: Coletor, Extrator, Aspirador Industrial)
+   - Ano fabricação (se visível)
+   - Aplicação/uso
 
 REGRAS:
 ✅ Use "N/A" se incerto
-✅ NÃO duplique entre campos (exceto marca/modelo na descrição)
+✅ NÃO duplique entre campos (exceto marca/modelo e sinônimos na descrição)
 ✅ Descrição AUTOCONTIDA (compreensível sozinha)
 ✅ Linguagem FACTUAL (sem "provavelmente")
 ✅ Retorne APENAS JSON
 
 EXEMPLO:
 {
-  "numero_patrimonio": "01815",
-  "nome_produto": "Controlador de Velocidade",
-  "marca": "NAKANISHI",
-  "modelo": "iSpeed3",
-  "estado_conservacao": "Bom",
-  "categoria_depreciacao": "Máquinas e Equipamentos",
-  "descricao": "Controlador eletrônico NAKANISHI iSpeed3. Display LCD, botões RUN/STOP, ajuste velocidade. 220V 50/60Hz. Para motores e spindles industriais."
-}`;
-
+  "numero_patrimonio": "01815",
+  "nome_produto": "Controlador de Velocidade",
+  "marca": "NAKANISHI",
+  "modelo": "iSpeed3",
+  "estado_conservacao": "Bom",
+  "categoria_depreciacao": "Máquinas e Equipamentos",
+  "descricao": "Controlador eletrônico NAKANISHI iSpeed3. Display LCD, botões RUN/STOP, ajuste velocidade. 220V 50/60Hz. Também conhecido como drive de motor/spindle. Para motores e spindles industriais."
+}`
 module.exports = async (req, res) => {
     // CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
