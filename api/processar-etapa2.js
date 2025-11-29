@@ -120,6 +120,7 @@ JSON (sem markdown): (Use o mesmo formato de saída da Etapa 2)
 `;
 */
 
+/*
 const PROMPT_BUSCA_PRECO = (dados) => `Você é um extrator de preços. Colete MÍNIMO 3 preços NOVOS no Brasil.
 
 PRODUTO:
@@ -178,6 +179,73 @@ JSON (sem markdown):
 }
 
 Se < 3: {"preco_encontrada": false, "motivo": "explicação", "termo_busca_utilizado": "termo tentado", "num_precos_encontrados": 1}`;
+*/
+
+const PROMPT_BUSCA_PRECO = (dados) => `Você é um assistente de pesquisa de preços. Seu objetivo é encontrar preços REAIS e VERIFICÁVEIS de produtos NOVOS no mercado brasileiro.
+
+PRODUTO A PESQUISAR:
+- Nome: ${dados.nome_produto}
+- Marca: ${dados.marca || 'Não especificada'}
+- Modelo: ${dados.modelo || 'Não especificado'}
+- Especificações: ${dados.especificacoes || 'Não especificadas'}
+
+INSTRUÇÕES DE BUSCA:
+
+1. MONTE O TERMO DE BUSCA:
+   - Use Marca + Modelo se disponíveis
+   - Se ausentes, use Nome + palavras-chave das especificações
+   - Inclua sinônimos e variações comuns do produto
+   - Exemplo: "Gerador Cummins C22D5" OU "gerador diesel 22kVA"
+
+2. BUSQUE PRODUTOS:
+   - PRIORIDADE 1: Modelo exato (marca + modelo idênticos)
+   - PRIORIDADE 2: Produtos equivalentes (especificação principal similar - tolerância de até 10%)
+   - PRIORIDADE 3: Produtos da mesma categoria com specs próximas
+
+3. FONTES ACEITAS (qualquer uma é válida):
+   - Lojas online brasileiras (Mercado Livre, Amazon, Magazine Luiza, etc)
+   - Distribuidores e atacadistas B2B
+   - E-commerces especializados
+   - IGNORE fontes que só mostram "Solicitar Orçamento" sem preço
+
+4. REGRAS IMPORTANTES:
+   - Apenas produtos NOVOS (não aceitar usados/seminovos)
+   - Não aceitar kits ou combos
+   - Preços devem estar visíveis (não apenas "consulte")
+   - Se encontrar menos de 3, retorne os que encontrar (não falhe)
+
+5. EQUIVALÊNCIA:
+   - Para especificação principal (kVA, HP, polegadas, etc): até 10% de diferença é aceitável
+   - Diferenças em specs secundárias (voltagem, frequência) podem ser ignoradas se a spec principal for compatível
+
+FORMATO DE RESPOSTA (JSON puro, sem markdown):
+
+Se encontrou preços:
+{
+  "preco_encontrado": true,
+  "termo_busca_utilizado": "termo exato que você usou na busca",
+  "estrategia": "Exato/Equivalente - explicação breve",
+  "num_precos_encontrados": 4,
+  "precos_coletados": [
+    {
+      "valor": 15999.90,
+      "fonte": "Nome da loja/site",
+      "tipo_match": "Exato",
+      "produto": "Nome completo do produto encontrado",
+      "url": "URL se disponível"
+    }
+  ]
+}
+
+Se NÃO encontrou preços suficientes:
+{
+  "preco_encontrado": false,
+  "motivo": "explicação do que tentou e por que não encontrou",
+  "termo_busca_utilizado": "termo que usou",
+  "num_precos_encontrados": 0,
+  "precos_coletados": []
+}`;
+
 
 // --- Cálculo EMA com Pesos ---
 function calcularMediaPonderada(coleta_precos) {
