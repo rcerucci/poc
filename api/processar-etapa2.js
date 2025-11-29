@@ -79,6 +79,47 @@ function gerarTermosBusca(nome_produto, marca, modelo, descricao) {
     return termos;
 }
 
+// =========================================================================
+// ❌ CÓDIGO DE CONTINGÊNCIA (TODO: IMPLEMENTAR COM GEMINI PRO)
+//    - Este prompt deve ser usado APENAS se o PROMPT_BUSCA_PRECO falhar.
+// =========================================================================
+
+/*
+const PROMPT_BUSCA_PRECO_PRO_CONTINGENCIA = (dados) => `Você é um Extrator de Preços Sênior, designado para garantir a precificação de um ativo industrial ou de baixa liquidez onde modelos de IA mais baratos falharam. Colete MÍNIMO 3 preços NOVOS no Brasil.
+
+PRODUTO DE ALTO VALOR E BAIXA TRANSPARÊNCIA:
+Nome: ${dados.nome_produto}
+Marca: ${dados.marca || 'N/A'}
+Modelo: ${dados.modelo || 'N/A'}
+Specs: ${dados.especificacoes || 'N/A'}
+
+***ESTRATÉGIA DE BUSCA (GEMINI PRO - PRIORIDADE NO RESULTADO):***
+
+1.  **EXECUTE BUSCA POR COMPONENTES E INFERÊNCIA:** Formule consultas que busquem o preço do item **EXATO** E **também** o **"preço de catálogo"** ou **"preço de tabela"** do fabricante/distribuidor. Use sua capacidade analítica para inferir um valor de referência a partir de documentos B2B.
+
+2.  **ACEITAÇÃO FLEXÍVEL DE EQUIVALENTES (Regra de Sobrevivência):**
+    a.  **Foco em Especificação Principal:** Aceite a diferença de tipo funcional (Ex: Autotransformador em vez de Isolador) **SE** a Especificação Técnica PRINCIPAL (kVA, HP, etc.) estiver dentro de $\pm5\%$ e o preço for o mais razoável e representativo para a classe de potência.
+    b.  **Contingência de Peso/Dimensões:** A diferença em especificações secundárias (como peso) DEVE ser usada para classificar o *tipo_match* como 'Equivalente' (Peso 1.0), mas **NÃO** deve ser uma causa para rejeitar o preço, a menos que a Especificação Principal também falhe.
+
+3.  **HIERARQUIA DE FONTES:** Priorize preço verificável, mesmo que B2C, sobre cotação B2B não transparente.
+
+4.  **REJEIÇÃO CONDICIONAL:** Se um preço for encontrado, mas tiver discrepância funcional/de peso, **USE-O** e classifique-o como 'Equivalente' (Peso 1.0). Rejeite APENAS se o preço estiver fora do range esperado do mercado.
+
+***MÍNIMO:*** 3 preços REAIS ou INFERIDOS.
+
+JSON (sem markdown): (Use o mesmo formato de saída da Etapa 2)
+{
+  "preco_encontrado": true,
+  "termo_busca_utilizado": "termos múltiplos utilizados",
+  "estrategia": "Contingência PRO: Inferência de Catálogo B2B + Equivalente Funcional Aceito",
+  "num_precos_encontrados": 5,
+  "precos_coletados": [
+    // ... (lista de preços)
+  ]
+}
+`;
+*/
+
 const PROMPT_BUSCA_PRECO = (dados) => `Você é um extrator de preços. Colete MÍNIMO 3 preços NOVOS no Brasil.
 
 PRODUTO:
