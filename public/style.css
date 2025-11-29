@@ -50,7 +50,7 @@ body {
     font-weight: 500;
 }
 
-/* ✅ BOTÃO LIMPAR TUDO */
+/* BOTÃO LIMPAR TUDO */
 .btn-clear-all {
     background: #ef4444;
     color: white;
@@ -258,7 +258,7 @@ body {
     transform: scale(1.1);
 }
 
-/* ✅ FORM - DESKTOP: 2 COLUNAS, MOBILE: RESPONSIVO */
+/* ✅ FORM - 2 COLUNAS NO DESKTOP */
 .form-row {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -270,11 +270,10 @@ body {
     position: relative;
     display: flex;
     flex-direction: column;
-    margin-bottom: 0; /* Removido margem quando dentro de form-row */
 }
 
-/* ✅ FORM-GROUP SOLO (sem form-row) */
-.form-group:not(.form-row > .form-group) {
+/* ✅ FORM-GROUP SOLO (fora de form-row) */
+.form-group:not(.form-row .form-group) {
     margin-bottom: 15px;
 }
 
@@ -504,6 +503,17 @@ textarea[readonly]:active {
     font-weight: 500;
 }
 
+/* Teclas de atalho */
+kbd {
+    background: #edf2f7;
+    border: 1px solid #cbd5e0;
+    border-radius: 3px;
+    padding: 2px 6px;
+    font-family: monospace;
+    font-size: 12px;
+    color: #2d3748;
+}
+
 /* ✅ RESPONSIVE - MOBILE */
 @media (max-width: 768px) {
     body {
@@ -527,32 +537,35 @@ textarea[readonly]:active {
     }
 
     .card {
-        padding: 15px; /* ← Reduzido de 20px */
+        padding: 15px;
     }
 
     /* ✅ GRID 2x2 NO MOBILE */
     .photos-grid {
         grid-template-columns: repeat(2, 1fr);
-        gap: 10px; /* ← Reduzido de 15px */
+        gap: 10px;
     }
 
-    /* ✅ FORM-ROW: 2 COLUNAS COM GAP MENOR NO MOBILE */
+    /* ✅ FORM-ROW: 1 COLUNA NO MOBILE */
     .form-row {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 10px; /* ← Gap menor para não estourar */
+        grid-template-columns: 1fr;
+        gap: 12px;
     }
 
-    /* ✅ Inputs menores no mobile */
+    /* ✅ Inputs e labels ajustados para mobile */
     .form-group input,
     .form-group select,
     .form-group textarea {
-        padding: 10px 12px; /* ← Reduzido de 12px 15px */
+        padding: 10px 12px;
         font-size: 14px;
     }
 
-    /* ✅ Labels menores */
     .form-group label {
-        font-size: 12px; /* ← Reduzido de 13px */
+        font-size: 12px;
+    }
+
+    .field-hint {
+        font-size: 10px;
     }
 
     .action-buttons {
@@ -566,15 +579,4 @@ textarea[readonly]:active {
     .result-grid {
         grid-template-columns: 1fr;
     }
-}
-
-/* Teclas de atalho */
-kbd {
-    background: #edf2f7;
-    border: 1px solid #cbd5e0;
-    border-radius: 3px;
-    padding: 2px 6px;
-    font-family: monospace;
-    font-size: 12px;
-    color: #2d3748;
 }
