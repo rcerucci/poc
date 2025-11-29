@@ -47,7 +47,7 @@ const FATORES_DEPRECIACAO = {
     }
 };
 
-// --- Função para Gerar Termos de Busca Determinísticos ---
+// --- Função para Gerar Termos de Busca Padronizados ---
 function gerarTermosBuscaPadronizados(nome_produto, marca, modelo, descricao) {
     console.log('🔍 [BUSCA] Gerando termos de busca padronizados...');
     
@@ -60,7 +60,7 @@ function gerarTermosBuscaPadronizados(nome_produto, marca, modelo, descricao) {
         termos.push(nome_produto);
     }
     
-    // Termo 2: Nome do produto + modelo (se houver)
+    // Termo 2: Nome do produto + modelo (se houver e for curto)
     if (modelo && modelo !== 'N/A' && modelo.length < 50) {
         termos.push(nome_produto + ' ' + modelo);
     }
@@ -231,7 +231,7 @@ module.exports = async (req, res) => {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    console.log('🔍 [ETAPA2] Iniciando busca inteligente de preços...');
+    console.log('🔍 [ETAPA2] Iniciando busca RIGOROSA de preços...');
 
     try {
         const {
@@ -265,74 +265,166 @@ module.exports = async (req, res) => {
         const termosBusca = gerarTermosBuscaPadronizados(nome_produto, marca, modelo, descricao);
         const dataAtual = new Date().toISOString().split('T')[0];
         
-        // --- PROMPT COM TERMOS FIXOS (MAIS DETERMINÍSTICO) ---
-        const promptBuscaPreco = `Você é um especialista em precificação de ativos. Busque preços de mercado de produtos NOVOS no Brasil.
+        // --- PROMPT ANTI-ALUCINAÇÃO (MUITO RIGOROSO) ---
+        const promptBuscaPreco = `Você é um especialista em precificação. Busque preços REAIS de produtos NOVOS no mercado brasileiro.
 
 PRODUTO:
 Nome: ${nome_produto}
 Categoria: ${categoria_depreciacao}
+Descrição: ${descricao || 'N/A'}
 
-TERMOS DE BUSCA OBRIGATÓRIOS (use EXATAMENTE estes termos):
+TERMOS DE BUSCA OBRIGATÓRIOS (use EXATAMENTE estes):
 ${termosBusca.map((t, i) => (i + 1) + '. "' + t + '"').join('\n')}
 
-INSTRUÇÕES CRÍTICAS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ REGRAS CRÍTICAS - LEIA COM ATENÇÃO - VIOLAÇÕES SERÃO REJEITADAS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-1. Use APENAS os termos de busca acima (não invente novos termos)
-2. Para cada termo, busque produtos NOVOS (nunca usados)
-3. Aceite produtos EQUIVALENTES (mesma função/categoria)
-4. IGNORE cores, tamanhos específicos, acabamentos
-5. Priorize sites B2B (atacado/distribuidores)
+1. APENAS PREÇOS REAIS ENCONTRADOS VIA GOOGLE SEARCH
+   ❌ NÃO invente preços
+   ❌ NÃO estime valores
+   ❌ NÃO use "preços aproximados" ou "baseado em similares"
+   ❌ NÃO complete com chutes se não encontrar o mínimo
+   ❌ NÃO use "média de mercado" ou "valor estimado"
+   ✅ Se encontrou 2 preços reais, retorne APENAS esses 2
+   ✅ HONESTIDADE ABSOLUTA: É melhor retornar FALSE do que inventar
 
-FONTES VÁLIDAS (Brasil):
-- B2B: Atacado, distribuidores, fornecedores industriais (tipo_fonte: "B2B")
-- B2C: Mercado Livre, Amazon, Magazine Luiza (tipo_fonte: "B2C")
+2. MÍNIMO ABSOLUTO: 3 PREÇOS REAIS E VERIFICÁVEIS
+   - Se encontrou MENOS de 3 preços reais → "preco_encontrado": false
+   - Se encontrou 3+ preços reais → "preco_encontrado": true
+   - Não arredonde para cima: 2 preços ≠ 3 preços
 
-REGRAS DE PREÇOS:
-- Mínimo 5 preços, máximo 10 preços
-- Valores em R$ (reais)
-- Preço UNITÁRIO (não kits)
-- Data: YYYY-MM-DD (hoje: ${dataAtual})
-- Produtos NOVOS apenas
+3. PRODUTOS NOVOS APENAS (DE FÁBRICA)
+   - Ignore produtos usados, seminovos, recondicionados, outlet
+   - Apenas produtos novos, lacrados, com nota fiscal
 
-FORMATO DE RESPOSTA (JSON puro, sem markdown):
+4. FONTES VÁLIDAS NO BRASIL:
+   ✅ B2B: Distribuidores industriais, atacado, fornecedores (tipo_fonte: "B2B")
+   ✅ B2C: Mercado Livre (só "novo"), Amazon, Magazine Luiza (tipo_fonte: "B2C")
+   ❌ Fóruns, classificados, OLX, anúncios particulares
+   ❌ Sites internacionais sem conversão adequada
+
+5. CADA PREÇO DEVE OBRIGATORIAMENTE TER:
+   - Valor numérico válido em R$ (não "sob consulta")
+   - Site/loja ESPECÍFICA (não "Loja X" ou "Fornecedor genérico")
+   - Data da oferta em formato YYYY-MM-DD
+   - Descrição REAL do produto encontrado
+   - URL do produto (quando disponível)
+
+6. VALIDAÇÃO DE PREÇOS:
+   - Todos os preços devem estar na mesma ordem de grandeza
+   - Se encontrar R$ 100 e R$ 5.000 para o mesmo produto → investigar
+   - Produtos equivalentes devem ter preços similares (±50%)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📤 FORMATO DE RESPOSTA (JSON puro, sem markdown, sem crases):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CASO 1 - SE ENCONTROU 3+ PREÇOS REAIS:
 {
   "preco_encontrado": true,
-  "termos_busca_utilizados": ["termo exato 1", "termo exato 2"],
+  "num_precos_encontrados": 5,
+  "termos_busca_utilizados": ["Carrinho Porta-Ferramentas", "carrinho porta-mandris"],
   "coleta_de_precos": [
     {
-      "valor": 450.00,
+      "valor": 1250.00,
       "tipo_fonte": "B2B",
-      "site": "Nome da Loja",
+      "site": "Ferramentas Industrial SP",
       "data_oferta": "2025-11-28",
-      "produto_encontrado": "Descrição produto"
+      "produto_encontrado": "Carrinho porta-mandris 40 slots metal azul",
+      "url": "https://exemplo.com/produto123"
+    },
+    {
+      "valor": 1180.00,
+      "tipo_fonte": "B2C",
+      "site": "Mercado Livre",
+      "data_oferta": "2025-11-27",
+      "produto_encontrado": "Carrinho organizador ferramentas 2 prateleiras",
+      "url": "https://mercadolivre.com/MLB123"
     }
   ],
-  "observacoes": "Metodologia de busca utilizada"
+  "observacoes": "Encontrados 5 preços reais de carrinhos porta-mandris/ferramentas industriais. Preços consistentes na faixa R$ 1.100-1.400."
 }
 
-Se não encontrar:
+CASO 2 - SE ENCONTROU MENOS DE 3 PREÇOS REAIS:
 {
   "preco_encontrado": false,
-  "motivo": "Explicação",
-  "termos_busca_utilizados": ["termos tentados"]
+  "num_precos_encontrados": 1,
+  "motivo": "Encontrado apenas 1 preço real verificável. Produto muito específico (carrinho porta-mandris industrial), poucos fornecedores no mercado brasileiro.",
+  "termos_busca_utilizados": ["Carrinho Porta-Ferramentas", "carrinho porta-mandris"],
+  "precos_parciais": [
+    {
+      "valor": 2800.00,
+      "site": "WorldTools Brasil",
+      "produto_encontrado": "Carrinho porta-cones CNC industrial",
+      "observacao": "Único fornecedor encontrado com estoque"
+    }
+  ]
 }
 
-IMPORTANTE:
-- Use os MESMOS termos de busca sempre (para consistência)
-- Retorne APENAS JSON
-- Seja DETERMINÍSTICO (mesma busca = mesmos resultados aproximados)`;
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚫 EXEMPLOS DE ERROS GRAVES - NUNCA FAÇA ISSO:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-        console.log('🤖 [ETAPA2] Inicializando modelo Gemini com Google Search...');
+❌ ERRO 1 - Inventar preços para completar mínimo:
+{
+  "preco_encontrado": true,
+  "coleta_de_precos": [
+    {"valor": 800.00, "site": "Mercado Livre"}, ← OK (real)
+    {"valor": 900.00, "site": "Estimativa baseada em similares"}, ← INVENTADO!
+    {"valor": 950.00, "site": "Valor aproximado"} ← INVENTADO!
+  ]
+}
+CORRETO: Retornar "preco_encontrado": false com 1 preço parcial
+
+❌ ERRO 2 - Usar fontes genéricas:
+{
+  "coleta_de_precos": [
+    {"valor": 1200.00, "site": "Loja X"}, ← Genérico demais
+    {"valor": 1300.00, "site": "Fornecedor brasileiro"} ← Inespecífico
+  ]
+}
+CORRETO: Nomes reais: "Anhanguera Ferramentas", "Dutra Máquinas", etc.
+
+❌ ERRO 3 - Incluir produtos usados:
+{
+  "coleta_de_precos": [
+    {"valor": 450.00, "produto_encontrado": "Carrinho usado bom estado"} ← USADO!
+  ]
+}
+CORRETO: Apenas produtos NOVOS
+
+❌ ERRO 4 - Preços muito discrepantes sem justificativa:
+{
+  "coleta_de_precos": [
+    {"valor": 200.00}, ← Muito baixo
+    {"valor": 1200.00},
+    {"valor": 5000.00} ← Muito alto (provavelmente kit ou erro)
+  ]
+}
+CORRETO: Investigar outliers, retornar apenas preços consistentes
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚡ LEMBRETE FINAL:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- QUALIDADE > QUANTIDADE: 3 preços REAIS > 10 preços INVENTADOS
+- HONESTIDADE > COMPLETUDE: Melhor "não encontrado" que preço falso
+- VERIFICABILIDADE: Todo preço deve poder ser conferido no Google
+- Data de hoje: ${dataAtual}
+- Retorne APENAS JSON puro (sem markdown)`;
+
+        console.log('🤖 [ETAPA2] Inicializando Gemini com Google Search...');
 
         const model = genAI.getGenerativeModel({
             model: MODEL,
             tools: [{ googleSearch: {} }],
             generationConfig: {
-                temperature: 0.1  // ⬇️ TEMPERATURA MÍNIMA para mais determinismo
+                temperature: 0.1  // Mínimo para determinismo
             }
         });
 
-        console.log('📤 [ETAPA2] Enviando requisição para Gemini...');
+        console.log('📤 [ETAPA2] Enviando requisição...');
 
         const result = await model.generateContent(promptBuscaPreco);
         const response = result.response;
@@ -352,32 +444,69 @@ IMPORTANTE:
             const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
                 jsonText = jsonMatch[0];
-                console.log('🎯 [ETAPA2] JSON isolado do texto');
+                console.log('🎯 [ETAPA2] JSON isolado');
             }
-            
-            jsonText = jsonText.trim();
 
             resultadoBusca = JSON.parse(jsonText);
-            console.log('✅ [ETAPA2] JSON parseado com sucesso');
-            
-            if (resultadoBusca.termos_busca_utilizados) {
-                console.log('🔍 [ETAPA2] Termos utilizados:', resultadoBusca.termos_busca_utilizados);
-            }
+            console.log('✅ [ETAPA2] JSON parseado');
             
         } catch (parseError) {
             console.error('❌ [ETAPA2] ERRO ao parsear JSON:', parseError.message);
-            console.error('📋 [ETAPA2] Texto original:', text);
-            throw new Error('Resposta não é um JSON válido: ' + parseError.message);
+            console.error('📋 [ETAPA2] Texto:', text);
+            throw new Error('Resposta não é JSON válido: ' + parseError.message);
+        }
+
+        // --- VALIDAÇÃO ANTI-ALUCINAÇÃO ---
+        if (resultadoBusca.preco_encontrado) {
+            console.log('🔍 [VALIDAÇÃO] Verificando se LLM inventou preços...');
+            
+            const precosValidos = resultadoBusca.coleta_de_precos.filter(p => {
+                const siteValido = p.site && 
+                    p.site !== 'N/A' &&
+                    !p.site.toLowerCase().includes('estimat') &&
+                    !p.site.toLowerCase().includes('aproxim') &&
+                    !p.site.toLowerCase().includes('baseado') &&
+                    !p.site.toLowerCase().includes('média') &&
+                    !p.site.toLowerCase().includes('loja x') &&
+                    !p.site.toLowerCase().includes('fornecedor x');
+                
+                const valorValido = p.valor && p.valor > 0;
+                
+                return siteValido && valorValido;
+            });
+            
+            console.log('📊 [VALIDAÇÃO] Preços informados: ' + resultadoBusca.coleta_de_precos.length);
+            console.log('📊 [VALIDAÇÃO] Preços válidos: ' + precosValidos.length);
+            
+            if (precosValidos.length < 3) {
+                console.log('⚠️ [VALIDAÇÃO] LLM retornou menos de 3 preços REAIS!');
+                console.log('📋 [VALIDAÇÃO] Preços recebidos:', JSON.stringify(resultadoBusca.coleta_de_precos, null, 2));
+                
+                // Forçar como "não encontrado"
+                resultadoBusca.preco_encontrado = false;
+                resultadoBusca.num_precos_encontrados = precosValidos.length;
+                resultadoBusca.motivo = 'Apenas ' + precosValidos.length + ' preço(s) real(is) encontrado(s). Mínimo necessário: 3 preços verificáveis.';
+                resultadoBusca.precos_parciais = precosValidos;
+                
+                console.log('🔄 [VALIDAÇÃO] Convertido para preco_encontrado=false');
+            } else {
+                // Atualizar com apenas os preços válidos
+                resultadoBusca.coleta_de_precos = precosValidos;
+                resultadoBusca.num_precos_encontrados = precosValidos.length;
+                console.log('✅ [VALIDAÇÃO] ' + precosValidos.length + ' preços reais confirmados');
+            }
         }
 
         if (!resultadoBusca.preco_encontrado) {
-            console.log('⚠️ [ETAPA2] Preço não encontrado');
+            console.log('⚠️ [ETAPA2] Preço não encontrado ou insuficiente');
             return res.status(200).json({
                 status: 'Falha',
-                mensagem: 'Não foi possível encontrar preço: ' + (resultadoBusca.motivo || 'Produto não encontrado') + '. Insira manualmente.',
+                mensagem: 'Não foi possível encontrar preços suficientes: ' + (resultadoBusca.motivo || 'Produto muito específico') + '. Insira valor manualmente.',
                 dados: { 
                     preco_encontrado: false,
-                    termos_tentados: resultadoBusca.termos_busca_utilizados || []
+                    num_precos_encontrados: resultadoBusca.num_precos_encontrados || 0,
+                    termos_tentados: resultadoBusca.termos_busca_utilizados || [],
+                    precos_parciais: resultadoBusca.precos_parciais || []
                 }
             });
         }
@@ -395,8 +524,32 @@ IMPORTANTE:
             });
         }
 
-        const valorMercado = resultadoEMA.valor_mercado;
-        console.log('✅ [ETAPA2] Valor de mercado: R$ ' + valorMercado);
+        // --- VALIDAÇÃO ESTATÍSTICA (MEDIANA SE ALTA VARIAÇÃO) ---
+        let valorMercado = resultadoEMA.valor_mercado;
+        let metodoUtilizado = 'Média Exponencial Ponderada';
+        const { coeficiente_variacao } = resultadoEMA.estatisticas;
+
+        if (coeficiente_variacao > 40) {
+            console.log('⚠️ [VALIDAÇÃO] Alta variação detectada: ' + coeficiente_variacao.toFixed(1) + '%');
+            console.log('🔄 [VALIDAÇÃO] Alternando para MEDIANA (mais robusta contra outliers)');
+            
+            const valores = resultadoEMA.detalhes_precos
+                .map(p => p.valor)
+                .sort((a, b) => a - b);
+            
+            const mediana = valores[Math.floor(valores.length / 2)];
+            
+            console.log('📊 [VALIDAÇÃO] Média EMA: R$ ' + valorMercado.toFixed(2));
+            console.log('📊 [VALIDAÇÃO] Mediana: R$ ' + mediana.toFixed(2));
+            console.log('📊 [VALIDAÇÃO] Diferença: R$ ' + Math.abs(valorMercado - mediana).toFixed(2) + ' (' + ((Math.abs(valorMercado - mediana) / valorMercado) * 100).toFixed(1) + '%)');
+            
+            valorMercado = mediana;
+            metodoUtilizado = 'Mediana (alta variação de preços detectada)';
+        } else {
+            console.log('✅ [VALIDAÇÃO] Variação aceitável: ' + coeficiente_variacao.toFixed(1) + '%');
+        }
+
+        console.log('✅ [ETAPA2] Valor de mercado final: R$ ' + valorMercado.toFixed(2));
 
         // --- APLICAR DEPRECIAÇÃO ---
         const estado = estado_conservacao || 'Bom';
@@ -405,7 +558,7 @@ IMPORTANTE:
         const fatorDepreciacao = FATORES_DEPRECIACAO[estado]?.[categoria] || 0.7;
         const valorAtual = valorMercado * fatorDepreciacao;
 
-        console.log('📉 [ETAPA2] Fator depreciação: ' + fatorDepreciacao + ' | Valor atual: R$ ' + valorAtual.toFixed(2));
+        console.log('📉 [ETAPA2] Fator: ' + fatorDepreciacao + ' | Valor atual: R$ ' + valorAtual.toFixed(2));
 
         const dadosCompletos = {
             numero_patrimonio: numero_patrimonio,
@@ -419,32 +572,36 @@ IMPORTANTE:
                 valor_atual_estimado: parseFloat(valorAtual.toFixed(2)),
                 fator_depreciacao: fatorDepreciacao,
                 percentual_depreciacao: ((1 - fatorDepreciacao) * 100).toFixed(0) + '%',
-                fonte_preco: 'Média Exponencial Ponderada',
-                metodo_calculo: 'Busca padronizada + EMA com IQR + Pesos B2B/recência',
+                fonte_preco: metodoUtilizado,
+                metodo_calculo: 'Busca rigorosa Google → Validação anti-alucinação → ' + metodoUtilizado + ' → Depreciação',
                 score_confianca: resultadoEMA.estatisticas.score_confianca,
-                observacoes: resultadoBusca.observacoes || 'Calculado via média exponencial'
+                observacoes: (resultadoBusca.observacoes || '') + (coeficiente_variacao > 40 ? ' | Alta variação (' + coeficiente_variacao.toFixed(0) + '%), usada mediana.' : '')
             },
             analise_estatistica: resultadoEMA.estatisticas,
             precos_coletados: resultadoEMA.detalhes_precos,
             estrategia_busca: {
                 termos_padronizados: termosBusca,
                 termos_utilizados: resultadoBusca.termos_busca_utilizados || [],
-                produtos_equivalentes_aceitos: true
+                num_precos_reais_encontrados: resultadoBusca.num_precos_encontrados || resultadoEMA.estatisticas.num_precos_coletados,
+                produtos_equivalentes_aceitos: true,
+                validacao_anti_alucinacao: true
             },
             metadados: {
                 data_busca: new Date().toISOString(),
                 modelo_ia: MODEL,
                 temperatura: 0.1,
-                estrategia: 'Busca Padronizada → EMA → Depreciação'
+                estrategia: 'Busca Rigorosa (anti-alucinação) → Validação → Estatística → Depreciação'
             }
         };
 
-        console.log('✅ [ETAPA2] Concluído! Mercado: R$ ' + valorMercado + ' | Atual: R$ ' + valorAtual.toFixed(2));
+        console.log('✅ [ETAPA2] Processamento concluído!');
+        console.log('💰 [ETAPA2] Mercado: R$ ' + valorMercado.toFixed(2) + ' | Atual: R$ ' + valorAtual.toFixed(2));
+        console.log('📊 [ETAPA2] Preços reais: ' + resultadoBusca.num_precos_encontrados + ' | Confiança: ' + resultadoEMA.estatisticas.score_confianca.toFixed(0) + '%');
 
         return res.status(200).json({
             status: 'Sucesso',
             dados: dadosCompletos,
-            mensagem: 'Preço calculado (confiança: ' + resultadoEMA.estatisticas.score_confianca.toFixed(0) + '%)'
+            mensagem: 'Valores calculados com ' + resultadoBusca.num_precos_encontrados + ' preços reais (confiança: ' + resultadoEMA.estatisticas.score_confianca.toFixed(0) + '%)'
         });
         
     } catch (error) {
