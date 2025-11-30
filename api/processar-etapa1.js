@@ -176,13 +176,32 @@ module.exports = async (req, res) => {
             ...imageParts
         ]);
         
-        // ===== 📊 AUDITORIA DE TOKENS =====
+        // ===== 📊 AUDITORIA DE TOKENS COM CUSTOS REAIS =====
         const usage = result.response.usageMetadata;
+        
+        const CUSTO_INPUT_POR_TOKEN = 0.0000016;   // R$ 1,60 por 1M tokens
+        const CUSTO_OUTPUT_POR_TOKEN = 0.0000133;  // R$ 13,34 por 1M tokens
+        
+        const tokensInput = usage?.promptTokenCount || 0;
+        const tokensOutput = usage?.candidatesTokenCount || 0;
+        const tokensTotal = usage?.totalTokenCount || 0;
+        
+        const custoInput = tokensInput * CUSTO_INPUT_POR_TOKEN;
+        const custoOutput = tokensOutput * CUSTO_OUTPUT_POR_TOKEN;
+        const custoTotal = custoInput + custoOutput;
+        
         console.log('📊 [ETAPA1-DIAGNÓSTICO] Tokens:', {
-            input: usage?.promptTokenCount,
-            output: usage?.candidatesTokenCount,
-            total: usage?.totalTokenCount,
-            custo_estimado: 'R$ ' + ((usage?.totalTokenCount || 0) * 0.00001).toFixed(4)
+            input: tokensInput,
+            output: tokensOutput,
+            total: tokensTotal,
+            custo_input: 'R$ ' + custoInput.toFixed(4),
+            custo_output: 'R$ ' + custoOutput.toFixed(4),
+            custo_total: 'R$ ' + custoTotal.toFixed(4)
+        });
+        
+        console.log('📝 [ETAPA1-DIAGNÓSTICO] Resposta:', {
+            caracteres: result.response.text().length,
+            tokens_estimados: Math.ceil(result.response.text().length / 4)
         });
         // ===== FIM AUDITORIA =====
         
@@ -190,11 +209,6 @@ module.exports = async (req, res) => {
         
         const response = result.response;
         const text = response.text();
-        
-        console.log('📝 [ETAPA1-DIAGNÓSTICO] Resposta:', {
-            caracteres: text.length,
-            tokens_estimados: Math.ceil(text.length / 4)
-        });
         
         // Parse JSON
         let dadosExtraidos;
@@ -278,17 +292,21 @@ module.exports = async (req, res) => {
                 confianca_ia: 95,
                 total_imagens_processadas: imagens.length,
                 modelo_ia: MODEL,
-                versao_sistema: '2.1-Padronizado-Otimizado',
-                tokens_consumidos: usage?.totalTokenCount || 0,
-                custo_extracao: parseFloat(((usage?.totalTokenCount || 0) * 0.00001).toFixed(4))
+                versao_sistema: '2.2-Custos-Reais',
+                tokens_input: tokensInput,
+                tokens_output: tokensOutput,
+                tokens_total: tokensTotal,
+                custo_input: parseFloat(custoInput.toFixed(4)),
+                custo_output: parseFloat(custoOutput.toFixed(4)),
+                custo_total: parseFloat(custoTotal.toFixed(4))
             }
         };
         
         console.log('✅ [ETAPA1] Extração concluída!');
         console.log('📦 [ETAPA1] Produto:', dadosExtraidos.nome_produto);
         console.log('🏷️ [ETAPA1] Marca/Modelo:', dadosExtraidos.marca + ' / ' + dadosExtraidos.modelo);
-        console.log('⚙️ [ETAPA1] Specs:', dadosExtraidos.especificacoes);
-        console.log('💰 [ETAPA1] Custo:', 'R$ ' + dadosCompletos.metadados.custo_extracao);
+        console.log('⚙️ [ETAPA1] Specs:', dadosExtraidos.especificacoes.substring(0, 50) + '...');
+        console.log('💰 [ETAPA1] Custo:', 'R$ ' + custoTotal.toFixed(4));
         
         return res.status(200).json({
             status: 'Sucesso',

@@ -46,120 +46,148 @@ const FATORES_DEPRECIACAO = {
     }
 };
 
-// --- Termos de Busca Padronizados ---
-function gerarTermosBusca(nome_produto, marca, modelo, descricao) {
-    console.log('🔍 [BUSCA] Gerando termos...');
-    
-    const termos = [];
-    
-    if (marca && marca !== 'N/A') {
-        termos.push(nome_produto + ' ' + marca);
-    } else {
-        termos.push(nome_produto);
+// --- Extrair Especificação Principal ---
+function extrairEspecificacaoPrincipal(especificacoes, nome_produto) {
+    if (!especificacoes || especificacoes === 'N/A') {
+        return nome_produto;
     }
     
-    if (modelo && modelo !== 'N/A' && modelo.length < 50) {
-        termos.push(nome_produto + ' ' + modelo);
-    }
+    // Padrões de especificações principais por categoria
+    const padroes = {
+        // Potência
+        kva: /(\d+\.?\d*)\s*kVA/i,
+        kw: /(\d+\.?\d*)\s*kW/i,
+        hp: /(\d+\.?\d*)\s*HP/i,
+        w: /(\d+\.?\d*)\s*W(?![a-z])/i,
+        
+        // Capacidade
+        gb: /(\d+)\s*GB/i,
+        tb: /(\d+)\s*TB/i,
+        litros: /(\d+\.?\d*)\s*L(?:itros)?/i,
+        
+        // Dimensões
+        polegadas: /(\d+\.?\d*)(?:"|''|\s*pol)/i,
+        metros: /(\d+\.?\d*)\s*m(?![a-z])/i,
+        
+        // Tensão/Corrente
+        volts: /(\d+)\s*V(?![a-z])/i,
+        amperes: /(\d+)\s*A(?![a-z])/i,
+        
+        // BTU (ar condicionado)
+        btu: /(\d+)\s*BTU/i
+    };
     
-    if (descricao && descricao !== 'N/A') {
-        const regexSinonimo = /também\s+conhecido\s+como\s+([^.]+)/i;
-        const match = descricao.match(regexSinonimo);
+    // Tentar encontrar especificação principal
+    for (const [tipo, regex] of Object.entries(padroes)) {
+        const match = especificacoes.match(regex);
         if (match) {
-            const sinonimos = match[1].split(/\s+ou\s+|,\s*/);
-            if (sinonimos.length > 0) {
-                termos.push(sinonimos[0].trim());
-            }
+            return match[0]; // Retorna a spec encontrada (ex: "30 kVA")
         }
     }
     
-    if (termos.length === 0) termos.push(nome_produto);
+    // Se não encontrou padrão, pegar primeiras palavras das specs
+    const palavras = especificacoes.split(/[,;]|\.(?=\s)/)[0].trim();
+    if (palavras.length > 100) {
+        return palavras.substring(0, 50) + '...';
+    }
+    return palavras;
+}
+
+// --- Prompt Inteligente com Exemplos Neutros ---
+const PROMPT_BUSCA_PRECO = (dados) => {
+    const especPrincipal = extrairEspecificacaoPrincipal(dados.especificacoes, dados.nome_produto);
     
-    console.log('📋 [BUSCA] Termos:', termos);
-    return termos;
-}
+    return `Você é um especialista em precificação de ativos para REPOSIÇÃO. Encontre 3-5 preços de produtos NOVOS no Brasil que possam SUBSTITUIR este item:
 
-// =========================================================================
-// ❌ CÓDIGO DE CONTINGÊNCIA (TODO: IMPLEMENTAR COM GEMINI PRO)
-//    - Este prompt deve ser usado APENAS se o PROMPT_BUSCA_PRECO falhar.
-// =========================================================================
+ATIVO A SUBSTITUIR:
+- Nome: ${dados.nome_produto}
+- Marca: ${dados.marca || 'Não especificada'}
+- Modelo: ${dados.modelo || 'Não especificado'}
+- Especificação CHAVE: ${especPrincipal}
+- Specs completas: ${dados.especificacoes || 'Não especificadas'}
 
-/*
-const PROMPT_BUSCA_PRECO_PRO_CONTINGENCIA = (dados) => `Você é um Extrator de Preços Sênior, designado para garantir a precificação de um ativo industrial ou de baixa liquidez onde modelos de IA mais baratos falharam. Colete MÍNIMO 3 preços NOVOS no Brasil.
+ESTRATÉGIA DE BUSCA INTELIGENTE:
 
-PRODUTO DE ALTO VALOR E BAIXA TRANSPARÊNCIA:
-Nome: ${dados.nome_produto}
-Marca: ${dados.marca || 'N/A'}
-Modelo: ${dados.modelo || 'N/A'}
-Specs: ${dados.especificacoes || 'N/A'}
+1. CONSTRUIR TERMO DE BUSCA:
+   - Se Marca+Modelo conhecidos: use ambos
+   - Se Marca/Modelo genéricos (N/A): foque na especificação CHAVE
+   - Use termos simples, não toda a especificação técnica
+   - Exemplo BOM: "impressora laser 40ppm duplex"
+   - Exemplo RUIM: "impressora laser monocromático duplex automático ADF 50 folhas rede ethernet WiFi classe A"
 
-***ESTRATÉGIA DE BUSCA (GEMINI PRO - PRIORIDADE NO RESULTADO):***
+2. HIERARQUIA DE ACEITAÇÃO (prioridade decrescente):
+   a) EXATO: Marca + Modelo idênticos
+   b) EQUIVALENTE: Mesma função + especificação CHAVE dentro de ±10%
+   c) SUBSTITUTO: Produto de mercado atual que substitui o original (mesmo com marca/modelo diferentes)
 
-1.  **EXECUTE BUSCA POR COMPONENTES E INFERÊNCIA:** Formule consultas que busquem o preço do item **EXATO** E **também** o **"preço de catálogo"** ou **"preço de tabela"** do fabricante/distribuidor. Use sua capacidade analítica para inferir um valor de referência a partir de documentos B2B.
+3. CRITÉRIOS DE EQUIVALÊNCIA PARA REPOSIÇÃO:
+   - Especificação CHAVE deve estar dentro de ±10%
+   - Especificações secundárias podem variar
+   - Produtos descontinuados: aceitar SUCESSOR de linha
+   - Produtos sem marca: aceitar QUALQUER marca confiável com specs compatíveis
 
-2.  **ACEITAÇÃO FLEXÍVEL DE EQUIVALENTES (Regra de Sobrevivência):**
-    a.  **Foco em Especificação Principal:** Aceite a diferença de tipo funcional (Ex: Autotransformador em vez de Isolador) **SE** a Especificação Técnica PRINCIPAL (kVA, HP, etc.) estiver dentro de $\pm5\%$ e o preço for o mais razoável e representativo para a classe de potência.
-    b.  **Contingência de Peso/Dimensões:** A diferença em especificações secundárias (como peso) DEVE ser usada para classificar o *tipo_match* como 'Equivalente' (Peso 1.0), mas **NÃO** deve ser uma causa para rejeitar o preço, a menos que a Especificação Principal também falhe.
+4. FONTES VÁLIDAS:
+   - Mercado Livre, Amazon, Magazine Luiza
+   - Distribuidores B2B com preço visível
+   - IGNORAR: "Solicitar orçamento", usados, kits
 
-3.  **HIERARQUIA DE FONTES:** Priorize preço verificável, mesmo que B2C, sobre cotação B2B não transparente.
+5. MÍNIMO: 3 preços de produtos NOVOS com preços visíveis
 
-4.  **REJEIÇÃO CONDICIONAL:** Se um preço for encontrado, mas tiver discrepância funcional/de peso, **USE-O** e classifique-o como 'Equivalente' (Peso 1.0). Rejeite APENAS se o preço estiver fora do range esperado do mercado.
+IMPORTANTE: Seu objetivo é encontrar o CUSTO DE REPOSIÇÃO. Um item antigo pode ter um substituto moderno com preço diferente, mas que cumpre a mesma função.
 
-***MÍNIMO:*** 3 preços REAIS ou INFERIDOS.
+EXEMPLOS DE BUSCA CORRETA:
 
-JSON (sem markdown): (Use o mesmo formato de saída da Etapa 2)
-{
-  "preco_encontrado": true,
-  "termo_busca_utilizado": "termos múltiplos utilizados",
-  "estrategia": "Contingência PRO: Inferência de Catálogo B2B + Equivalente Funcional Aceito",
-  "num_precos_encontrados": 5,
-  "precos_coletados": [
-    // ... (lista de preços)
-  ]
-}
-`;
-*/
+Notebook Dell i5 8GB:
+- Termo: "notebook Dell i5 8GB"
+- Aceitar: Dell Inspiron 15 3000 (modelo específico atual)
+- Resultado: {"tipo_match": "Equivalente", "justificativa": "Mesmo fabricante, specs compatíveis"}
 
-const PROMPT_BUSCA_PRECO = (dados) => `Busque 3+ preços NOVOS no Brasil para:
-Produto: ${dados.nome_produto}
-Marca: ${dados.marca || 'N/A'}
-Modelo: ${dados.modelo || 'N/A'}
-Specs: ${dados.especificacoes || 'N/A'}
+Furadeira 710W 220V:
+- Termo: "furadeira 710W"
+- Aceitar: Makita HP1640 710W OU Bosch GSB 13 RE 650W
+- Resultado: {"tipo_match": "Equivalente", "justificativa": "710W (exato) ou 650W (dentro de ±10%)"}
 
-REGRAS:
-1. Termo de busca: Use marca+modelo se disponíveis, senão nome+specs principais
-2. Aceitar: Modelo exato OU equivalente com spec principal ±10% (ex: 20kVA vs 22kVA)
-3. APENAS produtos novos (não usados)
-4. APENAS preços visíveis (ignore "solicitar orçamento")
-5. Fontes: Mercado Livre, Amazon, Magazine Luiza, B2B Brasil
+Ar Condicionado 12000 BTU:
+- Termo: "ar condicionado 12000 BTU inverter"
+- Aceitar: Samsung 12000 BTU OU LG 11500 BTU OU Midea 13000 BTU
+- Resultado: {"tipo_match": "Equivalente", "justificativa": "11500-13000 BTU (±10% de 12000)"}
+
+Gerador 6500W diesel:
+- Termo: "gerador diesel 6500W"
+- Aceitar: Toyama TDG8000 (8000W) OU Honda EG6500 (6500W)
+- Resultado: {"tipo_match": "Substituto", "justificativa": "8000W substitui 6500W com margem"}
+
+Impressora laser 40ppm:
+- Termo: "impressora laser 40ppm duplex"
+- Aceitar: HP M428fdw (40ppm) OU Brother HL-L6200DW (48ppm)
+- Resultado: {"tipo_match": "Equivalente", "justificativa": "40-48ppm (dentro de ±10%)"}
 
 JSON (sem markdown):
-Sucesso:
 {
   "preco_encontrado": true,
-  "termo_busca_utilizado": "termo usado",
-  "estrategia": "Exato/Equivalente",
+  "termo_busca_utilizado": "termo simples usado",
+  "estrategia": "Exato/Equivalente/Substituto - breve explicação",
   "num_precos_encontrados": 4,
   "precos_coletados": [
     {
       "valor": 1599.90,
-      "fonte": "Loja",
-      "tipo_match": "Exato",
-      "produto": "Nome completo",
-      "url": "URL"
+      "fonte": "Nome da loja",
+      "tipo_match": "Equivalente",
+      "produto": "Nome do produto encontrado",
+      "justificativa": "Spec chave compatível (detalhe)"
     }
   ]
 }
 
-Falha:
+Se <3 preços:
 {
   "preco_encontrado": false,
-  "motivo": "explicação breve",
-  "termo_busca_utilizado": "termo",
-  "num_precos_encontrados": 0,
+  "motivo": "Razão específica do que tentou",
+  "termo_busca_utilizado": "termo tentado",
+  "num_precos_encontrados": 1,
   "precos_coletados": []
 }`;
-
+};
 
 // --- Cálculo EMA com Pesos ---
 function calcularMediaPonderada(coleta_precos) {
@@ -206,7 +234,8 @@ function calcularMediaPonderada(coleta_precos) {
         // Peso por tipo de match
         let pesoMatch = 1.0;
         if (item.tipo_match === 'Exato') pesoMatch = 2.0;
-        else if (item.tipo_match === 'Parcial') pesoMatch = 1.5;
+        else if (item.tipo_match === 'Equivalente') pesoMatch = 1.5;
+        else if (item.tipo_match === 'Substituto') pesoMatch = 1.3;
         
         // Peso por fonte
         const pesoFonte = item.fonte?.includes('B2B') ? 1.5 : 1.0;
@@ -264,7 +293,8 @@ function calcularMediaPonderada(coleta_precos) {
             fonte: p.fonte,
             tipo_match: p.tipo_match,
             peso: parseFloat(p.peso_total.toFixed(3)),
-            produto: p.produto
+            produto: p.produto,
+            justificativa: p.justificativa || 'N/A'
         }))
     };
 }
@@ -299,7 +329,6 @@ module.exports = async (req, res) => {
             });
         }
 
-        const termosBusca = gerarTermosBusca(nome_produto, marca, modelo, descricao);
         const promptBusca = PROMPT_BUSCA_PRECO({
             nome_produto,
             marca,
@@ -318,20 +347,31 @@ module.exports = async (req, res) => {
         const result = await model.generateContent(promptBusca);
         const text = result.response.text();
 
-        // ===== 📊 BLOCO DE DIAGNÓSTICO =====
+        // ===== 📊 AUDITORIA COM CUSTOS REAIS =====
         const usage = result.response.usageMetadata;
-        console.log('📊 [DIAGNÓSTICO] Tokens:', {
-            input: usage?.promptTokenCount,
-            output: usage?.candidatesTokenCount,
-            total: usage?.totalTokenCount,
-            custo_estimado: 'R$ ' + ((usage?.totalTokenCount || 0) * 0.00001).toFixed(4)
+        
+        const CUSTO_INPUT_POR_TOKEN = 0.0000016;   // R$ 1,60/1M
+        const CUSTO_OUTPUT_POR_TOKEN = 0.0000133;  // R$ 13,34/1M
+        const GROUNDING_FREE_TIER_DIARIO = 1500;
+        
+        const tokensInput = usage?.promptTokenCount || 0;
+        const tokensOutput = usage?.candidatesTokenCount || 0;
+        const tokensTotal = usage?.totalTokenCount || 0;
+        
+        const custoTokens = (tokensInput * CUSTO_INPUT_POR_TOKEN) + 
+                            (tokensOutput * CUSTO_OUTPUT_POR_TOKEN);
+        const custoGrounding = 0; // FREE (assumindo <1500/dia)
+        const custoTotal = custoTokens + custoGrounding;
+        
+        console.log('📊 [ETAPA2-DIAGNÓSTICO] Tokens:', {
+            input: tokensInput,
+            output: tokensOutput,
+            total: tokensTotal,
+            custo_tokens: 'R$ ' + custoTokens.toFixed(4),
+            custo_grounding: 'GRÁTIS (free tier)',
+            custo_total: 'R$ ' + custoTotal.toFixed(4)
         });
-
-        console.log('📝 [DIAGNÓSTICO] Resposta:', {
-            caracteres: text.length,
-            tokens_estimados: Math.ceil(text.length / 4)
-        });
-        // ===== FIM DO DIAGNÓSTICO =====
+        // ===== FIM AUDITORIA =====
 
         console.log('📥 [ETAPA2] Resposta recebida');
 
@@ -416,14 +456,20 @@ module.exports = async (req, res) => {
             analise_estatistica: resultadoEMA.estatisticas,
             precos_coletados: resultadoEMA.detalhes_precos,
             estrategia_busca: {
-                termos_padronizados: termosBusca,
                 termo_utilizado: resultadoBusca.termo_busca_utilizado,
                 estrategia: resultadoBusca.estrategia,
                 num_precos_reais: resultadoBusca.num_precos_encontrados
             },
             metadados: {
                 data_busca: new Date().toISOString(),
-                modelo_ia: MODEL
+                modelo_ia: MODEL,
+                versao_sistema: '2.2-Custos-Reais-Busca-Inteligente',
+                tokens_input: tokensInput,
+                tokens_output: tokensOutput,
+                tokens_total: tokensTotal,
+                custo_tokens: parseFloat(custoTokens.toFixed(4)),
+                custo_grounding: parseFloat(custoGrounding.toFixed(4)),
+                custo_total: parseFloat(custoTotal.toFixed(4))
             }
         };
 
