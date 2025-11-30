@@ -79,7 +79,7 @@ function gerarTermosBusca(nome_produto, marca, modelo, descricao) {
     return termos;
 }
 
-// ✅ PROMPT OTIMIZADO - REDUÇÃO DE 80% NOS TOKENS
+// ✅ PROMPT OTIMIZADO
 const PROMPT_BUSCA_PRECO = (dados) => `Busque 3-5 preços NOVOS no Brasil de:
 
 PRODUTO: ${dados.nome_produto}
@@ -96,9 +96,9 @@ REGRAS:
 
 IMPORTANTE: Se não encontrar 3 preços reais, retorne quantos encontrar (1 ou 2 é OK).
 
-JSON (sem markdown, máximo 800 tokens):
+Retorne JSON puro (sem markdown):
 {
-  "preco_encontrado": true/false,
+  "preco_encontrado": true,
   "termo_busca_utilizado": "termo usado",
   "num_precos_encontrados": 4,
   "precos_coletados": [
@@ -120,7 +120,7 @@ Se falhou:
   "precos_coletados": []
 }`;
 
-// ✅ CÁLCULO DE MÉDIA ADAPTATIVO (aceita 1+ preços)
+// ✅ CÁLCULO DE MÉDIA ADAPTATIVO
 function calcularMediaPonderada(coleta_precos) {
     console.log('📊 [EMA] Calculando média ponderada...');
     
@@ -141,7 +141,6 @@ function calcularMediaPonderada(coleta_precos) {
 
     console.log('✅ [EMA] ' + precosValidos.length + ' preços válidos');
 
-    // ✅ REMOVER OUTLIERS APENAS SE TIVER 4+ PREÇOS
     let precosFiltrados = precosValidos;
     
     if (precosValidos.length >= 4) {
@@ -163,35 +162,29 @@ function calcularMediaPonderada(coleta_precos) {
         console.log('✅ [EMA] ' + precosFiltrados.length + ' após outliers');
     }
 
-    // ✅ PESOS OTIMIZADOS (PRIORIZA B2C)
     const dataAtual = new Date();
     const precosComPeso = precosFiltrados.map(item => {
-        // Peso por tipo de match
         let pesoMatch = 1.0;
         if (item.tipo_match === 'Exato') pesoMatch = 2.0;
         else if (item.tipo_match === 'Parcial') pesoMatch = 1.5;
         
-        // ✅ PESO POR FONTE (INVERTIDO - B2C MAIOR)
         let pesoFonte = 1.0;
         const fonteLower = item.fonte?.toLowerCase() || '';
         
-        // B2C (alta confiança)
         if (fonteLower.includes('mercado livre') || 
             fonteLower.includes('amazon') || 
             fonteLower.includes('magalu') ||
             fonteLower.includes('magazine') ||
             fonteLower.includes('americanas') ||
             fonteLower.includes('submarino')) {
-            pesoFonte = 2.0; // ✅ B2C tem PESO MAIOR
+            pesoFonte = 2.0;
         }
-        // B2B (média confiança)
         else if (fonteLower.includes('b2b') || 
                  fonteLower.includes('distribui') ||
                  fonteLower.includes('atacad')) {
             pesoFonte = 1.5;
         }
         
-        // Peso por recência
         let pesoRecencia = 1.0;
         if (item.data_oferta) {
             try {
@@ -213,24 +206,20 @@ function calcularMediaPonderada(coleta_precos) {
         peso: p.peso_total.toFixed(3)
     })));
 
-    // ✅ ESTRATÉGIA ADAPTATIVA BASEADA NA QUANTIDADE
     let valorMercado;
     let metodo;
     
     if (precosFiltrados.length === 1) {
-        // 1 preço: usar direto
         valorMercado = precosFiltrados[0].valor;
         metodo = 'Preço Único';
         console.log('💰 [EMA] Usando preço único: R$ ' + valorMercado.toFixed(2));
         
     } else if (precosFiltrados.length === 2) {
-        // 2 preços: média simples
         valorMercado = (precosFiltrados[0].valor + precosFiltrados[1].valor) / 2;
         metodo = 'Média Simples (2 preços)';
         console.log('💰 [EMA] Média de 2 preços: R$ ' + valorMercado.toFixed(2));
         
     } else {
-        // 3+ preços: média ponderada
         const somaPonderada = precosComPeso.reduce((acc, p) => acc + (p.valor * p.peso_total), 0);
         const somaPesos = precosComPeso.reduce((acc, p) => acc + p.peso_total, 0);
         valorMercado = somaPonderada / somaPesos;
@@ -238,20 +227,18 @@ function calcularMediaPonderada(coleta_precos) {
         console.log('💰 [EMA] Média ponderada: R$ ' + valorMercado.toFixed(2));
     }
 
-    // Estatísticas
     const media = precosComPeso.reduce((acc, p) => acc + p.valor, 0) / precosComPeso.length;
     const variancia = precosComPeso.reduce((acc, p) => acc + Math.pow(p.valor - media, 2), 0) / precosComPeso.length;
     const desvioPadrao = Math.sqrt(variancia);
     const coefVariacao = precosComPeso.length > 1 ? (desvioPadrao / media) * 100 : 0;
     
-    // ✅ SCORE DE CONFIANÇA ADAPTATIVO
     let scoreConfianca;
     if (precosFiltrados.length === 1) {
-        scoreConfianca = 60; // 1 preço = confiança moderada
+        scoreConfianca = 60;
     } else if (precosFiltrados.length === 2) {
-        scoreConfianca = 75; // 2 preços = confiança boa
+        scoreConfianca = 75;
     } else {
-        scoreConfianca = Math.max(50, Math.min(100, 100 - coefVariacao)); // 3+ = baseado em variação
+        scoreConfianca = Math.max(50, Math.min(100, 100 - coefVariacao));
     }
 
     console.log('📊 [EMA] Confiança: ' + scoreConfianca.toFixed(1) + '%');
@@ -320,14 +307,13 @@ module.exports = async (req, res) => {
 
         console.log('🤖 [ETAPA2] Chamando Gemini com Google Search...');
 
-        // ✅ CONFIGURAÇÃO SIMPLIFICADA (SEM dynamic_retrieval_config)
+        // ✅ CONFIGURAÇÃO CORRIGIDA (sem responseMimeType)
         const model = genAI.getGenerativeModel({
             model: MODEL,
-            tools: [{ googleSearch: {} }],  // ✅ SIMPLIFICADO
+            tools: [{ googleSearch: {} }],
             generationConfig: {
                 temperature: 0.1,
-                maxOutputTokens: 1500,  // ✅ LIMITE DE RESPOSTA
-                responseMimeType: 'application/json'
+                maxOutputTokens: 1500
             }
         });
 
@@ -336,7 +322,6 @@ module.exports = async (req, res) => {
 
         console.log('📥 [ETAPA2] Resposta recebida');
         
-        // Log de tokens se disponível
         if (result.response.usageMetadata) {
             console.log('📊 [ETAPA2] Tokens:', result.response.usageMetadata);
         }
@@ -348,24 +333,22 @@ module.exports = async (req, res) => {
             if (jsonMatch) jsonText = jsonMatch[0];
             resultadoBusca = JSON.parse(jsonText);
         } catch (e) {
+            console.error('❌ [PARSE] Texto recebido:', text.substring(0, 500));
             throw new Error('JSON inválido: ' + e.message);
         }
 
-        // ✅ VALIDAÇÃO ANTI-ALUCINAÇÃO RIGOROSA
         if (resultadoBusca.preco_encontrado) {
             const precosValidos = resultadoBusca.precos_coletados.filter(p => {
-                // Verificações rigorosas
                 const temFonte = p.fonte && p.fonte !== 'N/A' && p.fonte.length > 3;
                 const naoEhEstimativa = !p.fonte.toLowerCase().includes('estimat');
                 const temValor = p.valor && p.valor > 0;
-                const valorRazoavel = p.valor < 1000000; // Menos de 1 milhão
+                const valorRazoavel = p.valor < 1000000;
                 
                 return temFonte && naoEhEstimativa && temValor && valorRazoavel;
             });
 
             console.log(`✅ [VALIDAÇÃO] ${precosValidos.length} preços válidos de ${resultadoBusca.precos_coletados.length}`);
 
-            // ✅ ACEITAR 1+ PREÇOS (não exigir 3)
             if (precosValidos.length === 0) {
                 console.log('❌ [VALIDAÇÃO] Nenhum preço válido!');
                 resultadoBusca.preco_encontrado = false;
@@ -398,7 +381,6 @@ module.exports = async (req, res) => {
         let metodo = resultadoEMA.metodo;
         const { coeficiente_variacao, num_precos_apos_outliers } = resultadoEMA.estatisticas;
 
-        // ✅ USAR MEDIANA APENAS SE 4+ PREÇOS E ALTA VARIAÇÃO
         if (num_precos_apos_outliers >= 4 && coeficiente_variacao > 40) {
             console.log('⚠️ [VALIDAÇÃO] Alta variação: ' + coeficiente_variacao.toFixed(1) + '%');
             const valores = resultadoEMA.detalhes_precos.map(p => p.valor).sort((a, b) => a - b);
