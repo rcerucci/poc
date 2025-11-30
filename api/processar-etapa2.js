@@ -320,17 +320,10 @@ module.exports = async (req, res) => {
 
         console.log('🤖 [ETAPA2] Chamando Gemini com Google Search...');
 
-        // ✅ CONFIGURAÇÃO OTIMIZADA
+        // ✅ CONFIGURAÇÃO SIMPLIFICADA (SEM dynamic_retrieval_config)
         const model = genAI.getGenerativeModel({
             model: MODEL,
-            tools: [{
-                googleSearch: {
-                    dynamic_retrieval_config: {
-                        mode: "MODE_DYNAMIC",
-                        dynamic_threshold: 0.7
-                    }
-                }
-            }],
+            tools: [{ googleSearch: {} }],  // ✅ SIMPLIFICADO
             generationConfig: {
                 temperature: 0.1,
                 maxOutputTokens: 1500,  // ✅ LIMITE DE RESPOSTA
@@ -342,7 +335,11 @@ module.exports = async (req, res) => {
         const text = result.response.text();
 
         console.log('📥 [ETAPA2] Resposta recebida');
-        console.log('📊 [ETAPA2] Tokens usados:', result.response.usageMetadata);
+        
+        // Log de tokens se disponível
+        if (result.response.usageMetadata) {
+            console.log('📊 [ETAPA2] Tokens:', result.response.usageMetadata);
+        }
 
         let resultadoBusca;
         try {
