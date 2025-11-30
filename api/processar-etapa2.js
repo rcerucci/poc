@@ -192,64 +192,64 @@ PRODUTO A PESQUISAR:
 INSTRUÇÕES DE BUSCA:
 
 1. MONTE O TERMO DE BUSCA (UMA ÚNICA QUERY):
-   - Use Marca + Modelo se disponíveis
-   - Se ausentes, use Nome + palavras-chave das especificações
-   - Inclua sinônimos e variações comuns do produto
-   - Exemplo: "Gerador Cummins C22D5" OU "gerador diesel 22kVA"
+   - Use Marca + Modelo se disponíveis
+   - Se ausentes, use Nome + palavras-chave das especificações
+   - Inclua sinônimos e variações comuns do produto
+   - Exemplo: "Gerador Cummins C22D5" OU "gerador diesel 22kVA"
 
 2. HIERARQUIA DE PREÇOS NOVOS (VALOR DE REPOSIÇÃO):
 
-   - PRIORIDADE 1: Modelo exato (marca + modelo idênticos)
-   
-   - PRIORIDADE 2 (Foco em Obsoletos): **Equivalente de Reposição**. Procure ativamente o **Modelo Sucessor** ou um item de produção atual com as mesmas Especificações Principais (tolerância de até 10%). Este é o preço de reposição.
-   
-   - PRIORIDADE 3: Produtos da mesma categoria com especificações próximas, para validar o range de preço.
+   - PRIORIDADE 1: Modelo exato (marca + modelo idênticos)
+   
+   - PRIORIDADE 2 (Foco em Obsoletos): **Equivalente de Reposição**. Procure ativamente o **Modelo Sucessor** ou um item de produção atual com as mesmas Especificações Principais (tolerância de até 10%). Este é o preço de reposição.
+   
+   - PRIORIDADE 3: Produtos da mesma categoria com especificações próximas, para validar o range de preço.
 
 3. FONTES ACEITAS (qualquer uma é válida):
-   - Lojas online brasileiras (Mercado Livre, Amazon, Magazine Luiza, etc)
-   - Distribuidores e atacadistas B2B
-   - E-commerces especializados
-   - IGNORE fontes que só mostram "Solicitar Orçamento" sem preço
+   - Lojas online brasileiras (Mercado Livre, Amazon, Magazine Luiza, etc)
+   - Distribuidores e atacadistas B2B
+   - E-commerces especializados
+   - IGNORE fontes que só mostram "Solicitar Orçamento" sem preço
 
 4. REGRAS IMPORTANTES:
-   - **APENAS PRODUTOS NOVOS**. Nunca aceite preços de usados ou seminovos.
-   - Não aceitar kits ou combos.
-   - Preços devem estar visíveis (não apenas "consulte").
-   - A falta de preço para o Modelo Exato DEVE forçar a busca de preços para o Equivalente de Reposição (Prioridade 2).
+   - **APENAS PRODUTOS NOVOS**. Nunca aceite preços de usados ou seminovos.
+   - Não aceitar kits ou combos.
+   - Preços devem estar visíveis (não apenas "consulte").
+   - A falta de preço para o Modelo Exato DEVE forçar a busca de preços para o Equivalente de Reposição (Prioridade 2).
 
 5. EQUIVALÊNCIA DE REPOSIÇÃO (Match 1.0):
-   - Para especificação principal (kVA, HP, polegadas, etc): até 10% de diferença é aceitável.
-   - Diferenças em specs secundárias (voltagem, peso, frequência) podem ser ignoradas se a spec principal for compatível, pois o objetivo é o valor do substituto.
+   - Para especificação principal (kVA, HP, polegadas, etc): até 10% de diferença é aceitável.
+   - Diferenças em specs secundárias (voltagem, peso, frequência) podem ser ignoradas se a spec principal for compatível, pois o objetivo é o valor do substituto.
 
 6. MÍNIMO:
-   - Se encontrar menos de 3 preços NOVOS (Exato ou Equivalente de Reposição), retorne os que encontrar (não falhe).
+   - Se encontrar menos de 3 preços NOVOS (Exato ou Equivalente de Reposição), retorne os que encontrar (não falhe).
 
 FORMATO DE RESPOSTA (JSON puro, sem markdown):
 
 Se encontrou preços:
 {
-  "preco_encontrado": true,
-  "termo_busca_utilizado": "termo exato que você usou na busca",
-  "estrategia": "Exato/Equivalente de Reposição - explicação breve",
-  "num_precos_encontrados": 4,
-  "precos_coletados": [
-    {
-      "valor": 15999.90,
-      "fonte": "Nome da loja/site",
-      "tipo_match": "Equivalente", // Agora deve ser "Equivalente" ou "Exato"
-      "produto": "Nome completo do produto encontrado (Sucessor de Linha)",
-      "url": "URL se disponível"
-    }
-  ]
+  "preco_encontrado": true,
+  "termo_busca_utilizado": "termo exato que você usou na busca",
+  "estrategia": "Exato/Equivalente de Reposição - explicação breve",
+  "num_precos_encontrados": 4,
+  "precos_coletados": [
+    {
+      "valor": 15999.90,
+      "fonte": "Nome da loja/site",
+      "tipo_match": "Equivalente", // Agora deve ser "Equivalente" ou "Exato"
+      "produto": "Nome completo do produto encontrado (Sucessor de Linha)",
+      "url": "URL se disponível"
+    }
+  ]
 }
 
 Se NÃO encontrou preços suficientes:
 {
-  "preco_encontrado": false,
-  "motivo": "explicação do que tentou e por que não encontrou",
-  "termo_busca_utilizado": "termo que usou",
-  "num_precos_encontrados": 0,
-  "precos_coletados": []
+  "preco_encontrado": false,
+  "motivo": "explicação do que tentou e por que não encontrou",
+  "termo_busca_utilizado": "termo que usou",
+  "num_precos_encontrados": 0,
+  "precos_coletados": []
 }`
 
 
