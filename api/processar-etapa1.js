@@ -59,6 +59,16 @@ Notebook: {"numero_patrimonio":"15432","nome_produto":"Notebook","marca":"Dell",
 
 Transformador: {"numero_patrimonio":"02003","nome_produto":"Transformador Seco","marca":"TRA Eletromecânica Ltda","modelo":"N/A","especificacoes":"3 FASES, 30 kVA, 60 Hz, RESFR A M, LIG YND1, MAT. ISOL CLASSE F, ELEV TEMP ENROL 105°C, H-NI/NBI 0.5 kV, X-NI/NBI 0.5 kV, H 480/400/380 V, X 240/220/200 V, IMPEDÂNCIA 3.92% A 60Hz, 115°C, 200/420 V, MASSA TOTAL 330 Kg, ANO 2018","estado_conservacao":"Bom","motivo_conservacao":"N/A","categoria_depreciacao":"Máquinas e Equipamentos","descricao":"Transformador Seco TRA Eletromecânica Ltda, 30 kVA, Ano 2018, S/N: 9-50-00058, ABNT NBR 10295/5356, massa 330 Kg"}
 
+// NO PROMPT - ADICIONAR:
+
+***VALIDAÇÃO FINAL OBRIGATÓRIA:***
+
+Antes de retornar o JSON, verificar:
+1. **S/N (Número de Série):** NUNCA em especificacoes, SEMPRE em descricao
+2. **Acessórios não fixos:** NUNCA em descricao (tapetes, mantas, cabos soltos)
+3. **OCR de números similares:** Reler valores de 0-9 para confirmar
+4. **Ordem de especificacoes:** Seguir ordem EXATA da placa
+
 `;
 
 module.exports = async (req, res) => {
@@ -105,7 +115,7 @@ module.exports = async (req, res) => {
         const model = genAI.getGenerativeModel({
             model: MODEL,
             generationConfig: {
-                temperature: 0.1,
+                temperature: 0,
                 responseMimeType: 'application/json'
             }
         });
