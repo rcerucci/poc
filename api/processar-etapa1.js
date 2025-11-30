@@ -13,75 +13,102 @@ const PROMPT_SISTEMA = `Extraia informações do ativo em JSON (sem markdown):
   "nome_produto": "nome genérico (max 4 palavras)",
   "marca": "fabricante ou N/A",
   "modelo": "código ou N/A",
-  "especificacoes": "specs técnicas da placa ou N/A",
+  "especificacoes": "specs técnicas da placa ou observáveis ou N/A",
   "estado_conservacao": "Excelente|Bom|Regular|Ruim",
   "motivo_conservacao": "motivo se Regular/Ruim (max 3 palavras) ou N/A",
   "categoria_depreciacao": "Computadores e Informática|Ferramentas|Instalações|Máquinas e Equipamentos|Móveis e Utensílios|Veículos|Outros",
   "descricao": "descrição técnica completa (max 200 chars)"
 }
 
-***REGRAS CRÍTICAS:***
+REGRAS DE PADRONIZAÇÃO:
 
-1. ***numero_patrimonio (ATENÇÃO - FILTRAR DADOS):***
-   - **EXTRAIR APENAS O NÚMERO** da plaqueta de patrimônio
-   - **IGNORAR:** Nome de empresa proprietária, CNPJ, endereço, códigos de barras
-   - **Exemplo correto:** Se a placa mostra "TechIMPORT / CNPJ 15.524.734/0001-47 / PATRIMÔNIO 02246" → extrair apenas "02246"
-   - Se não houver plaqueta de patrimônio: N/A
+1. numero_patrimonio:
+   - EXTRAIR APENAS O NÚMERO da plaqueta de patrimônio
+   - IGNORAR: Nome de empresa, CNPJ, endereço, códigos de barras
+   - Exemplo: "TechIMPORT CNPJ 15.524.734/0001-47 PATRIMÔNIO 02246" → "02246"
+   - Se não houver: N/A
 
-2. **nome_produto:** Genérico, técnico, curto. Manter consistência (Ex: 'Mesa de Trabalho' ou 'Bancada')
+2. nome_produto:
+   - Genérico, técnico, máximo 4 palavras
+   - PADRONIZAÇÃO: Use sempre o mesmo termo para itens similares
+   - Exemplos corretos: "Cadeira de Escritório", "Impressora Multifuncional", "Furadeira de Impacto"
+   - NUNCA: Termos vagos como "Cadeira", "Impressora", "Ferramenta"
 
-3. ***marca/modelo (NÃO CONFUNDIR COM PROPRIETÁRIO):***
-   - **Marca = fabricante do EQUIPAMENTO** (Dell, HP, Cummins, etc.)
-   - **NÃO usar:** Nome da empresa proprietária que aparece na plaqueta de patrimônio
-   - **Se o equipamento não tem marca visível:** N/A
-   - **Modelo:** Código comercial do fabricante
-   - **S/N NÃO é modelo**, vai na descrição
+3. marca/modelo (NÃO CONFUNDIR COM PROPRIETÁRIO):
+   - marca: Fabricante do EQUIPAMENTO (Dell, HP, Makita, Samsung)
+   - NUNCA usar: Nome da empresa proprietária da plaqueta
+   - modelo: Código comercial do fabricante
+   - S/N NÃO é modelo (vai em descricao)
+   - Se ausente: N/A
 
-4. ***especificacoes (CRÍTICO - LEITURA COMPLETA):***
-   - **TRANSCREVER LITERALMENTE** todos os dados técnicos da placa do EQUIPAMENTO
-   - **NÃO INCLUIR:** Dados da plaqueta de patrimônio (CNPJ, endereço, etc.)
-   - **NÃO resumir, NÃO omitir, NÃO arredondar valores**
-   - **ATENÇÃO AO OCR:** Diferenciar 3 vs 1, 5 vs 6, 8 vs 0, 9 vs 4
-   - **INCLUIR TUDO:** tensões, correntes, potências, temperaturas, frequências, códigos normativos, massa, ano, impedância, classe de isolamento, etc.
-   - **ORDEM:** Seguir a ordem da placa
-   - **Se não houver placa técnica:** N/A
-   - **Exemplo:** "3 FASES, 30 kVA, 60 Hz, RESFR A M, LIG YND1, MAT. ISOL CLASSE F, ELEV TEMP ENROL 105°C, H-NI/NBI 0.5 kV, X-NI/NBI 0.5 kV, H 480/400/380 V, X 240/220/200 V, IMPEDÂNCIA 3.92% A 60Hz, 115°C, 200/420 V, MASSA TOTAL 330 Kg, ANO 2018"
+4. especificacoes (TRANSCRIÇÃO LITERAL OU OBSERVAÇÃO):
+   - SE HOUVER PLACA TÉCNICA: Copiar exatamente todos dados técnicos
+   - SE NÃO HOUVER PLACA: Incluir características técnicas OBSERVÁVEIS:
+     * Material (aço inox, madeira, plástico, alumínio, MDF)
+     * Dimensões aproximadas se relevantes (ex: "aprox 2m x 1m")
+     * Características construtivas (gavetas, prateleiras, rodízios)
+     * Capacidade, potência, voltagem se visível
+   - NÃO incluir: Dados da plaqueta de patrimônio
+   - NÃO resumir, NÃO omitir
+   - ORDEM: Seguir ordem da placa original (se houver)
+   - INCLUIR: tensões, correntes, potências, temperaturas, frequências, códigos normativos, massa, ano, impedância, classe de isolamento
+   - ATENÇÃO OCR: 3≠1, 5≠6, 8≠0, 9≠4
+   - Exemplo COM placa: "710W, 220V, 60Hz, rotação variável 0-2800 rpm, mandril 13mm"
+   - Exemplo SEM placa: "Aço inoxidável, 3 gavetas, prateleira inferior fixa, rodízios"
+   - Se não houver placa NEM características observáveis: N/A
 
-5. **estado_conservacao:** Avaliação visual consistente
+5. estado_conservacao:
+   - CRITÉRIOS OBJETIVOS:
+   - Excelente: Novo/como novo, sem marcas de uso
+   - Bom: Uso normal, funcionando, sem danos estruturais
+   - Regular: Marcas de uso acentuado, riscos, manchas
+   - Ruim: Danos visíveis, ferrugem, peças quebradas
 
-6. **motivo_conservacao:** Só se Regular/Ruim. Max 3 palavras
+6. motivo_conservacao:
+   - OBRIGATÓRIO se Regular/Ruim
+   - MÁXIMO 3 palavras
+   - Exemplos: "ferrugem avançada", "peças faltando", "tinta descascada", "desgaste visível"
+   - Se Excelente/Bom: N/A
 
-7. **categoria_depreciacao:** UM valor exato da lista
+7. categoria_depreciacao:
+   - ESCOLHER EXATAMENTE UM da lista
+   - PADRONIZAÇÃO POR TIPO:
+     * Notebooks, PCs, impressoras, tablets → "Computadores e Informática"
+     * Chaves, alicates, furadeiras, serras → "Ferramentas"
+     * Ar condicionado, elétrica predial, hidráulica → "Instalações"
+     * Transformadores, geradores, tornos, prensas → "Máquinas e Equipamentos"
+     * Mesas, cadeiras, armários, estantes, bancadas → "Móveis e Utensílios"
+     * Carros, motos, empilhadeiras, caminhões → "Veículos"
+     * Qualquer outro → "Outros"
 
-8. ***descricao (FORMATO OBRIGATÓRIO):***
-   - **PRIORIDADE:** Dados valiosos primeiro (Ano, S/N, normas)
-   - **INCLUIR:** Se embalado (parcial/total)
-   - **EXCLUIR:** Acessórios externos não fixos (tapetes, cabos removíveis, suportes móveis)
-   - **NÃO incluir:** Nome da empresa proprietária, CNPJ, cor, localização, estado
-   - **Formato:** "[Nome] [Marca] [Modelo], [principais specs], [S/N], [características físicas fixas]"
-   - **Max 200 chars**
+8. descricao (FORMATO PADRONIZADO):
+   - ESTRUTURA FIXA: "[nome_produto] [marca] [modelo], [specs principais], [S/N se houver], [ano se houver], [características físicas fixas]"
+   - PRIORIZAR NESTA ORDEM: Ano, S/N, normas técnicas
+   - INCLUIR se aplicável: "embalado parcialmente" ou "embalado totalmente"
+   - NUNCA incluir: Nome da empresa proprietária, CNPJ, cor, localização, estado de conservação, acessórios removíveis (tapetes, cabos soltos, suportes móveis)
+   - MAX 200 caracteres
 
-***VALIDAÇÃO FINAL OBRIGATÓRIA:***
+VALIDAÇÃO FINAL OBRIGATÓRIA (checklist mental antes de retornar):
+□ numero_patrimonio contém APENAS números (sem CNPJ, sem empresa)
+□ marca é do fabricante do equipamento (não da empresa dona)
+□ especificacoes está em ordem da placa original OU contém características observáveis
+□ S/N está em descricao (nunca em especificacoes ou modelo)
+□ estado_conservacao é um dos 4 valores exatos
+□ categoria_depreciacao é um dos 7 valores exatos da lista
+□ descricao segue o formato padronizado e tem ≤200 chars
+□ Acessórios removíveis NÃO estão em descricao
 
-Antes de retornar o JSON, verificar:
-1. **Plaqueta de Patrimônio vs Placa do Fabricante:** São DIFERENTES. Patrimônio = empresa proprietária. Fabricante = quem fabricou o equipamento.
-2. **numero_patrimonio:** APENAS o número, sem CNPJ, sem nome de empresa
-3. **marca:** NUNCA usar nome da empresa proprietária (TechIMPORT, etc.)
-4. **S/N (Número de Série):** NUNCA em especificacoes, SEMPRE em descricao
-5. **Acessórios não fixos:** NUNCA em descricao (tapetes, mantas, cabos soltos)
-6. **OCR de números similares:** Reler valores de 0-9 para confirmar
-7. **Ordem de especificacoes:** Seguir ordem EXATA da placa do equipamento
+EXEMPLOS DE PADRONIZAÇÃO CORRETA:
 
-***EXEMPLOS CORRETOS:***
+Cadeira: {"numero_patrimonio":"00157","nome_produto":"Cadeira de Escritório","marca":"Cavaletti","modelo":"Air Plus","especificacoes":"Apoio lombar ajustável, base giratória, rodízios duplos, suporte até 120kg","estado_conservacao":"Bom","motivo_conservacao":"N/A","categoria_depreciacao":"Móveis e Utensílios","descricao":"Cadeira de Escritório Cavaletti Air Plus, apoio lombar, base giratória, S/N: CP-2019-4521"}
 
-Carrinho: {"numero_patrimonio":"02128","nome_produto":"Carrinho Porta-Ferramentas","marca":"N/A","modelo":"N/A","especificacoes":"N/A","estado_conservacao":"Bom","motivo_conservacao":"N/A","categoria_depreciacao":"Móveis e Utensílios","descricao":"Carrinho metal com prateleiras, gaveta, orifícios para mandris, rodízios"}
+Impressora: {"numero_patrimonio":"08934","nome_produto":"Impressora Multifuncional","marca":"HP","modelo":"LaserJet Pro MFP M428fdw","especificacoes":"Laser monocromático, duplex automático, ADF 50 folhas, rede ethernet, WiFi","estado_conservacao":"Excelente","motivo_conservacao":"N/A","categoria_depreciacao":"Computadores e Informática","descricao":"Impressora HP LaserJet Pro M428fdw, laser mono, duplex, rede, S/N: BRDB8K2Q7N"}
 
-Notebook: {"numero_patrimonio":"15432","nome_produto":"Notebook","marca":"Dell","modelo":"Latitude 5420","especificacoes":"Intel i5, 8GB, 256GB SSD","estado_conservacao":"Excelente","motivo_conservacao":"N/A","categoria_depreciacao":"Computadores e Informática","descricao":"Notebook Dell Latitude 5420, Intel i5, 8GB RAM, 256GB SSD, S/N: G7H2K3P"}
+Furadeira: {"numero_patrimonio":"01245","nome_produto":"Furadeira de Impacto","marca":"Makita","modelo":"HP1640","especificacoes":"710W, 220V, 60Hz, rotação variável 0-2800 rpm, mandril 13mm","estado_conservacao":"Regular","motivo_conservacao":"desgaste visível","categoria_depreciacao":"Ferramentas","descricao":"Furadeira Makita HP1640, 710W, 220V, mandril 13mm, Ano 2017"}
 
-Transformador: {"numero_patrimonio":"02003","nome_produto":"Transformador Seco","marca":"TRA Eletromecânica Ltda","modelo":"N/A","especificacoes":"3 FASES, 30 kVA, 60 Hz, RESFR A M, LIG YND1, MAT. ISOL CLASSE F, ELEV TEMP ENROL 105°C, H-NI/NBI 0.5 kV, X-NI/NBI 0.5 kV, H 480/400/380 V, X 240/220/200 V, IMPEDÂNCIA 3.92% A 60Hz, 115°C, 200/420 V, MASSA TOTAL 330 Kg, ANO 2018","estado_conservacao":"Bom","motivo_conservacao":"N/A","categoria_depreciacao":"Máquinas e Equipamentos","descricao":"Transformador Seco TRA Eletromecânica Ltda, 30 kVA, Ano 2018, S/N: 9-50-00058, ABNT NBR 10295/5356, massa 330 Kg"}
+Gerador: {"numero_patrimonio":"00892","nome_produto":"Gerador Diesel","marca":"Toyama","modelo":"TDG8000SLE3","especificacoes":"Diesel, 6500W contínuos, monofásico 220V, partida elétrica, autonomia 8h","estado_conservacao":"Bom","motivo_conservacao":"N/A","categoria_depreciacao":"Máquinas e Equipamentos","descricao":"Gerador Toyama TDG8000SLE3, diesel 6500W, partida elétrica, Ano 2020"}
 
-Bancada: {"numero_patrimonio":"02246","nome_produto":"Bancada de Trabalho","marca":"N/A","modelo":"N/A","especificacoes":"N/A","estado_conservacao":"Bom","motivo_conservacao":"N/A","categoria_depreciacao":"Móveis e Utensílios","descricao":"Bancada de Trabalho, estrutura em aço inoxidável, com prateleira inferior fixa"}
-
+Ar-Condicionado: {"numero_patrimonio":"03421","nome_produto":"Ar Condicionado Split","marca":"Samsung","modelo":"AR12BVHZCWK","especificacoes":"12000 BTU, inverter, gás R410A, 220V, classe A, Digital Inverter Compressor","estado_conservacao":"Excelente","motivo_conservacao":"N/A","categoria_depreciacao":"Instalações","descricao":"Ar Condicionado Samsung 12000 BTU inverter, R410A, 220V, S/N: A201BC4578"}
 `;
 
 module.exports = async (req, res) => {
@@ -149,12 +176,25 @@ module.exports = async (req, res) => {
             ...imageParts
         ]);
         
+        // ===== 📊 AUDITORIA DE TOKENS =====
+        const usage = result.response.usageMetadata;
+        console.log('📊 [ETAPA1-DIAGNÓSTICO] Tokens:', {
+            input: usage?.promptTokenCount,
+            output: usage?.candidatesTokenCount,
+            total: usage?.totalTokenCount,
+            custo_estimado: 'R$ ' + ((usage?.totalTokenCount || 0) * 0.00001).toFixed(4)
+        });
+        // ===== FIM AUDITORIA =====
+        
         console.log('📥 [ETAPA1] Resposta recebida');
         
         const response = result.response;
         const text = response.text();
         
-        console.log('📝 [ETAPA1] Texto (primeiros 300 chars):', text.substring(0, 300));
+        console.log('📝 [ETAPA1-DIAGNÓSTICO] Resposta:', {
+            caracteres: text.length,
+            tokens_estimados: Math.ceil(text.length / 4)
+        });
         
         // Parse JSON
         let dadosExtraidos;
@@ -171,7 +211,6 @@ module.exports = async (req, res) => {
             
             dadosExtraidos = JSON.parse(jsonText);
             console.log('✅ [ETAPA1] JSON parseado com sucesso');
-            console.log('📊 [ETAPA1] Dados:', JSON.stringify(dadosExtraidos, null, 2));
             
         } catch (parseError) {
             console.error('❌ [ETAPA1] Erro ao parsear:', parseError.message);
@@ -198,7 +237,6 @@ module.exports = async (req, res) => {
         
         if (camposFaltando.length > 0) {
             console.warn('⚠️ [ETAPA1] Campos faltando:', camposFaltando);
-            // Preencher com N/A
             camposFaltando.forEach(campo => {
                 dadosExtraidos[campo] = 'N/A';
             });
@@ -208,7 +246,7 @@ module.exports = async (req, res) => {
         const estadosValidos = ['Excelente', 'Bom', 'Regular', 'Ruim'];
         if (!estadosValidos.includes(dadosExtraidos.estado_conservacao)) {
             console.warn('⚠️ [ETAPA1] Estado inválido:', dadosExtraidos.estado_conservacao);
-            dadosExtraidos.estado_conservacao = 'Bom'; // Default
+            dadosExtraidos.estado_conservacao = 'Bom';
         }
         
         // Validação do motivo_conservacao
@@ -229,7 +267,7 @@ module.exports = async (req, res) => {
         
         if (!categoriasValidas.includes(dadosExtraidos.categoria_depreciacao)) {
             console.warn('⚠️ [ETAPA1] Categoria inválida:', dadosExtraidos.categoria_depreciacao);
-            dadosExtraidos.categoria_depreciacao = 'Outros'; // Default
+            dadosExtraidos.categoria_depreciacao = 'Outros';
         }
         
         // Adicionar metadados
@@ -240,14 +278,17 @@ module.exports = async (req, res) => {
                 confianca_ia: 95,
                 total_imagens_processadas: imagens.length,
                 modelo_ia: MODEL,
-                versao_sistema: '2.0-Otimizado'
+                versao_sistema: '2.1-Padronizado-Otimizado',
+                tokens_consumidos: usage?.totalTokenCount || 0,
+                custo_extracao: parseFloat(((usage?.totalTokenCount || 0) * 0.00001).toFixed(4))
             }
         };
         
         console.log('✅ [ETAPA1] Extração concluída!');
         console.log('📦 [ETAPA1] Produto:', dadosExtraidos.nome_produto);
-        console.log('🏷️ [ETAPA1] Marca/Modelo:', dadosExtraidos.marca + ' ' + dadosExtraidos.modelo);
+        console.log('🏷️ [ETAPA1] Marca/Modelo:', dadosExtraidos.marca + ' / ' + dadosExtraidos.modelo);
         console.log('⚙️ [ETAPA1] Specs:', dadosExtraidos.especificacoes);
+        console.log('💰 [ETAPA1] Custo:', 'R$ ' + dadosCompletos.metadados.custo_extracao);
         
         return res.status(200).json({
             status: 'Sucesso',
