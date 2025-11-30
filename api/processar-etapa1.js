@@ -9,45 +9,49 @@ const genAI = new GoogleGenerativeAI(API_KEY);
 const PROMPT_SISTEMA = `Extraia informações do ativo em JSON (sem markdown):
 
 {
-  "numero_patrimonio": "placa/etiqueta ou N/A",
-  "nome_produto": "nome genérico (max 4 palavras)",
-  "marca": "fabricante ou N/A",
-  "modelo": "código ou N/A",
-  "especificacoes": "specs técnicas da placa ou N/A",
-  "estado_conservacao": "Excelente|Bom|Regular|Ruim",
-  "motivo_conservacao": "motivo se Regular/Ruim (max 3 palavras) ou N/A",
-  "categoria_depreciacao": "Computadores e Informática|Ferramentas|Instalações|Máquinas e Equipamentos|Móveis e Utensílios|Veículos|Outros",
-  "descricao": "descrição técnica completa (max 200 chars)"
+  "numero_patrimonio": "placa/etiqueta ou N/A",
+  "nome_produto": "nome genérico (max 4 palavras)",
+  "marca": "fabricante ou N/A",
+  "modelo": "código ou N/A",
+  "especificacoes": "specs técnicas da placa ou N/A",
+  "estado_conservacao": "Excelente|Bom|Regular|Ruim",
+  "motivo_conservacao": "motivo se Regular/Ruim (max 3 palavras) ou N/A",
+  "categoria_depreciacao": "Computadores e Informática|Ferramentas|Instalações|Máquinas e Equipamentos|Móveis e Utensílios|Veículos|Outros",
+  "descricao": "descrição técnica completa (max 200 chars)"
 }
 
 ***REGRAS CRÍTICAS:***
 
-1. numero_patrimonio: Plaqueta visível ou N/A
-2. nome_produto: Genérico, técnico, curto
-3. marca/modelo: Exatos de QUALQUER MARCAÇÃO (etiqueta, placa, ou estampado no produto). **IMPORTANTE: O campo 'modelo' deve conter o código comercial/produto. O NÚMERO DE SÉRIE (S/N) NÃO é o Modelo e DEVE ser incluído na descrição.**
-4. especificacoes: Extrair TODAS as especificações técnicas da PLACA (tensão, corrente, potência, frequência, etc.). Não resumir. Se a placa contiver múltiplos valores, liste todos, priorizando o dado nominal/principal. Se não houver dados técnicos, use N/A. (Ex: "220V, 60Hz, 20kVA, 3 Fases,S/N")
-5. estado_conservacao: Avaliação visual
-6. motivo_conservacao: Só se Regular/Ruim. Max 3 palavras
-7. categoria_depreciacao: UM valor exato da lista
+1. **numero_patrimonio:** Plaqueta visível ou N/A
 
-8. ***descricao (FORMATO OBRIGATÓRIO E PRIORIZAÇÃO):***
-   - **PRIORIDADE:** O preenchimento deve ser o mais completo possível, dando prioridade à inclusão de dados valiosos (ex: Ano de Fabricação, Número de Série/S/N, etc.) antes de características físicas.
-   - SEMPRE inicie com o nome do produto
-   - SEMPRE inclua marca e modelo (se identificados)
-   - SEMPRE inclua especificacoes (se identificadas)
-   - SEMPRE inclua o Número de Série (S/N) se encontrado na placa.
-   - Formato: "[Nome] [Marca] [Modelo], [specs técnicas], [Número de Série/S/N], [características físicas]"
-   - Exemplo: "Monitor LCD Samsung S24F350, 24 polegadas Full HD, S/N: G7H2K3P, painel IPS."
-   - NÃO inclua: cor, localização, estado de conservação
-   - Max 200 caracteres
+2. **nome_produto:** Genérico, técnico, curto. Manter consistência (Ex: 'Mesa de Trabalho' ou 'Bancada')
+
+3. **marca/modelo:** Exatos de QUALQUER marcação (etiqueta/placa/estampado). **Marca = nome COMPLETO do fabricante.** Modelo = código comercial. **S/N NÃO é modelo**, vai na descrição.
+
+4. **especificacoes:** TODAS da placa - tensão, corrente, potência, frequência. **Não resumir.** Liste todos os valores. Ex: "220V, 60Hz, 20kVA, 3 Fases"
+
+5. **estado_conservacao:** Avaliação visual
+
+6. **motivo_conservacao:** Só se Regular/Ruim. Max 3 palavras
+
+7. **categoria_depreciacao:** UM valor exato da lista
+
+8. ***descricao (FORMATO OBRIGATÓRIO):***
+   - **PRIORIDADE:** Dados valiosos primeiro (Ano, S/N)
+   - **INCLUIR:** Se embalado (parcial/total)
+   - **EXCLUIR:** Acessórios externos
+   - **Formato:** "[Nome] [Marca] [Modelo], [specs], [S/N], [características físicas]"
+   - **NÃO incluir:** cor, localização, estado
+   - **Max 200 chars**
 
 ***EXEMPLOS CORRETOS:***
 
 Carrinho: {"numero_patrimonio":"02128","nome_produto":"Carrinho Porta-Ferramentas","marca":"N/A","modelo":"N/A","especificacoes":"N/A","estado_conservacao":"Bom","motivo_conservacao":"N/A","categoria_depreciacao":"Móveis e Utensílios","descricao":"Carrinho metal com prateleiras, gaveta, orifícios para mandris, rodízios"}
 
-Notebook: {"numero_patrimonio":"15432","nome_produto":"Notebook","marca":"Dell","modelo":"Latitude 5420","especificacoes":"Intel i5, 8GB, 256GB SSD","estado_conservacao":"Excelente","motivo_conservacao":"N/A","categoria_depreciacao":"Computadores e Informática","descricao":"Notebook Dell Latitude 5420, Intel i5, 8GB RAM, 256GB SSD, S/N: G7H2K3P"}
+Notebook: {"numero_patrimonio":"15432","nome_produto":"Notebook","marca":"Dell","modelo":"Latitude 5420","especificacoes":"Intel i5, 8GB, 256GB SSD","estado_conservacao":"Excelente","motivo_conservacao":"N/A","categoria_depreciacao":"Computadores e Informática","descricao":"Notebook Dell Latitude 5420, Intel i5, 8GB RAM, 256GB SSD, S/N: G7H2K3P, com embalagem original."}
 
 Gerador: {"numero_patrimonio":"N/A","nome_produto":"Gerador Diesel","marca":"Cummins","modelo":"C22D5","especificacoes":"220V, 60Hz, 22kVA, 0.8FP","estado_conservacao":"Regular","motivo_conservacao":"Desgaste pintura","categoria_depreciacao":"Máquinas e Equipamentos","descricao":"Gerador Cummins C22D5, 220V, 60Hz, 22kVA, 0.8FP, Ano 2018, S/N: XYZ456"}
+
 `;
 
 module.exports = async (req, res) => {
