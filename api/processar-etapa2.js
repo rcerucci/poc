@@ -79,46 +79,179 @@ function gerarTermosBusca(nome_produto, marca, modelo, descricao) {
     return termos;
 }
 
-// ✅ PROMPT OTIMIZADO (80% MENOR, MESMA FUNCIONALIDADE)
-const PROMPT_BUSCA_PRECO = (dados) => `Busque preços NOVOS no Brasil:
+// =========================================================================
+// ❌ CÓDIGO DE CONTINGÊNCIA (TODO: IMPLEMENTAR COM GEMINI PRO)
+//    - Este prompt deve ser usado APENAS se o PROMPT_BUSCA_PRECO falhar.
+// =========================================================================
 
-PRODUTO: ${dados.nome_produto}
-MARCA: ${dados.marca || 'N/A'}
-MODELO: ${dados.modelo || 'N/A'}
-SPECS: ${dados.especificacoes || 'N/A'}
+/*
+const PROMPT_BUSCA_PRECO_PRO_CONTINGENCIA = (dados) => `Você é um Extrator de Preços Sênior, designado para garantir a precificação de um ativo industrial ou de baixa liquidez onde modelos de IA mais baratos falharam. Colete MÍNIMO 3 preços NOVOS no Brasil.
 
-REGRAS:
-- Produtos NOVOS (não usados)
-- Mínimo 3 preços com valores visíveis
-- Prioridade: B2C (Mercado Livre, Amazon, Magalu) > B2B
-- Aceitar exato OU equivalente (±10% spec principal)
-- Ignore "Solicitar Orçamento"
+PRODUTO DE ALTO VALOR E BAIXA TRANSPARÊNCIA:
+Nome: ${dados.nome_produto}
+Marca: ${dados.marca || 'N/A'}
+Modelo: ${dados.modelo || 'N/A'}
+Specs: ${dados.especificacoes || 'N/A'}
+
+***ESTRATÉGIA DE BUSCA (GEMINI PRO - PRIORIDADE NO RESULTADO):***
+
+1.  **EXECUTE BUSCA POR COMPONENTES E INFERÊNCIA:** Formule consultas que busquem o preço do item **EXATO** E **também** o **"preço de catálogo"** ou **"preço de tabela"** do fabricante/distribuidor. Use sua capacidade analítica para inferir um valor de referência a partir de documentos B2B.
+
+2.  **ACEITAÇÃO FLEXÍVEL DE EQUIVALENTES (Regra de Sobrevivência):**
+    a.  **Foco em Especificação Principal:** Aceite a diferença de tipo funcional (Ex: Autotransformador em vez de Isolador) **SE** a Especificação Técnica PRINCIPAL (kVA, HP, etc.) estiver dentro de $\pm5\%$ e o preço for o mais razoável e representativo para a classe de potência.
+    b.  **Contingência de Peso/Dimensões:** A diferença em especificações secundárias (como peso) DEVE ser usada para classificar o *tipo_match* como 'Equivalente' (Peso 1.0), mas **NÃO** deve ser uma causa para rejeitar o preço, a menos que a Especificação Principal também falhe.
+
+3.  **HIERARQUIA DE FONTES:** Priorize preço verificável, mesmo que B2C, sobre cotação B2B não transparente.
+
+4.  **REJEIÇÃO CONDICIONAL:** Se um preço for encontrado, mas tiver discrepância funcional/de peso, **USE-O** e classifique-o como 'Equivalente' (Peso 1.0). Rejeite APENAS se o preço estiver fora do range esperado do mercado.
+
+***MÍNIMO:*** 3 preços REAIS ou INFERIDOS.
+
+JSON (sem markdown): (Use o mesmo formato de saída da Etapa 2)
+{
+  "preco_encontrado": true,
+  "termo_busca_utilizado": "termos múltiplos utilizados",
+  "estrategia": "Contingência PRO: Inferência de Catálogo B2B + Equivalente Funcional Aceito",
+  "num_precos_encontrados": 5,
+  "precos_coletados": [
+    // ... (lista de preços)
+  ]
+}
+`;
+*/
+
+/*
+const PROMPT_BUSCA_PRECO = (dados) => `Você é um extrator de preços. Colete MÍNIMO 3 preços NOVOS no Brasil.
+
+PRODUTO:
+Nome: ${dados.nome_produto}
+Marca: ${dados.marca || 'N/A'}
+Modelo: ${dados.modelo || 'N/A'}
+Specs: ${dados.especificacoes || 'N/A'}
+
+***ESTRATÉGIA DE BUSCA (UMA ÚNICA QUERY):***
+
+1. ***ANALISE OS DADOS*** e construa o termo de busca MAIS EFICAZ:
+   - Se tem Marca + Modelo: use ambos
+   - Marca/Modelo = N/A: foque Specs técnicas
+   - Inclua sinônimos e variações do produto (e termos como "preço de tabela" ou "preço de catálogo" para B2B).
+
+2. ***EXECUTE BUSCA SIMULTÂNEA*** (modelo exato + similares):
+   - Modelo EXATO (prioridade máxima)
+   - SIMILARES/EQUIVALENTES (±5% specs principais)
+   - Exemplos OR:
+     * "Gerador Cummins C22D5" OR "gerador 20kVA 22kVA diesel"
+
+3. ***PRIORIDADE DE FONTES:***
+   - MÁXIMA: B2B Brasil (atacado/distribuidores)
+   - MÉDIA: B2C Brasil (Mercado Livre/Amazon/Magazine Luiza)
+   - BAIXA: Internacional (converter moeda + 20% impostos)
+
+4. ***REGRA DE FAIL-FAST E TRANSIÇÃO (NOVO):***
+   - Se a busca na Prioridade MÁXIMA (B2B) retornar apenas resultados não verificáveis ('Solicitar Orçamento', 'Cotação'), a IA DEVE **ignorar esses resultados imediatamente** e priorizar a coleta dos preços verificáveis das fontes de Prioridade MÉDIA (B2C) e BAIXA. **NÃO BLOQUEIE A BUSCA** em fontes opacas.
+
+***REGRAS CRÍTICAS (GENÉRICAS E FINAIS):***
+- Produtos NOVOS (ignore usados/seminovos)
+- **Equivalentes de Especificação Chave:** A tolerância de **±5%** DEVE ser aplicada à **Especificação Técnica PRINCIPAL** do produto (ex: kVA, HP, Polegadas).
+- **Contingência de Especificações Secundárias:** Diferenças em especificações secundárias (tensão, frequência) devem ser aceitas se a Especificação Técnica PRINCIPAL estiver dentro da tolerância de $\pm5\%$.
+- ***NÃO*** aceite kits/promoções/bundles
+- ***MÍNIMO:*** 3 preços REAIS verificáveis
+
+***PRIORIZAÇÃO (peso interno):***
+1. Match EXATO (marca+modelo) = 2.0
+2. Match PARCIAL (marca OU modelo+specs) = 1.5
+3. Equivalente (specs $\pm5\%$) = 1.0
 
 JSON (sem markdown):
 {
   "preco_encontrado": true,
-  "termo_busca_utilizado": "termo",
-  "estrategia": "Exato/Equivalente",
-  "num_precos_encontrados": 4,
+  "termo_busca_utilizado": "termo exato usado",
+  "estrategia": "Match Exato ou Equivalente: [Especificação chave e valor usado]",
+  "num_precos_encontrados": 5,
   "precos_coletados": [
     {
-      "valor": 1599.90,
-      "fonte": "Mercado Livre",
+      "valor": 15999.90,
+      "fonte": "Distribuidora XYZ - B2B",
       "tipo_match": "Exato",
-      "produto": "Nome produto",
-      "url": "URL"
+      "produto": "Gerador Cummins C22D5 22kVA"
     }
   ]
 }
 
-Se < 3:
+Se < 3: {"preco_encontrada": false, "motivo": "explicação", "termo_busca_utilizado": "termo tentado", "num_precos_encontrados": 1}`;
+*/
+
+const PROMPT_BUSCA_PRECO = (dados) => `Você é um assistente de pesquisa de preços. Seu objetivo é encontrar preços REAIS e VERIFICÁVEIS de produtos NOVOS no mercado brasileiro, com prioridade máxima no Valor de Reposição.
+
+PRODUTO A PESQUISAR:
+- Nome: ${dados.nome_produto}
+- Marca: ${dados.marca || 'Não especificada'}
+- Modelo: ${dados.modelo || 'Não especificado'}
+- Especificações: ${dados.especificacoes || 'Não especificadas'}
+
+INSTRUÇÕES DE BUSCA:
+
+1. MONTE O TERMO DE BUSCA (UMA ÚNICA QUERY):
+   - Use Marca + Modelo se disponíveis
+   - Se ausentes, use Nome + palavras-chave das especificações
+   - Inclua sinônimos e variações comuns do produto
+   - Exemplo: "Gerador Cummins C22D5" OU "gerador diesel 22kVA"
+
+2. HIERARQUIA DE PREÇOS NOVOS (VALOR DE REPOSIÇÃO):
+
+   - PRIORIDADE 1: Modelo exato (marca + modelo idênticos)
+   
+   - PRIORIDADE 2 (Foco em Obsoletos): **Equivalente de Reposição**. Procure ativamente o **Modelo Sucessor** ou um item de produção atual com as mesmas Especificações Principais (tolerância de até 10%). Este é o preço de reposição.
+   
+   - PRIORIDADE 3: Produtos da mesma categoria com especificações próximas, para validar o range de preço.
+
+3. FONTES ACEITAS (qualquer uma é válida):
+   - Lojas online brasileiras (Mercado Livre, Amazon, Magazine Luiza, etc)
+   - Distribuidores e atacadistas B2B
+   - E-commerces especializados
+   - IGNORE fontes que só mostram "Solicitar Orçamento" sem preço
+
+4. REGRAS IMPORTANTES:
+   - **APENAS PRODUTOS NOVOS**. Nunca aceite preços de usados ou seminovos.
+   - Não aceitar kits ou combos.
+   - Preços devem estar visíveis (não apenas "consulte").
+   - A falta de preço para o Modelo Exato DEVE forçar a busca de preços para o Equivalente de Reposição (Prioridade 2).
+
+5. EQUIVALÊNCIA DE REPOSIÇÃO (Match 1.0):
+   - Para especificação principal (kVA, HP, polegadas, etc): até 10% de diferença é aceitável.
+   - Diferenças em specs secundárias (voltagem, peso, frequência) podem ser ignoradas se a spec principal for compatível, pois o objetivo é o valor do substituto.
+
+6. MÍNIMO:
+   - Se encontrar menos de 3 preços NOVOS (Exato ou Equivalente de Reposição), retorne os que encontrar (não falhe).
+
+FORMATO DE RESPOSTA (JSON puro, sem markdown):
+
+Se encontrou preços:
+{
+  "preco_encontrado": true,
+  "termo_busca_utilizado": "termo exato que você usou na busca",
+  "estrategia": "Exato/Equivalente de Reposição - explicação breve",
+  "num_precos_encontrados": 4,
+  "precos_coletados": [
+    {
+      "valor": 15999.90,
+      "fonte": "Nome da loja/site",
+      "tipo_match": "Equivalente", // Agora deve ser "Equivalente" ou "Exato"
+      "produto": "Nome completo do produto encontrado (Sucessor de Linha)",
+      "url": "URL se disponível"
+    }
+  ]
+}
+
+Se NÃO encontrou preços suficientes:
 {
   "preco_encontrado": false,
-  "motivo": "razão",
-  "termo_busca_utilizado": "termo",
+  "motivo": "explicação do que tentou e por que não encontrou",
+  "termo_busca_utilizado": "termo que usou",
   "num_precos_encontrados": 0,
   "precos_coletados": []
-}`;
+}`
+
 
 // --- Cálculo EMA com Pesos ---
 function calcularMediaPonderada(coleta_precos) {
@@ -167,22 +300,8 @@ function calcularMediaPonderada(coleta_precos) {
         if (item.tipo_match === 'Exato') pesoMatch = 2.0;
         else if (item.tipo_match === 'Parcial') pesoMatch = 1.5;
         
-        // ✅ PESO POR FONTE OTIMIZADO (B2C > B2B)
-        let pesoFonte = 1.0;
-        const fonteLower = item.fonte?.toLowerCase() || '';
-        
-        if (fonteLower.includes('mercado livre') || 
-            fonteLower.includes('amazon') || 
-            fonteLower.includes('magalu') ||
-            fonteLower.includes('magazine') ||
-            fonteLower.includes('americanas') ||
-            fonteLower.includes('submarino')) {
-            pesoFonte = 2.0; // B2C maior peso
-        } else if (fonteLower.includes('b2b') || 
-                   fonteLower.includes('distribui') ||
-                   fonteLower.includes('atacad')) {
-            pesoFonte = 1.5;
-        }
+        // Peso por fonte
+        const pesoFonte = item.fonte?.includes('B2B') ? 1.5 : 1.0;
         
         // Peso por recência
         let pesoRecencia = 1.0;
@@ -241,7 +360,7 @@ function calcularMediaPonderada(coleta_precos) {
         }))
     };
 }
-//
+
 module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -282,25 +401,16 @@ module.exports = async (req, res) => {
 
         console.log('🤖 [ETAPA2] Chamando Gemini com Google Search...');
 
-        // ✅ CONFIGURAÇÃO COM LIMITE DE TOKENS
         const model = genAI.getGenerativeModel({
             model: MODEL,
             tools: [{ googleSearch: {} }],
-            generationConfig: { 
-                temperature: 0.1,
-                maxOutputTokens: 1500  // ✅ LIMITA RESPOSTA
-            }
+            generationConfig: { temperature: 0.1 }
         });
 
         const result = await model.generateContent(promptBusca);
         const text = result.response.text();
 
         console.log('📥 [ETAPA2] Resposta recebida');
-        
-        // ✅ LOG DE TOKENS
-        if (result.response.usageMetadata) {
-            console.log('📊 [TOKENS]', result.response.usageMetadata);
-        }
 
         let resultadoBusca;
         try {
@@ -346,7 +456,7 @@ module.exports = async (req, res) => {
         }
 
         let valorMercado = resultadoEMA.valor_mercado;
-        let metodo = 'Média Ponderada (Match+Fonte B2C+Recência)';
+        let metodo = 'Média Ponderada (Match+Fonte+Recência)';
         const { coeficiente_variacao } = resultadoEMA.estatisticas;
 
         // Se alta variação, usar mediana
