@@ -84,16 +84,24 @@ INSTRUÇÕES DE CHAVEAMENTO DE ANÁLISE (Otimização de Custo e Rigor):
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-***REGRAS CRÍTICAS DE CONTEÚDO:***
+***REGRAS CRÍTICAS DE CONTEÚDO (PRIORIDADE DE PREENCHIMENTO):***
 
 1. **numero_patrimonio:** Plaqueta visível ou N/A
 2. **nome_produto:** Genérico, técnico, curto (Max 4 palavras)
-3. **marca/modelo:** Exatos da etiqueta ou N/A
-4. **especificacoes:** Da PLACA (ex: "220V, 60Hz, 20kVA") ou N/A
-5. **estado_conservacao:** Avaliação visual
-6. **motivo_conservacao:** Só se Regular/Ruim. Max 3 palavras
-7. **categoria_depreciacao:** UM valor exato da lista fornecida
-8. **descricao (FORMATO OBRIGATÓRIO):** Formato: "[Nome] [Marca] [Modelo], [specs técnicas], [características físicas]". Max 200 caracteres. NÃO inclua cor, localização ou estado de conservação.
+3. **marca:** Exato da etiqueta ou N/A
+4. **modelo (NÚMERO DE SÉRIE):** Exato da etiqueta, **prioritário para precificação** (Número de Série, SKU, etc.) ou N/A
+5. **especificacoes:** Da PLACA (ex: "220V, 60Hz, 20kVA, etc") ou N/A
+6. **estado_conservacao:** Avaliação visual
+7. **motivo_conservacao:** Só se Regular/Ruim. Max 3 palavras
+8. **categoria_depreciacao:** UM valor exato da lista fornecida
+
+9. **descricao (FORMATO OBRIGATÓRIO E HIERARQUIA):**
+   - **OBRIGATÓRIO:** O preenchimento deve ser o mais completo possível, usando os dados lidos.
+   - **PRIORIDADE DE INCLUSÃO (Nesta Ordem):** 1. Nome/Marca/Modelo, 2. Especificações Técnicas, 3. Características Físicas.
+   - **LIMITE:** Se o texto ultrapassar 200 caracteres, **NÃO CRIE MAIS DE 200**, priorize as informações mais importantes da lista acima e corte o restante.
+   - Formato: "[Nome] [Marca] [Modelo], [specs técnicas], [características físicas]"
+   - NÃO inclua: cor, localização, estado de conservação
+   - Max 200 caracteres
 
 ***EXEMPLOS CORRETOS:***
 
@@ -102,6 +110,7 @@ Carrinho: {"numero_patrimonio":"02128","nome_produto":"Carrinho Porta-Ferramenta
 Notebook: {"numero_patrimonio":"15432","nome_produto":"Notebook","marca":"Dell","modelo":"Latitude 5420","especificacoes":"Intel i5, 8GB, 256GB SSD","estado_conservacao":"Excelente","motivo_conservacao":"N/A","categoria_depreciacao":"Computadores e Informática","descricao":"14 polegadas, carcaça alumínio, teclado retroiluminado, webcam HD"}
 
 Gerador: {"numero_patrimonio":"N/A","nome_produto":"Gerador Diesel","marca":"Cummins","modelo":"C22D5","especificacoes":"220V, 60Hz, 22kVA, 0.8FP","estado_conservacao":"Regular","motivo_conservacao":"Desgaste pintura","categoria_depreciacao":"Máquinas e Equipamentos","descricao":"Gerador trifásico, tanque 100L, automático, silenciado"}
+
 `;
 
 module.exports = async (req, res) => {
