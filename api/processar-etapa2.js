@@ -306,14 +306,14 @@ module.exports = async (req, res) => {
         });
 
         console.log('🤖 [ETAPA2] Chamando Gemini com Google Search...');
+        console.log('📝 [ETAPA2] Prompt (primeiros 200 chars):', promptBusca.substring(0, 200));
 
-        // ✅ CONFIGURAÇÃO CORRIGIDA (sem responseMimeType)
         const model = genAI.getGenerativeModel({
             model: MODEL,
             tools: [{ googleSearch: {} }],
             generationConfig: {
                 temperature: 0.1,
-                maxOutputTokens: 1500
+                maxOutputTokens: 2000  // Aumentar um pouco
             }
         });
 
@@ -321,41 +321,88 @@ module.exports = async (req, res) => {
         const text = result.response.text();
 
         console.log('📥 [ETAPA2] Resposta recebida');
+        console.log('📄 [ETAPA2] Texto completo:', text);
         
         if (result.response.usageMetadata) {
             console.log('📊 [ETAPA2] Tokens:', result.response.usageMetadata);
         }
 
+        // ✅ PARSE MELHORADO COM MAIS TENTATIVAS
         let resultadoBusca;
         try {
-            let jsonText = text.trim().replace(/```json\n?/g, '').replace(/```\n?/g, '');
+            // Tentar limpar o texto
+            let jsonText = text.trim();
+            
+            // Remover markdown
+            jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+            
+            // Tentar extrair JSON
             const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
-            if (jsonMatch) jsonText = jsonMatch[0];
+            if (jsonMatch) {
+                jsonText = jsonMatch[0];
+            }
+            
+            console.log('🔍 [PARSE] JSON extraído:', jsonText.substring(0, 300));
+            
+            // Tentar parsear
             resultadoBusca = JSON.parse(jsonText);
-        } catch (e) {
-            console.error('❌ [PARSE] Texto recebido:', text.substring(0, 500));
-            throw new Error('JSON inválido: ' + e.message);
+            console.log('✅ [PARSE] JSON parseado com sucesso');
+            
+        } catch (parseError) {
+            console.error('❌ [PARSE] Erro ao parsear JSON:', parseError.message);
+            console.error('📄 [PARSE] Texto que causou erro:', text);
+            
+            // ✅ FALLBACK: Tentar extrair informações manualmente
+            console.log('⚠️ [PARSE] Tentando fallback...');
+            
+            // Se a resposta contém "preco_encontrado": false
+            if (text.toLowerCase().includes('"preco_encontrado": false') || 
+                text.toLowerCase().includes('"preco_encontrado":false')) {
+                
+                return res.status(200).json({
+                    status: 'Falha',
+                    mensagem: 'Preços não encontrados para este produto',
+                    dados: { preco_encontrado: false }
+                });
+            }
+            
+            // Se não conseguiu de jeito nenhum
+            throw new Error('Resposta inválida do Gemini. Texto: ' + text.substring(0, 200));
         }
 
+        // Validação básica da estrutura
+        if (!resultadoBusca || typeof resultadoBusca !== 'object') {
+            throw new Error('Resposta não é um objeto JSON válido');
+        }
+
+        console.log('📦 [VALIDAÇÃO] Resultado da busca:', resultadoBusca);
+
         if (resultadoBusca.preco_encontrado) {
-            const precosValidos = resultadoBusca.precos_coletados.filter(p => {
-                const temFonte = p.fonte && p.fonte !== 'N/A' && p.fonte.length > 3;
-                const naoEhEstimativa = !p.fonte.toLowerCase().includes('estimat');
-                const temValor = p.valor && p.valor > 0;
-                const valorRazoavel = p.valor < 1000000;
-                
-                return temFonte && naoEhEstimativa && temValor && valorRazoavel;
-            });
-
-            console.log(`✅ [VALIDAÇÃO] ${precosValidos.length} preços válidos de ${resultadoBusca.precos_coletados.length}`);
-
-            if (precosValidos.length === 0) {
-                console.log('❌ [VALIDAÇÃO] Nenhum preço válido!');
+            // Verificar se tem array de preços
+            if (!Array.isArray(resultadoBusca.precos_coletados)) {
+                console.log('⚠️ [VALIDAÇÃO] precos_coletados não é array');
+                resultadoBusca.precos_coletados = [];
                 resultadoBusca.preco_encontrado = false;
-                resultadoBusca.motivo = 'Nenhum preço real verificável';
             } else {
-                resultadoBusca.precos_coletados = precosValidos;
-                resultadoBusca.num_precos_encontrados = precosValidos.length;
+                const precosValidos = resultadoBusca.precos_coletados.filter(p => {
+                    const temFonte = p.fonte && p.fonte !== 'N/A' && p.fonte.length > 3;
+                    const naoEhEstimativa = !p.fonte.toLowerCase().includes('estimat');
+                    const temValor = p.valor && p.valor > 0;
+                    const valorRazoavel = p.valor < 1000000;
+                    
+                    return temFonte && naoEhEstimativa && temValor && valorRazoavel;
+                });
+
+                console.log(`✅ [VALIDAÇÃO] ${precosValidos.length} preços válidos de ${resultadoBusca.precos_coletados.length}`);
+
+                if (precosValidos.length === 0) {
+                    console.log('❌ [VALIDAÇÃO] Nenhum preço válido!');
+                    resultadoBusca.preco_encontrado = false;
+                    resultadoBusca.motivo = 'Nenhum preço real verificável';
+                } else {
+                    resultadoBusca.precos_coletados = precosValidos;
+                    resultadoBusca.num_precos_encontrados = precosValidos.length;
+                }
             }
         }
 
@@ -415,7 +462,7 @@ module.exports = async (req, res) => {
             precos_coletados: resultadoEMA.detalhes_precos,
             estrategia_busca: {
                 termos_padronizados: termosBusca,
-                termo_utilizado: resultadoBusca.termo_busca_utilizado,
+                termo_utilizado: resultadoBusca.termo_busca_utilizado || termosBusca[0],
                 num_precos_reais: resultadoBusca.num_precos_encontrados
             },
             metadados: {
@@ -434,6 +481,7 @@ module.exports = async (req, res) => {
 
     } catch (error) {
         console.error('❌ [ETAPA2] ERRO:', error.message);
+        console.error('❌ [ETAPA2] Stack:', error.stack);
         return res.status(500).json({
             status: 'Falha',
             mensagem: 'Erro: ' + error.message,
