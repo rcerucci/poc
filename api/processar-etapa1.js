@@ -22,14 +22,24 @@ const PROMPT_SISTEMA = `Extraia informações do ativo em JSON (sem markdown):
 
 ***REGRAS CRÍTICAS:***
 
-1. **numero_patrimonio:** Plaqueta visível ou N/A
+1. ***numero_patrimonio (ATENÇÃO - FILTRAR DADOS):***
+   - **EXTRAIR APENAS O NÚMERO** da plaqueta de patrimônio
+   - **IGNORAR:** Nome de empresa proprietária, CNPJ, endereço, códigos de barras
+   - **Exemplo correto:** Se a placa mostra "TechIMPORT / CNPJ 15.524.734/0001-47 / PATRIMÔNIO 02246" → extrair apenas "02246"
+   - Se não houver plaqueta de patrimônio: N/A
 
 2. **nome_produto:** Genérico, técnico, curto. Manter consistência (Ex: 'Mesa de Trabalho' ou 'Bancada')
 
-3. **marca/modelo:** Exatos de QUALQUER marcação (etiqueta/placa/estampado). **Marca = nome COMPLETO do fabricante.** Modelo = código comercial. **S/N NÃO é modelo**, vai na descrição.
+3. ***marca/modelo (NÃO CONFUNDIR COM PROPRIETÁRIO):***
+   - **Marca = fabricante do EQUIPAMENTO** (Dell, HP, Cummins, etc.)
+   - **NÃO usar:** Nome da empresa proprietária que aparece na plaqueta de patrimônio
+   - **Se o equipamento não tem marca visível:** N/A
+   - **Modelo:** Código comercial do fabricante
+   - **S/N NÃO é modelo**, vai na descrição
 
 4. ***especificacoes (CRÍTICO - LEITURA COMPLETA):***
-   - **TRANSCREVER LITERALMENTE** todos os dados técnicos da placa
+   - **TRANSCREVER LITERALMENTE** todos os dados técnicos da placa do EQUIPAMENTO
+   - **NÃO INCLUIR:** Dados da plaqueta de patrimônio (CNPJ, endereço, etc.)
    - **NÃO resumir, NÃO omitir, NÃO arredondar valores**
    - **ATENÇÃO AO OCR:** Diferenciar 3 vs 1, 5 vs 6, 8 vs 0, 9 vs 4
    - **INCLUIR TUDO:** tensões, correntes, potências, temperaturas, frequências, códigos normativos, massa, ano, impedância, classe de isolamento, etc.
@@ -47,9 +57,20 @@ const PROMPT_SISTEMA = `Extraia informações do ativo em JSON (sem markdown):
    - **PRIORIDADE:** Dados valiosos primeiro (Ano, S/N, normas)
    - **INCLUIR:** Se embalado (parcial/total)
    - **EXCLUIR:** Acessórios externos não fixos (tapetes, cabos removíveis, suportes móveis)
+   - **NÃO incluir:** Nome da empresa proprietária, CNPJ, cor, localização, estado
    - **Formato:** "[Nome] [Marca] [Modelo], [principais specs], [S/N], [características físicas fixas]"
-   - **NÃO incluir:** cor, localização, estado
    - **Max 200 chars**
+
+***VALIDAÇÃO FINAL OBRIGATÓRIA:***
+
+Antes de retornar o JSON, verificar:
+1. **Plaqueta de Patrimônio vs Placa do Fabricante:** São DIFERENTES. Patrimônio = empresa proprietária. Fabricante = quem fabricou o equipamento.
+2. **numero_patrimonio:** APENAS o número, sem CNPJ, sem nome de empresa
+3. **marca:** NUNCA usar nome da empresa proprietária (TechIMPORT, etc.)
+4. **S/N (Número de Série):** NUNCA em especificacoes, SEMPRE em descricao
+5. **Acessórios não fixos:** NUNCA em descricao (tapetes, mantas, cabos soltos)
+6. **OCR de números similares:** Reler valores de 0-9 para confirmar
+7. **Ordem de especificacoes:** Seguir ordem EXATA da placa do equipamento
 
 ***EXEMPLOS CORRETOS:***
 
@@ -59,15 +80,7 @@ Notebook: {"numero_patrimonio":"15432","nome_produto":"Notebook","marca":"Dell",
 
 Transformador: {"numero_patrimonio":"02003","nome_produto":"Transformador Seco","marca":"TRA Eletromecânica Ltda","modelo":"N/A","especificacoes":"3 FASES, 30 kVA, 60 Hz, RESFR A M, LIG YND1, MAT. ISOL CLASSE F, ELEV TEMP ENROL 105°C, H-NI/NBI 0.5 kV, X-NI/NBI 0.5 kV, H 480/400/380 V, X 240/220/200 V, IMPEDÂNCIA 3.92% A 60Hz, 115°C, 200/420 V, MASSA TOTAL 330 Kg, ANO 2018","estado_conservacao":"Bom","motivo_conservacao":"N/A","categoria_depreciacao":"Máquinas e Equipamentos","descricao":"Transformador Seco TRA Eletromecânica Ltda, 30 kVA, Ano 2018, S/N: 9-50-00058, ABNT NBR 10295/5356, massa 330 Kg"}
 
-// NO PROMPT - ADICIONAR:
-
-***VALIDAÇÃO FINAL OBRIGATÓRIA:***
-
-Antes de retornar o JSON, verificar:
-1. **S/N (Número de Série):** NUNCA em especificacoes, SEMPRE em descricao
-2. **Acessórios não fixos:** NUNCA em descricao (tapetes, mantas, cabos soltos)
-3. **OCR de números similares:** Reler valores de 0-9 para confirmar
-4. **Ordem de especificacoes:** Seguir ordem EXATA da placa
+Bancada: {"numero_patrimonio":"02246","nome_produto":"Bancada de Trabalho","marca":"N/A","modelo":"N/A","especificacoes":"N/A","estado_conservacao":"Bom","motivo_conservacao":"N/A","categoria_depreciacao":"Móveis e Utensílios","descricao":"Bancada de Trabalho, estrutura em aço inoxidável, com prateleira inferior fixa"}
 
 `;
 

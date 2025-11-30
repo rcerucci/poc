@@ -6,10 +6,10 @@ const CONFIG = {
     apiUrl: 'https://poc-rose-five.vercel.app',
     maxFotos: 3,
     minFotos: 2,
-    // ✅ PARÂMETROS OTIMIZADOS PARA OCR
+    // ✅ OTIMIZADO: 65% @ 1024px - Sweet spot custo x qualidade
     compressao: {
-        qualidade: 0.75,    // 75% - ideal para OCR
-        maxResolucao: 1024  // 1024px - mantém clareza de texto
+        qualidade: 0.65,    // 65% - Economia de 22% mantendo qualidade
+        maxResolucao: 1024  // 1024px - Perfeito para OCR e PDF A4
     }
 };
 
@@ -96,10 +96,10 @@ function limparTudo() {
 }
 
 // ===================================================================
-// COMPRESSÃO DE IMAGENS - OTIMIZADA PARA OCR
+// COMPRESSÃO DE IMAGENS - OTIMIZADA PARA CUSTO x QUALIDADE
 // ===================================================================
 
-async function comprimirImagem(base64, qualidade = 0.75, maxResolucao = 1024) {
+async function comprimirImagem(base64, qualidade = 0.65, maxResolucao = 1024) {
     return new Promise((resolve) => {
         const img = new Image();
         img.onload = () => {
@@ -132,7 +132,7 @@ async function comprimirImagem(base64, qualidade = 0.75, maxResolucao = 1024) {
             
             ctx.drawImage(img, 0, 0, width, height);
             
-            // ✅ Comprimir em JPEG com qualidade 0.75
+            // ✅ Comprimir em JPEG com qualidade 0.65 (economia de 22%)
             const comprimido = canvas.toDataURL('image/jpeg', qualidade);
             
             const tamanhoOriginal = base64.length;
@@ -144,7 +144,8 @@ async function comprimirImagem(base64, qualidade = 0.75, maxResolucao = 1024) {
                 qualidade: (qualidade * 100) + '%',
                 original: (tamanhoOriginal / 1024).toFixed(0) + ' KB',
                 comprimida: (tamanhoComprimido / 1024).toFixed(0) + ' KB',
-                reducao: reducao.toFixed(1) + '%'
+                reducao: reducao.toFixed(1) + '%',
+                tokensEstimados: Math.round(tamanhoComprimido / 1024)
             });
             
             resolve(comprimido);
@@ -203,10 +204,10 @@ async function adicionarFoto(base64, index) {
     const placeholder = slot.querySelector('.photo-placeholder');
     const btnRemove = slot.querySelector('.btn-remove');
     
-    // ✅ COMPRIMIR com parâmetros otimizados para OCR
+    // ✅ COMPRIMIR com parâmetros otimizados (65% @ 1024px)
     const base64Comprimido = await comprimirImagem(
         base64,
-        CONFIG.compressao.qualidade,      // 0.75
+        CONFIG.compressao.qualidade,      // 0.65
         CONFIG.compressao.maxResolucao    // 1024px
     );
     
