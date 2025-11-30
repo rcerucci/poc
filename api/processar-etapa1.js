@@ -28,19 +28,26 @@ const PROMPT_SISTEMA = `Extraia informações do ativo em JSON (sem markdown):
 
 3. **marca/modelo:** Exatos de QUALQUER marcação (etiqueta/placa/estampado). **Marca = nome COMPLETO do fabricante.** Modelo = código comercial. **S/N NÃO é modelo**, vai na descrição.
 
-4. **especificacoes:** TODAS da placa - tensão, corrente, potência, frequência. **Não resumir.** Liste todos os valores. Ex: "220V, 60Hz, 20kVA, 3 Fases"
+4. ***especificacoes (CRÍTICO - LEITURA COMPLETA):***
+   - **TRANSCREVER LITERALMENTE** todos os dados técnicos da placa
+   - **NÃO resumir, NÃO omitir, NÃO arredondar valores**
+   - **ATENÇÃO AO OCR:** Diferenciar 3 vs 1, 5 vs 6, 8 vs 0, 9 vs 4
+   - **INCLUIR TUDO:** tensões, correntes, potências, temperaturas, frequências, códigos normativos, massa, ano, impedância, classe de isolamento, etc.
+   - **ORDEM:** Seguir a ordem da placa
+   - **Se não houver placa técnica:** N/A
+   - **Exemplo:** "3 FASES, 30 kVA, 60 Hz, RESFR A M, LIG YND1, MAT. ISOL CLASSE F, ELEV TEMP ENROL 105°C, H-NI/NBI 0.5 kV, X-NI/NBI 0.5 kV, H 480/400/380 V, X 240/220/200 V, IMPEDÂNCIA 3.92% A 60Hz, 115°C, 200/420 V, MASSA TOTAL 330 Kg, ANO 2018"
 
-5. **estado_conservacao:** Avaliação visual
+5. **estado_conservacao:** Avaliação visual consistente
 
 6. **motivo_conservacao:** Só se Regular/Ruim. Max 3 palavras
 
 7. **categoria_depreciacao:** UM valor exato da lista
 
 8. ***descricao (FORMATO OBRIGATÓRIO):***
-   - **PRIORIDADE:** Dados valiosos primeiro (Ano, S/N)
+   - **PRIORIDADE:** Dados valiosos primeiro (Ano, S/N, normas)
    - **INCLUIR:** Se embalado (parcial/total)
-   - **EXCLUIR:** Acessórios externos
-   - **Formato:** "[Nome] [Marca] [Modelo], [specs], [S/N], [características físicas]"
+   - **EXCLUIR:** Acessórios externos não fixos (tapetes, cabos removíveis, suportes móveis)
+   - **Formato:** "[Nome] [Marca] [Modelo], [principais specs], [S/N], [características físicas fixas]"
    - **NÃO incluir:** cor, localização, estado
    - **Max 200 chars**
 
@@ -48,9 +55,9 @@ const PROMPT_SISTEMA = `Extraia informações do ativo em JSON (sem markdown):
 
 Carrinho: {"numero_patrimonio":"02128","nome_produto":"Carrinho Porta-Ferramentas","marca":"N/A","modelo":"N/A","especificacoes":"N/A","estado_conservacao":"Bom","motivo_conservacao":"N/A","categoria_depreciacao":"Móveis e Utensílios","descricao":"Carrinho metal com prateleiras, gaveta, orifícios para mandris, rodízios"}
 
-Notebook: {"numero_patrimonio":"15432","nome_produto":"Notebook","marca":"Dell","modelo":"Latitude 5420","especificacoes":"Intel i5, 8GB, 256GB SSD","estado_conservacao":"Excelente","motivo_conservacao":"N/A","categoria_depreciacao":"Computadores e Informática","descricao":"Notebook Dell Latitude 5420, Intel i5, 8GB RAM, 256GB SSD, S/N: G7H2K3P, com embalagem original."}
+Notebook: {"numero_patrimonio":"15432","nome_produto":"Notebook","marca":"Dell","modelo":"Latitude 5420","especificacoes":"Intel i5, 8GB, 256GB SSD","estado_conservacao":"Excelente","motivo_conservacao":"N/A","categoria_depreciacao":"Computadores e Informática","descricao":"Notebook Dell Latitude 5420, Intel i5, 8GB RAM, 256GB SSD, S/N: G7H2K3P"}
 
-Gerador: {"numero_patrimonio":"N/A","nome_produto":"Gerador Diesel","marca":"Cummins","modelo":"C22D5","especificacoes":"220V, 60Hz, 22kVA, 0.8FP","estado_conservacao":"Regular","motivo_conservacao":"Desgaste pintura","categoria_depreciacao":"Máquinas e Equipamentos","descricao":"Gerador Cummins C22D5, 220V, 60Hz, 22kVA, 0.8FP, Ano 2018, S/N: XYZ456"}
+Transformador: {"numero_patrimonio":"02003","nome_produto":"Transformador Seco","marca":"TRA Eletromecânica Ltda","modelo":"N/A","especificacoes":"3 FASES, 30 kVA, 60 Hz, RESFR A M, LIG YND1, MAT. ISOL CLASSE F, ELEV TEMP ENROL 105°C, H-NI/NBI 0.5 kV, X-NI/NBI 0.5 kV, H 480/400/380 V, X 240/220/200 V, IMPEDÂNCIA 3.92% A 60Hz, 115°C, 200/420 V, MASSA TOTAL 330 Kg, ANO 2018","estado_conservacao":"Bom","motivo_conservacao":"N/A","categoria_depreciacao":"Máquinas e Equipamentos","descricao":"Transformador Seco TRA Eletromecânica Ltda, 30 kVA, Ano 2018, S/N: 9-50-00058, ABNT NBR 10295/5356, massa 330 Kg"}
 
 `;
 
