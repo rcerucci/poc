@@ -255,7 +255,8 @@ module.exports = async (req, res) => {
         const model = genAI.getGenerativeModel({
             model: MODEL,
             tools: [{ googleSearch: {} }],
-            generationConfig: { temperature: 0.1 }
+            generationConfig: { temperature: 0.1 },
+            responseMimeType: 'application/json'
         });
 
         const result = await model.generateContent(promptBusca);
