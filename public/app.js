@@ -493,22 +493,29 @@ async function processarEtapa2() {
 // MOSTRAR RESULTADO - ✅ COMPATÍVEL
 // ===================================================================
 
+// ===================================================================
+// MOSTRAR RESULTADO - ✅ VISUALIZADOR INTELIGENTE
+// ===================================================================
+
 function mostrarResultado(resultado) {
     const dados = resultado.dados;
     
+    // ===== IDENTIFICAÇÃO =====
     elementos.resultIdentificacao.innerHTML = `
         <p><strong>Placa:</strong> ${dados.numero_patrimonio}</p>
         <p><strong>Nome:</strong> ${dados.nome_produto}</p>
         <p><strong>Marca:</strong> ${dados.marca}</p>
         <p><strong>Modelo:</strong> ${dados.modelo}</p>
+        <p><strong>Especificações:</strong> ${dados.especificacoes}</p>
     `;
     
+    // ===== CLASSIFICAÇÃO =====
     elementos.resultClassificacao.innerHTML = `
         <p><strong>Estado:</strong> ${dados.estado_conservacao}</p>
         <p><strong>Categoria:</strong> ${dados.categoria_depreciacao}</p>
     `;
     
-    // ✅ Compatível com ambos os formatos
+    // ===== VALORES (compatível) =====
     const valores = dados.valores_estimados || dados.valores;
     const valorMercado = valores.valor_mercado_estimado || valores.mercado;
     const valorAtual = valores.valor_atual_estimado || valores.atual;
@@ -516,7 +523,6 @@ function mostrarResultado(resultado) {
     const confianca = valores.score_confianca || valores.confianca;
     const metodo = valores.fonte_preco || valores.metodo || 'N/A';
     
-    // ✅ Indicador visual de confiança
     let corConfianca = '#28a745'; // verde
     if (confianca < 50) corConfianca = '#dc3545'; // vermelho
     else if (confianca < 70) corConfianca = '#ffc107'; // amarelo
@@ -529,27 +535,222 @@ function mostrarResultado(resultado) {
         <p><strong>Confiança:</strong> <span style="color: ${corConfianca}; font-weight: bold;">${confianca.toFixed(0)}%</span></p>
     `;
     
-    // Metadados compatível
+    // ===== METADADOS =====
     const meta = dados.metadados || dados.meta;
     const dataBusca = meta.data_busca || meta.data;
     const modeloIA = meta.modelo_ia || meta.modelo;
     const custoTotal = meta.custo_total || meta.custo;
     
-    // Stats compatível
     const stats = dados.analise_estatistica || dados.stats;
     const numPrecos = stats?.num_precos_coletados || stats?.num || 0;
     
+    const busca = dados.estrategia_busca || dados.busca;
+    const termoBusca = busca?.termo_utilizado || busca?.termo || 'N/A';
+    
     elementos.resultMetadados.innerHTML = `
         <p><strong>Preços encontrados:</strong> ${numPrecos}</p>
+        <p><strong>Termo de busca:</strong> ${termoBusca}</p>
         <p><strong>Data:</strong> ${new Date(dataBusca).toLocaleString('pt-BR')}</p>
         <p><strong>Modelo IA:</strong> ${modeloIA}</p>
         <p><strong>Custo total:</strong> R$ ${custoTotal?.toFixed(4) || '0.0000'}</p>
     `;
     
-    elementos.jsonOutput.textContent = JSON.stringify(resultado, null, 2);
+    // ===== JSON ORGANIZADO (com seções expansíveis) =====
+    const jsonFormatado = gerarJSONFormatado(dados);
+    elementos.jsonOutput.innerHTML = jsonFormatado;
     
     elementos.resultSection.style.display = 'block';
     elementos.resultSection.scrollIntoView({ behavior: 'smooth' });
+}
+
+// ===================================================================
+// GERAR JSON FORMATADO COM SEÇÕES EXPANSÍVEIS
+// ===================================================================
+
+function gerarJSONFormatado(dados) {
+    const valores = dados.valores_estimados || dados.valores;
+    const stats = dados.analise_estatistica || dados.stats;
+    const precos = dados.precos_coletados || dados.precos;
+    const busca = dados.estrategia_busca || dados.busca;
+    const meta = dados.metadados || dados.meta;
+    
+    // Compatibilidade de campos
+    const valorMercado = valores.valor_mercado_estimado || valores.mercado;
+    const valorAtual = valores.valor_atual_estimado || valores.atual;
+    const fatorDep = valores.fator_depreciacao || valores.depreciacao;
+    const confianca = valores.score_confianca || valores.confianca;
+    const metodo = valores.fonte_preco || valores.metodo;
+    
+    const numPrecos = stats?.num_precos_coletados || stats?.num || 0;
+    const min = stats?.preco_minimo || stats?.min || 0;
+    const max = stats?.preco_maximo || stats?.max || 0;
+    const desvio = stats?.desvio_padrao || stats?.desvio || 0;
+    const coefVar = stats?.coeficiente_variacao || stats?.coef_var || 0;
+    
+    const termoBusca = busca?.termo_utilizado || busca?.termo || 'N/A';
+    const numBusca = busca?.num_precos_reais || busca?.num || 0;
+    
+    const dataBusca = meta?.data_busca || meta?.data;
+    const modeloIA = meta?.modelo_ia || meta?.modelo;
+    const versao = meta?.versao_sistema || meta?.versao;
+    const custoTotal = meta?.custo_total || meta?.custo;
+    
+    const tokensIn = meta?.tokens_input || meta?.tokens?.in || 0;
+    const tokensOut = meta?.tokens_output || meta?.tokens?.out || 0;
+    const tokensTotal = meta?.tokens_total || meta?.tokens?.total || 0;
+    
+    // HTML formatado com seções
+    return `
+<div class="json-section">
+    <div class="json-header" onclick="toggleSection(this)">
+        <span class="json-toggle">▶</span>
+        <strong>📊 IDENTIFICAÇÃO</strong>
+    </div>
+    <div class="json-content" style="display: none;">
+        <table class="json-table">
+            <tr><td>Placa</td><td>${dados.numero_patrimonio}</td></tr>
+            <tr><td>Nome</td><td>${dados.nome_produto}</td></tr>
+            <tr><td>Marca</td><td>${dados.marca}</td></tr>
+            <tr><td>Modelo</td><td>${dados.modelo}</td></tr>
+            <tr><td>Especificações</td><td>${dados.especificacoes}</td></tr>
+            <tr><td>Estado</td><td>${dados.estado_conservacao}</td></tr>
+            <tr><td>Categoria</td><td>${dados.categoria_depreciacao}</td></tr>
+        </table>
+    </div>
+</div>
+
+<div class="json-section">
+    <div class="json-header" onclick="toggleSection(this)">
+        <span class="json-toggle">▶</span>
+        <strong>💰 VALORES</strong>
+    </div>
+    <div class="json-content" style="display: none;">
+        <table class="json-table">
+            <tr><td>Valor Mercado</td><td>R$ ${valorMercado.toFixed(2)}</td></tr>
+            <tr><td>Valor Atual</td><td>R$ ${valorAtual.toFixed(2)}</td></tr>
+            <tr><td>Depreciação</td><td>${(fatorDep * 100).toFixed(0)}%</td></tr>
+            <tr><td>Método</td><td>${metodo}</td></tr>
+            <tr><td>Confiança</td><td>${confianca.toFixed(1)}%</td></tr>
+        </table>
+    </div>
+</div>
+
+<div class="json-section">
+    <div class="json-header" onclick="toggleSection(this)">
+        <span class="json-toggle">▶</span>
+        <strong>📈 ESTATÍSTICAS (${numPrecos} preços)</strong>
+    </div>
+    <div class="json-content" style="display: none;">
+        <table class="json-table">
+            <tr><td>Preços Coletados</td><td>${numPrecos}</td></tr>
+            <tr><td>Mínimo</td><td>R$ ${min.toFixed(2)}</td></tr>
+            <tr><td>Máximo</td><td>R$ ${max.toFixed(2)}</td></tr>
+            <tr><td>Desvio Padrão</td><td>R$ ${desvio.toFixed(2)}</td></tr>
+            <tr><td>Coef. Variação</td><td>${coefVar.toFixed(2)}%</td></tr>
+            <tr><td>Confiança</td><td>${confianca.toFixed(1)}%</td></tr>
+        </table>
+    </div>
+</div>
+
+<div class="json-section">
+    <div class="json-header" onclick="toggleSection(this)">
+        <span class="json-toggle">▶</span>
+        <strong>🔍 BUSCA</strong>
+    </div>
+    <div class="json-content" style="display: none;">
+        <table class="json-table">
+            <tr><td>Termo Utilizado</td><td><code>${termoBusca}</code></td></tr>
+            <tr><td>Preços Encontrados</td><td>${numBusca}</td></tr>
+        </table>
+    </div>
+</div>
+
+<div class="json-section">
+    <div class="json-header" onclick="toggleSection(this)">
+        <span class="json-toggle">▶</span>
+        <strong>💵 PREÇOS COLETADOS (${precos?.length || 0})</strong>
+    </div>
+    <div class="json-content" style="display: none;">
+        <table class="json-table">
+            <thead>
+                <tr>
+                    <th>Valor</th>
+                    <th>Fonte</th>
+                    <th>Match</th>
+                    <th>Produto</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${(precos || []).map(p => {
+                    const valor = p.valor || p.v;
+                    const fonte = p.fonte || p.f;
+                    const match = p.tipo_match || p.match || p.m;
+                    const produto = p.produto || p.p;
+                    
+                    let corMatch = '#6c757d';
+                    if (match === 'Exato') corMatch = '#28a745';
+                    else if (match === 'Equivalente') corMatch = '#007bff';
+                    else if (match === 'Substituto') corMatch = '#ffc107';
+                    
+                    return `
+                    <tr>
+                        <td>R$ ${valor.toFixed(2)}</td>
+                        <td>${fonte}</td>
+                        <td><span style="color: ${corMatch}; font-weight: bold;">${match}</span></td>
+                        <td><small>${produto}</small></td>
+                    </tr>
+                    `;
+                }).join('')}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="json-section">
+    <div class="json-header" onclick="toggleSection(this)">
+        <span class="json-toggle">▶</span>
+        <strong>⚙️ METADADOS</strong>
+    </div>
+    <div class="json-content" style="display: none;">
+        <table class="json-table">
+            <tr><td>Data</td><td>${new Date(dataBusca).toLocaleString('pt-BR')}</td></tr>
+            <tr><td>Modelo IA</td><td>${modeloIA}</td></tr>
+            <tr><td>Versão Sistema</td><td>${versao}</td></tr>
+            <tr><td>Tokens Input</td><td>${tokensIn.toLocaleString()}</td></tr>
+            <tr><td>Tokens Output</td><td>${tokensOut.toLocaleString()}</td></tr>
+            <tr><td>Tokens Total</td><td>${tokensTotal.toLocaleString()}</td></tr>
+            <tr><td>Custo Total</td><td>R$ ${custoTotal.toFixed(4)}</td></tr>
+        </table>
+    </div>
+</div>
+
+<div class="json-section">
+    <div class="json-header" onclick="toggleSection(this)">
+        <span class="json-toggle">▶</span>
+        <strong>📄 JSON BRUTO</strong>
+    </div>
+    <div class="json-content" style="display: none;">
+        <pre>${JSON.stringify(dados, null, 2)}</pre>
+    </div>
+</div>
+    `.trim();
+}
+
+// ===================================================================
+// TOGGLE DE SEÇÕES
+// ===================================================================
+
+function toggleSection(header) {
+    const content = header.nextElementSibling;
+    const toggle = header.querySelector('.json-toggle');
+    
+    if (content.style.display === 'none') {
+        content.style.display = 'block';
+        toggle.textContent = '▼';
+    } else {
+        content.style.display = 'none';
+        toggle.textContent = '▶';
+    }
 }
 
 // ===================================================================
