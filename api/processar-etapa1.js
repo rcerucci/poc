@@ -29,10 +29,10 @@ REGRAS DE PADRONIZAÇÃO:
    - Se não houver: N/A
 
 2. nome_produto:
+   - Use o termo de BUSCA comercial (como você digitaria no Mercado Livre para COMPRAR este produto novo)
    - Genérico, técnico, máximo 4 palavras
-   - PADRONIZAÇÃO: Use sempre o mesmo termo para itens similares
-   - Exemplos corretos: "Cadeira de Escritório", "Impressora Multifuncional", "Furadeira de Impacto"
-   - NUNCA: Termos vagos como "Cadeira", "Impressora", "Ferramenta"
+   - Exemplos: "Cadeira de Escritório", "Impressora Multifuncional", "Furadeira de Impacto"
+   - NUNCA: Termos vagos ("Cadeira") ou descrições funcionais ("Sistema de remoção")
 
 3. marca/modelo (NÃO CONFUNDIR COM PROPRIETÁRIO):
    - marca: Fabricante do EQUIPAMENTO (Dell, HP, Makita, Samsung)
