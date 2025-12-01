@@ -6,10 +6,9 @@ const CONFIG = {
     apiUrl: 'https://poc-rose-five.vercel.app',
     maxFotos: 3,
     minFotos: 2,
-    // ✅ OTIMIZADO: 65% @ 1024px - Sweet spot custo x qualidade
     compressao: {
-        qualidade: 0.65,    // 65% - Economia de 22% mantendo qualidade
-        maxResolucao: 1024  // 1024px - Perfeito para OCR e PDF A4
+        qualidade: 0.65,
+        maxResolucao: 1024
     }
 };
 
@@ -62,7 +61,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function inicializarEventListeners() {
-    // Botão Limpar Tudo
     const btnLimparTudo = document.getElementById('btnLimparTudo');
     if (btnLimparTudo) {
         btnLimparTudo.addEventListener('click', limparTudo);
@@ -96,7 +94,7 @@ function limparTudo() {
 }
 
 // ===================================================================
-// COMPRESSÃO DE IMAGENS - OTIMIZADA PARA CUSTO x QUALIDADE
+// COMPRESSÃO DE IMAGENS
 // ===================================================================
 
 async function comprimirImagem(base64, qualidade = 0.65, maxResolucao = 1024) {
@@ -107,7 +105,6 @@ async function comprimirImagem(base64, qualidade = 0.65, maxResolucao = 1024) {
             let width = img.width;
             let height = img.height;
             
-            // ✅ Redimensionar mantendo aspect ratio
             if (width > height) {
                 if (width > maxResolucao) {
                     height = Math.round((height * maxResolucao) / width);
@@ -124,14 +121,10 @@ async function comprimirImagem(base64, qualidade = 0.65, maxResolucao = 1024) {
             canvas.height = height;
             
             const ctx = canvas.getContext('2d');
-            
-            // ✅ Aplicar suavização para melhor OCR
             ctx.imageSmoothingEnabled = true;
             ctx.imageSmoothingQuality = 'high';
-            
             ctx.drawImage(img, 0, 0, width, height);
             
-            // ✅ Comprimir em JPEG com qualidade 0.65
             const comprimido = canvas.toDataURL('image/jpeg', qualidade);
             
             const tamanhoOriginal = base64.length;
@@ -143,8 +136,7 @@ async function comprimirImagem(base64, qualidade = 0.65, maxResolucao = 1024) {
                 qualidade: (qualidade * 100) + '%',
                 original: (tamanhoOriginal / 1024).toFixed(0) + ' KB',
                 comprimida: (tamanhoComprimido / 1024).toFixed(0) + ' KB',
-                reducao: reducao.toFixed(1) + '%',
-                tokensEstimados: Math.round(tamanhoComprimido / 1024)
+                reducao: reducao.toFixed(1) + '%'
             });
             
             resolve(comprimido);
@@ -203,7 +195,6 @@ async function adicionarFoto(base64, index) {
     const placeholder = slot.querySelector('.photo-placeholder');
     const btnRemove = slot.querySelector('.btn-remove');
     
-    // ✅ COMPRIMIR com parâmetros otimizados (65% @ 1024px)
     const base64Comprimido = await comprimirImagem(
         base64,
         CONFIG.compressao.qualidade,
@@ -221,7 +212,7 @@ async function adicionarFoto(base64, index) {
         thumbnail: base64Comprimido
     };
     
-    console.log('✅ Foto ' + (index + 1) + ' adicionada e comprimida');
+    console.log('✅ Foto ' + (index + 1) + ' adicionada');
     verificarFotosMinimas();
 }
 
@@ -291,7 +282,7 @@ document.addEventListener('paste', (event) => {
 });
 
 // ===================================================================
-// PROCESSAR ETAPA 1 (EXTRAÇÃO)
+// PROCESSAR ETAPA 1
 // ===================================================================
 
 async function processarEtapa1() {
@@ -380,7 +371,7 @@ function bloquearCampos(campos) {
 }
 
 // ===================================================================
-// PROCESSAR ETAPA 2 (BUSCA DE PREÇOS) - ✅ COMPATÍVEL COM AMBOS
+// PROCESSAR ETAPA 2 - ✅ CORRIGIDO
 // ===================================================================
 
 async function processarEtapa2() {
@@ -416,19 +407,64 @@ async function processarEtapa2() {
         });
         
         if (!response.ok) {
-            const erro = await response.json();
-            throw new Error(erro.mensagem || 'Erro HTTP: ' + response.status);
+            throw new Error('Erro HTTP: ' + response.status);
         }
         
         const resultado = await response.json();
         console.log('✅ Etapa 2 concluída:', resultado);
         
+        // ✅ TRATAR "SEM PREÇOS" COMO RESULTADO VÁLIDO
+        if (resultado.status === 'Sem Preços') {
+            console.log('ℹ️ Produto sem preços online');
+            
+            AppState.dadosEtapa2 = resultado;
+            
+            mostrarAlerta('ℹ️ ' + resultado.mensagem, 'info');
+            
+            // Mostrar resultado "sem preços"
+            elementos.resultSection.style.display = 'block';
+            
+            elementos.resultIdentificacao.innerHTML = `
+                <p><strong>Placa:</strong> ${dadosParaBusca.numero_patrimonio}</p>
+                <p><strong>Nome:</strong> ${dadosParaBusca.nome_produto}</p>
+                <p><strong>Marca:</strong> ${dadosParaBusca.marca}</p>
+                <p><strong>Modelo:</strong> ${dadosParaBusca.modelo}</p>
+            `;
+            
+            elementos.resultClassificacao.innerHTML = `
+                <p><strong>Estado:</strong> ${dadosParaBusca.estado_conservacao}</p>
+                <p><strong>Categoria:</strong> ${dadosParaBusca.categoria_depreciacao}</p>
+            `;
+            
+            elementos.resultValores.innerHTML = `
+                <div style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; padding: 15px;">
+                    <p style="margin: 0 0 10px 0;"><strong>⚠️ Sem Preços Online</strong></p>
+                    <p style="margin: 0 0 10px 0; color: #666;">${resultado.mensagem}</p>
+                    <p style="margin: 0; font-size: 0.9em; color: #666;">
+                        💡 Produto específico/industrial sem vendas online visíveis. Recomenda-se cotação manual.
+                    </p>
+                </div>
+            `;
+            
+            elementos.resultMetadados.innerHTML = `
+                <p><strong>Termo buscado:</strong> ${resultado.dados?.termo_utilizado || 'N/A'}</p>
+                <p><strong>Custo busca:</strong> R$ ${resultado.meta?.custo?.toFixed(4) || '0.0000'}</p>
+                <p><strong>Data:</strong> ${new Date().toLocaleString('pt-BR')}</p>
+            `;
+            
+            elementos.jsonOutput.textContent = JSON.stringify(resultado, null, 2);
+            elementos.resultSection.scrollIntoView({ behavior: 'smooth' });
+            
+            esconderLoading();
+            return; // ✅ NÃO é erro!
+        }
+        
+        // ✅ SUCESSO COM PREÇOS
         if (resultado.status === 'Sucesso') {
             AppState.dadosEtapa2 = resultado;
             
-            // ✅ COMPATÍVEL: Aceita formato antigo E novo
+            // Compatível com ambos os formatos
             const valores = resultado.dados.valores_estimados || resultado.dados.valores;
-            
             const valorMercado = valores.valor_mercado_estimado || valores.mercado;
             const valorAtual = valores.valor_atual_estimado || valores.atual;
             
@@ -454,7 +490,7 @@ async function processarEtapa2() {
 }
 
 // ===================================================================
-// MOSTRAR RESULTADO - ✅ COMPATÍVEL COM AMBOS
+// MOSTRAR RESULTADO - ✅ COMPATÍVEL
 // ===================================================================
 
 function mostrarResultado(resultado) {
@@ -472,28 +508,42 @@ function mostrarResultado(resultado) {
         <p><strong>Categoria:</strong> ${dados.categoria_depreciacao}</p>
     `;
     
-    // ✅ COMPATÍVEL: Aceita formato antigo E novo
+    // ✅ Compatível com ambos os formatos
     const valores = dados.valores_estimados || dados.valores;
     const valorMercado = valores.valor_mercado_estimado || valores.mercado;
     const valorAtual = valores.valor_atual_estimado || valores.atual;
     const fatorDep = valores.fator_depreciacao || valores.depreciacao;
     const confianca = valores.score_confianca || valores.confianca;
+    const metodo = valores.fonte_preco || valores.metodo || 'N/A';
+    
+    // ✅ Indicador visual de confiança
+    let corConfianca = '#28a745'; // verde
+    if (confianca < 50) corConfianca = '#dc3545'; // vermelho
+    else if (confianca < 70) corConfianca = '#ffc107'; // amarelo
     
     elementos.resultValores.innerHTML = `
         <p><strong>Mercado:</strong> R$ ${valorMercado.toFixed(2)}</p>
         <p><strong>Atual:</strong> R$ ${valorAtual.toFixed(2)}</p>
-        <p><strong>Depreciação:</strong> ${fatorDep.toFixed(2)}</p>
-        <p><strong>Confiança:</strong> ${confianca.toFixed(0)}%</p>
+        <p><strong>Depreciação:</strong> ${(fatorDep * 100).toFixed(0)}%</p>
+        <p><strong>Método:</strong> ${metodo}</p>
+        <p><strong>Confiança:</strong> <span style="color: ${corConfianca}; font-weight: bold;">${confianca.toFixed(0)}%</span></p>
     `;
     
     // Metadados compatível
     const meta = dados.metadados || dados.meta;
     const dataBusca = meta.data_busca || meta.data;
     const modeloIA = meta.modelo_ia || meta.modelo;
+    const custoTotal = meta.custo_total || meta.custo;
+    
+    // Stats compatível
+    const stats = dados.analise_estatistica || dados.stats;
+    const numPrecos = stats?.num_precos_coletados || stats?.num || 0;
     
     elementos.resultMetadados.innerHTML = `
+        <p><strong>Preços encontrados:</strong> ${numPrecos}</p>
         <p><strong>Data:</strong> ${new Date(dataBusca).toLocaleString('pt-BR')}</p>
         <p><strong>Modelo IA:</strong> ${modeloIA}</p>
+        <p><strong>Custo total:</strong> R$ ${custoTotal?.toFixed(4) || '0.0000'}</p>
     `;
     
     elementos.jsonOutput.textContent = JSON.stringify(resultado, null, 2);

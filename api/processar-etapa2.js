@@ -80,7 +80,7 @@ function extrairEspecificacaoPrincipal(especificacoes, nome_produto) {
 const PROMPT_BUSCA_PRECO = (dados) => {
     const especPrincipal = extrairEspecificacaoPrincipal(dados.especificacoes, dados.nome_produto);
     
-    return `Encontre 3-4 preços NOVOS no Brasil para substituir:
+    return `Encontre 1-4 preços NOVOS no Brasil para substituir:
 ${dados.nome_produto} | ${dados.marca || 'N/A'} | ${dados.modelo || 'N/A'}
 Spec: ${especPrincipal}
 
@@ -89,22 +89,18 @@ REGRAS:
 2. Aceitar: Exato, Equivalente (±10%), Substituto
 3. Só NOVOS, preços visíveis
 4. Fontes: ML, Amazon, B2B
-5. PRÉ-FILTRAR: Remova outliers (±30% da mediana) ANTES de retornar
+5. PRÉ-FILTRAR: Remova outliers (±30% da mediana)
 
-JSON MÍNIMO (copie exato):
+JSON MÍNIMO:
 {"ok":true,"termo":"texto","precos":[{"v":1599.9,"f":"Loja","m":"Exato","p":"Nome"}]}
 
-Falha (<3 preços):
+Sem preços:
 {"ok":false,"motivo":"razão","termo":"texto"}
 
-CRÍTICO: 
-- JSON VÁLIDO com todas chaves fechadas
-- Nomes produto até 40 chars
-- SEM texto fora do JSON
-- SEM markdown`;
+CRÍTICO: JSON válido, nomes até 40 chars, SEM markdown`;
 };
 
-// --- Cálculo Simplificado ---
+// --- Cálculo de Média - FUNCIONA COM 1+ PREÇOS ---
 function calcularMediaPonderada(coleta_precos) {
     console.log('📊 [EMA] Calculando...');
     
@@ -123,8 +119,39 @@ function calcularMediaPonderada(coleta_precos) {
         return { sucesso: false, motivo: 'Nenhum preço válido' };
     }
 
-    console.log('✅ [EMA] ' + precosValidos.length + ' preços');
+    console.log('✅ [EMA] ' + precosValidos.length + ' preço(s)');
 
+    // ✅ CASO 1: APENAS 1 PREÇO
+    if (precosValidos.length === 1) {
+        const precoUnico = precosValidos[0];
+        const match = precoUnico.m || precoUnico.tipo_match || '';
+        const fonte = precoUnico.f || precoUnico.fonte || '';
+        const produto = precoUnico.p || precoUnico.produto || 'N/A';
+        
+        console.log('⚠️ [EMA] Apenas 1 preço: R$', precoUnico.valor.toFixed(2));
+        
+        return {
+            sucesso: true,
+            valor_mercado: parseFloat(precoUnico.valor.toFixed(2)),
+            estatisticas: {
+                num: 1,
+                min: precoUnico.valor,
+                max: precoUnico.valor,
+                desvio: 0,
+                coef_var: 0,
+                confianca: 30 // ✅ Confiança baixa (apenas 1 preço)
+            },
+            precos: [{
+                valor: precoUnico.valor,
+                fonte: fonte,
+                match: match,
+                peso: 1.0,
+                produto: produto
+            }]
+        };
+    }
+
+    // ✅ CASO 2: 2+ PREÇOS - Calcular pesos
     const precosComPeso = precosValidos.map(item => {
         let pesoMatch = 1.0;
         const match = item.m || item.tipo_match || '';
@@ -154,7 +181,15 @@ function calcularMediaPonderada(coleta_precos) {
     const variancia = precosComPeso.reduce((acc, p) => acc + Math.pow(p.valor - media, 2), 0) / precosComPeso.length;
     const desvioPadrao = Math.sqrt(variancia);
     const coefVariacao = (desvioPadrao / media) * 100;
-    const scoreConfianca = Math.max(0, Math.min(100, 100 - coefVariacao));
+    
+    // ✅ Score de confiança baseado em quantidade + variação
+    let scoreBase = 100 - coefVariacao;
+    
+    // Penalizar se poucos preços
+    if (precosValidos.length === 2) scoreBase *= 0.7; // 70% do score
+    else if (precosValidos.length === 3) scoreBase *= 0.85; // 85% do score
+    
+    const scoreConfianca = Math.max(0, Math.min(100, scoreBase));
 
     console.log('💰 R$', mediaPonderada.toFixed(2), '| Conf:', scoreConfianca.toFixed(0) + '%');
 
@@ -252,12 +287,12 @@ module.exports = async (req, res) => {
             throw new Error('JSON inválido: ' + e.message);
         }
 
-        // ✅ "Não encontrado" NÃO é erro
+        // ✅ SEM PREÇOS = RESULTADO VÁLIDO
         if (!resultado.ok || resultado.ok === false) {
             console.log('ℹ️ Preços não encontrados (normal)');
             return res.status(200).json({
                 status: 'Sem Preços',
-                mensagem: resultado.motivo || 'Produto específico',
+                mensagem: resultado.motivo || 'Produto sem preços online visíveis',
                 dados: { 
                     preco_encontrado: false,
                     termo_utilizado: resultado.termo || 'N/A'
@@ -270,12 +305,17 @@ module.exports = async (req, res) => {
         }
 
         const precos = resultado.precos || [];
-        if (precos.length < 3) {
-            console.log('⚠️ Poucos preços:', precos.length);
+        
+        // ✅ SEM MÍNIMO! Aceita 1+
+        if (precos.length === 0) {
+            console.log('ℹ️ Array vazio');
             return res.status(200).json({
                 status: 'Sem Preços',
-                mensagem: 'Apenas ' + precos.length + ' preço(s)',
-                dados: { preco_encontrado: false },
+                mensagem: 'Nenhum preço retornado',
+                dados: { 
+                    preco_encontrado: false,
+                    termo_utilizado: resultado.termo || 'N/A'
+                },
                 meta: {
                     tokens: { in: tokIn, out: tokOut, total: tokTot },
                     custo: parseFloat(custoTot.toFixed(4))
@@ -283,13 +323,16 @@ module.exports = async (req, res) => {
             });
         }
 
+        // ✅ CALCULAR COM 1+ PREÇOS
         const resultadoEMA = calcularMediaPonderada(precos);
 
         if (!resultadoEMA.sucesso) {
             return res.status(200).json({
                 status: 'Sem Preços',
                 mensagem: resultadoEMA.motivo,
-                dados: { preco_encontrado: false },
+                dados: { 
+                    preco_encontrado: false
+                },
                 meta: {
                     tokens: { in: tokIn, out: tokOut, total: tokTot },
                     custo: parseFloat(custoTot.toFixed(4))
@@ -299,13 +342,16 @@ module.exports = async (req, res) => {
 
         let valorMercado = resultadoEMA.valor_mercado;
         let metodo = 'Média Ponderada';
-        const { coef_var } = resultadoEMA.estatisticas;
+        const { coef_var, num } = resultadoEMA.estatisticas;
 
-        if (coef_var > 40) {
-            console.log('⚠️ Alta var:', coef_var.toFixed(1) + '%');
+        // ✅ Ajustar método baseado em quantidade e variação
+        if (num === 1) {
+            metodo = 'Preço Único';
+        } else if (coef_var > 40 && num > 1) {
             const valores = resultadoEMA.precos.map(p => p.valor).sort((a, b) => a - b);
             valorMercado = valores[Math.floor(valores.length / 2)];
-            metodo = 'Mediana';
+            metodo = 'Mediana (alta var)';
+            console.log('⚠️ Alta var:', coef_var.toFixed(1) + '% - usando mediana');
         }
 
         const estado = estado_conservacao || 'Bom';
@@ -313,7 +359,6 @@ module.exports = async (req, res) => {
         const fatorDep = FATORES_DEPRECIACAO[estado]?.[categoria] || 0.7;
         const valorAtual = valorMercado * fatorDep;
 
-        // ✅ JSON COMPACTO
         const dadosCompletos = {
             numero_patrimonio,
             nome_produto,
@@ -333,7 +378,7 @@ module.exports = async (req, res) => {
             },
             
             stats: {
-                num: precos.length,
+                num: num,
                 min: resultadoEMA.estatisticas.min,
                 max: resultadoEMA.estatisticas.max,
                 desvio: resultadoEMA.estatisticas.desvio,
@@ -350,24 +395,24 @@ module.exports = async (req, res) => {
             
             busca: {
                 termo: resultado.termo || 'N/A',
-                num: precos.length
+                num: num
             },
             
             meta: {
                 data: new Date().toISOString(),
                 modelo: MODEL,
-                versao: '2.3-Compacto',
+                versao: '2.4-SemMinimo',
                 tokens: { in: tokIn, out: tokOut, total: tokTot },
                 custo: parseFloat(custoTot.toFixed(4))
             }
         };
 
-        console.log('✅ R$', valorMercado.toFixed(2), '| Atual: R$', valorAtual.toFixed(2));
+        console.log('✅ R$', valorMercado.toFixed(2), '| Atual: R$', valorAtual.toFixed(2), '| ' + num + ' preço(s)');
 
         return res.status(200).json({
             status: 'Sucesso',
             dados: dadosCompletos,
-            mensagem: precos.length + ' preços | ' + resultadoEMA.estatisticas.confianca.toFixed(0) + '% conf'
+            mensagem: num + ' preço(s) | ' + resultadoEMA.estatisticas.confianca.toFixed(0) + '% conf'
         });
 
     } catch (error) {
