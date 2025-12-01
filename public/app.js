@@ -108,7 +108,6 @@ async function comprimirImagem(base64, qualidade = 0.65, maxResolucao = 1024) {
             let height = img.height;
             
             // ✅ Redimensionar mantendo aspect ratio
-            // Reduz o lado maior para maxResolucao
             if (width > height) {
                 if (width > maxResolucao) {
                     height = Math.round((height * maxResolucao) / width);
@@ -132,7 +131,7 @@ async function comprimirImagem(base64, qualidade = 0.65, maxResolucao = 1024) {
             
             ctx.drawImage(img, 0, 0, width, height);
             
-            // ✅ Comprimir em JPEG com qualidade 0.65 (economia de 22%)
+            // ✅ Comprimir em JPEG com qualidade 0.65
             const comprimido = canvas.toDataURL('image/jpeg', qualidade);
             
             const tamanhoOriginal = base64.length;
@@ -207,17 +206,15 @@ async function adicionarFoto(base64, index) {
     // ✅ COMPRIMIR com parâmetros otimizados (65% @ 1024px)
     const base64Comprimido = await comprimirImagem(
         base64,
-        CONFIG.compressao.qualidade,      // 0.65
-        CONFIG.compressao.maxResolucao    // 1024px
+        CONFIG.compressao.qualidade,
+        CONFIG.compressao.maxResolucao
     );
     
-    // Atualizar UI
-    preview.src = base64Comprimido; // ✅ Mostrar versão comprimida
+    preview.src = base64Comprimido;
     preview.style.display = 'block';
     placeholder.style.display = 'none';
     btnRemove.style.display = 'flex';
     
-    // Salvar no state (versão comprimida)
     AppState.fotos[index] = {
         data: base64Comprimido.split(',')[1],
         timestamp: new Date().toISOString(),
@@ -307,7 +304,6 @@ async function processarEtapa1() {
         return;
     }
     
-    // ✅ Log de tamanho total
     const tamanhoTotal = fotosValidas.reduce((acc, f) => acc + f.data.length, 0);
     console.log('📊 Tamanho total:', (tamanhoTotal / 1024).toFixed(0) + ' KB');
     
@@ -384,7 +380,7 @@ function bloquearCampos(campos) {
 }
 
 // ===================================================================
-// PROCESSAR ETAPA 2 (BUSCA DE PREÇOS)
+// PROCESSAR ETAPA 2 (BUSCA DE PREÇOS) - ✅ COMPATÍVEL COM AMBOS
 // ===================================================================
 
 async function processarEtapa2() {
@@ -430,16 +426,21 @@ async function processarEtapa2() {
         if (resultado.status === 'Sucesso') {
             AppState.dadosEtapa2 = resultado;
             
-            const valores = resultado.dados.valores_estimados;
+            // ✅ COMPATÍVEL: Aceita formato antigo E novo
+            const valores = resultado.dados.valores_estimados || resultado.dados.valores;
             
-            if (elementos.valorMercado) elementos.valorMercado.value = formatarMoeda(valores.valor_mercado_estimado);
-            if (elementos.valorAtual) elementos.valorAtual.value = formatarMoeda(valores.valor_atual_estimado);
+            const valorMercado = valores.valor_mercado_estimado || valores.mercado;
+            const valorAtual = valores.valor_atual_estimado || valores.atual;
+            
+            if (elementos.valorMercado) elementos.valorMercado.value = formatarMoeda(valorMercado);
+            if (elementos.valorAtual) elementos.valorAtual.value = formatarMoeda(valorAtual);
             
             bloquearCampos([elementos.valorMercado, elementos.valorAtual]);
             
             mostrarResultado(resultado);
             
-            mostrarAlerta('✅ Precificação concluída! Score: ' + valores.score_confianca.toFixed(0) + '%', 'success');
+            const confianca = valores.score_confianca || valores.confianca || 0;
+            mostrarAlerta('✅ Precificação concluída! Score: ' + confianca.toFixed(0) + '%', 'success');
         } else {
             throw new Error(resultado.mensagem || 'Falha na precificação');
         }
@@ -453,7 +454,7 @@ async function processarEtapa2() {
 }
 
 // ===================================================================
-// MOSTRAR RESULTADO
+// MOSTRAR RESULTADO - ✅ COMPATÍVEL COM AMBOS
 // ===================================================================
 
 function mostrarResultado(resultado) {
@@ -471,17 +472,28 @@ function mostrarResultado(resultado) {
         <p><strong>Categoria:</strong> ${dados.categoria_depreciacao}</p>
     `;
     
-    const valores = dados.valores_estimados;
+    // ✅ COMPATÍVEL: Aceita formato antigo E novo
+    const valores = dados.valores_estimados || dados.valores;
+    const valorMercado = valores.valor_mercado_estimado || valores.mercado;
+    const valorAtual = valores.valor_atual_estimado || valores.atual;
+    const fatorDep = valores.fator_depreciacao || valores.depreciacao;
+    const confianca = valores.score_confianca || valores.confianca;
+    
     elementos.resultValores.innerHTML = `
-        <p><strong>Mercado:</strong> R$ ${valores.valor_mercado_estimado.toFixed(2)}</p>
-        <p><strong>Atual:</strong> R$ ${valores.valor_atual_estimado.toFixed(2)}</p>
-        <p><strong>Depreciação:</strong> ${valores.fator_depreciacao.toFixed(2)}</p>
-        <p><strong>Confiança:</strong> ${valores.score_confianca.toFixed(0)}%</p>
+        <p><strong>Mercado:</strong> R$ ${valorMercado.toFixed(2)}</p>
+        <p><strong>Atual:</strong> R$ ${valorAtual.toFixed(2)}</p>
+        <p><strong>Depreciação:</strong> ${fatorDep.toFixed(2)}</p>
+        <p><strong>Confiança:</strong> ${confianca.toFixed(0)}%</p>
     `;
     
+    // Metadados compatível
+    const meta = dados.metadados || dados.meta;
+    const dataBusca = meta.data_busca || meta.data;
+    const modeloIA = meta.modelo_ia || meta.modelo;
+    
     elementos.resultMetadados.innerHTML = `
-        <p><strong>Data:</strong> ${new Date(dados.metadados.data_busca).toLocaleString('pt-BR')}</p>
-        <p><strong>Modelo IA:</strong> ${dados.metadados.modelo_ia}</p>
+        <p><strong>Data:</strong> ${new Date(dataBusca).toLocaleString('pt-BR')}</p>
+        <p><strong>Modelo IA:</strong> ${modeloIA}</p>
     `;
     
     elementos.jsonOutput.textContent = JSON.stringify(resultado, null, 2);

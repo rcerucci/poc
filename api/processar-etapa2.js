@@ -91,23 +91,22 @@ REGRAS:
 4. Fontes: ML, Amazon, B2B
 5. PRÉ-FILTRAR: Remova outliers (±30% da mediana) ANTES de retornar
 
-FORMATO JSON OBRIGATÓRIO (copie exatamente):
-{"ok": true, "termo": "texto curto", "precos": [{"v": 1599.9, "f": "Loja", "m": "Exato", "p": "Nome curto"}]}
+JSON MÍNIMO (copie exato):
+{"ok":true,"termo":"texto","precos":[{"v":1599.9,"f":"Loja","m":"Exato","p":"Nome"}]}
 
-Se falha (<3 preços):
-{"ok": false, "motivo": "razão breve", "termo": "texto"}
+Falha (<3 preços):
+{"ok":false,"motivo":"razão","termo":"texto"}
 
 CRÍTICO: 
-- Resposta DEVE SER JSON VÁLIDO
-- Feche todas as chaves corretamente
-- Nomes de produto até 40 caracteres
-- NÃO adicione texto antes ou depois do JSON
-- NÃO use markdown (sem \`\`\`json)`;
+- JSON VÁLIDO com todas chaves fechadas
+- Nomes produto até 40 chars
+- SEM texto fora do JSON
+- SEM markdown`;
 };
 
-// --- Cálculo Simplificado (LLM já pré-filtrou) ---
+// --- Cálculo Simplificado ---
 function calcularMediaPonderada(coleta_precos) {
-    console.log('📊 [EMA] Calculando média...');
+    console.log('📊 [EMA] Calculando...');
     
     if (!coleta_precos || coleta_precos.length === 0) {
         return { sucesso: false, motivo: 'Nenhum preço' };
@@ -126,7 +125,6 @@ function calcularMediaPonderada(coleta_precos) {
 
     console.log('✅ [EMA] ' + precosValidos.length + ' preços');
 
-    // Calcular pesos
     const precosComPeso = precosValidos.map(item => {
         let pesoMatch = 1.0;
         const match = item.m || item.tipo_match || '';
@@ -158,13 +156,13 @@ function calcularMediaPonderada(coleta_precos) {
     const coefVariacao = (desvioPadrao / media) * 100;
     const scoreConfianca = Math.max(0, Math.min(100, 100 - coefVariacao));
 
-    console.log('💰 [EMA] R$ ' + mediaPonderada.toFixed(2) + ' | Conf: ' + scoreConfianca.toFixed(0) + '%');
+    console.log('💰 R$', mediaPonderada.toFixed(2), '| Conf:', scoreConfianca.toFixed(0) + '%');
 
     return {
         sucesso: true,
         valor_mercado: parseFloat(mediaPonderada.toFixed(2)),
         estatisticas: {
-            num_precos: precosValidos.length,
+            num: precosValidos.length,
             min: Math.min(...precosValidos.map(p => p.valor)),
             max: Math.max(...precosValidos.map(p => p.valor)),
             desvio: parseFloat(desvioPadrao.toFixed(2)),
@@ -222,15 +220,13 @@ module.exports = async (req, res) => {
         const model = genAI.getGenerativeModel({
             model: MODEL,
             tools: [{ googleSearch: {} }],
-            generationConfig: { 
-                temperature: 0.1,
-            }
+            generationConfig: { temperature: 0.1 }
         });
 
         const result = await model.generateContent(promptBusca);
         const text = result.response.text();
 
-        // ===== 📊 AUDITORIA REDUZIDA =====
+        // ===== 📊 AUDITORIA =====
         const usage = result.response.usageMetadata;
         const tokIn = usage?.promptTokenCount || 0;
         const tokOut = usage?.candidatesTokenCount || 0;
@@ -240,47 +236,49 @@ module.exports = async (req, res) => {
         const custoOut = tokOut * 0.0000133;
         const custoTot = custoIn + custoOut;
         
-        console.log('📊 [ETAPA2] Tokens:', tokIn, '/', tokOut, '/', tokTot, '| R$', custoTot.toFixed(4));
+        console.log('📊 Tokens:', tokIn, '/', tokOut, '| R$', custoTot.toFixed(4));
         // ===== FIM =====
 
         let resultado;
         try {
-            let jsonText = text.trim().replace(/```json\n?/g, '').replace(/```\n?/g, '');
+            let jsonText = text.trim();
+            jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
             const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
             if (jsonMatch) jsonText = jsonMatch[0];
             resultado = JSON.parse(jsonText);
+            console.log('✅ JSON válido');
         } catch (e) {
+            console.error('❌ JSON inválido:', text.substring(0, 200));
             throw new Error('JSON inválido: ' + e.message);
         }
 
-        // ✅ "Não encontrado" NÃO é erro, é resultado válido
+        // ✅ "Não encontrado" NÃO é erro
         if (!resultado.ok || resultado.ok === false) {
-            console.log('ℹ️ [ETAPA2] Preços não encontrados (normal)');
+            console.log('ℹ️ Preços não encontrados (normal)');
             return res.status(200).json({
                 status: 'Sem Preços',
-                mensagem: resultado.motivo || 'Produto específico sem preços online',
+                mensagem: resultado.motivo || 'Produto específico',
                 dados: { 
                     preco_encontrado: false,
-                    termo_usado: resultado.termo || 'N/A'
+                    termo_utilizado: resultado.termo || 'N/A'
                 },
-                custo: {
+                meta: {
                     tokens: { in: tokIn, out: tokOut, total: tokTot },
-                    real: parseFloat(custoTot.toFixed(4))
+                    custo: parseFloat(custoTot.toFixed(4))
                 }
             });
         }
 
-        // Validação anti-alucinação
         const precos = resultado.precos || [];
         if (precos.length < 3) {
-            console.log('⚠️ [ETAPA2] Poucos preços (' + precos.length + ')');
+            console.log('⚠️ Poucos preços:', precos.length);
             return res.status(200).json({
                 status: 'Sem Preços',
-                mensagem: 'Apenas ' + precos.length + ' preço(s) encontrado(s)',
+                mensagem: 'Apenas ' + precos.length + ' preço(s)',
                 dados: { preco_encontrado: false },
-                custo: {
+                meta: {
                     tokens: { in: tokIn, out: tokOut, total: tokTot },
-                    real: parseFloat(custoTot.toFixed(4))
+                    custo: parseFloat(custoTot.toFixed(4))
                 }
             });
         }
@@ -292,9 +290,9 @@ module.exports = async (req, res) => {
                 status: 'Sem Preços',
                 mensagem: resultadoEMA.motivo,
                 dados: { preco_encontrado: false },
-                custo: {
+                meta: {
                     tokens: { in: tokIn, out: tokOut, total: tokTot },
-                    real: parseFloat(custoTot.toFixed(4))
+                    custo: parseFloat(custoTot.toFixed(4))
                 }
             });
         }
@@ -303,9 +301,8 @@ module.exports = async (req, res) => {
         let metodo = 'Média Ponderada';
         const { coef_var } = resultadoEMA.estatisticas;
 
-        // Mediana se alta variação
         if (coef_var > 40) {
-            console.log('⚠️ [ETAPA2] Alta var: ' + coef_var.toFixed(1) + '%');
+            console.log('⚠️ Alta var:', coef_var.toFixed(1) + '%');
             const valores = resultadoEMA.precos.map(p => p.valor).sort((a, b) => a - b);
             valorMercado = valores[Math.floor(valores.length / 2)];
             metodo = 'Mediana';
@@ -316,6 +313,7 @@ module.exports = async (req, res) => {
         const fatorDep = FATORES_DEPRECIACAO[estado]?.[categoria] || 0.7;
         const valorAtual = valorMercado * fatorDep;
 
+        // ✅ JSON COMPACTO
         const dadosCompletos = {
             numero_patrimonio,
             nome_produto,
@@ -324,6 +322,7 @@ module.exports = async (req, res) => {
             especificacoes: especificacoes || 'N/A',
             estado_conservacao: estado,
             categoria_depreciacao: categoria,
+            
             valores: {
                 mercado: parseFloat(valorMercado.toFixed(2)),
                 atual: parseFloat(valorAtual.toFixed(2)),
@@ -332,19 +331,38 @@ module.exports = async (req, res) => {
                 metodo: metodo,
                 confianca: resultadoEMA.estatisticas.confianca
             },
-            stats: resultadoEMA.estatisticas,
-            precos: resultadoEMA.precos,
+            
+            stats: {
+                num: precos.length,
+                min: resultadoEMA.estatisticas.min,
+                max: resultadoEMA.estatisticas.max,
+                desvio: resultadoEMA.estatisticas.desvio,
+                coef_var: resultadoEMA.estatisticas.coef_var,
+                confianca: resultadoEMA.estatisticas.confianca
+            },
+            
+            precos: resultadoEMA.precos.map(p => ({
+                v: p.valor,
+                f: p.fonte,
+                m: p.match,
+                p: p.produto
+            })),
+            
             busca: {
                 termo: resultado.termo || 'N/A',
                 num: precos.length
             },
-            custo: {
+            
+            meta: {
+                data: new Date().toISOString(),
+                modelo: MODEL,
+                versao: '2.3-Compacto',
                 tokens: { in: tokIn, out: tokOut, total: tokTot },
-                real: parseFloat(custoTot.toFixed(4))
+                custo: parseFloat(custoTot.toFixed(4))
             }
         };
 
-        console.log('✅ [ETAPA2] R$', valorMercado.toFixed(2), '| Atual: R$', valorAtual.toFixed(2));
+        console.log('✅ R$', valorMercado.toFixed(2), '| Atual: R$', valorAtual.toFixed(2));
 
         return res.status(200).json({
             status: 'Sucesso',

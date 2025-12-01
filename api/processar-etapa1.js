@@ -10,7 +10,7 @@ const PROMPT_SISTEMA = `Extraia informações do ativo em JSON (sem markdown):
 
 {
   "numero_patrimonio": "placa/etiqueta ou N/A",
-  "nome_produto": "nome genérico (max 4 palavras)",
+  "nome_produto": "nome genérico tecnico/comercial (max 4 palavras)",
   "marca": "fabricante ou N/A",
   "modelo": "código ou N/A",
   "especificacoes": "specs técnicas da placa ou observáveis ou N/A",
