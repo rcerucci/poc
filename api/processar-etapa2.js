@@ -231,18 +231,33 @@ async function buscarMercadoLivre(termo, limite = 10, b2b = false) {
         
         // Filtros B2B
         if (b2b) {
-            params.shipping = 'fulfillment'; // Entrega garantida
-            params.official_store = 'all'; // Incluir lojas oficiais
+            params.shipping = 'fulfillment';
+            params.official_store = 'all';
         }
+        
+        console.log('📡 [ML] URL:', 'https://api.mercadolibre.com/sites/MLB/search');
+        console.log('📡 [ML] Params:', JSON.stringify(params));
         
         const response = await axios.get(
             'https://api.mercadolibre.com/sites/MLB/search',
             { params, timeout: 8000 }
         );
         
+        console.log('📥 [ML] Status:', response.status);
+        console.log('📥 [ML] Total encontrado:', response.data.results?.length || 0);
+        
+        if (!response.data.results || response.data.results.length === 0) {
+            console.log('⚠️ [ML] Nenhum resultado retornado pela API');
+            return { sucesso: false, precos: [], total: 0 };
+        }
+        
         const produtos = response.data.results
-            .filter(item => item.available_quantity > 0)
-            .filter(item => item.price > 0)
+            .filter(item => {
+                const temEstoque = item.available_quantity > 0;
+                const temPreco = item.price > 0;
+                console.log('🔍 [ML]', item.title.substring(0, 50), '| Estoque:', item.available_quantity, '| Preço:', item.price);
+                return temEstoque && temPreco;
+            })
             .slice(0, limite)
             .map(item => ({
                 valor: item.price,
@@ -254,7 +269,7 @@ async function buscarMercadoLivre(termo, limite = 10, b2b = false) {
                 vendedor: item.seller.nickname
             }));
         
-        console.log('✅ [ML] ' + produtos.length + ' produtos encontrados');
+        console.log('✅ [ML] ' + produtos.length + ' produtos filtrados');
         
         return {
             sucesso: produtos.length > 0,
@@ -264,6 +279,10 @@ async function buscarMercadoLivre(termo, limite = 10, b2b = false) {
         
     } catch (error) {
         console.error('❌ [ML] Erro:', error.message);
+        if (error.response) {
+            console.error('❌ [ML] Status:', error.response.status);
+            console.error('❌ [ML] Data:', error.response.data);
+        }
         return { sucesso: false, precos: [], total: 0 };
     }
 }
