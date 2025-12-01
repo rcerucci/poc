@@ -657,61 +657,64 @@ function gerarJSONFormatado(dados) {
         <strong>💵 PREÇOS COLETADOS (${precos?.length || 0})</strong>
     </div>
     <div class="json-content" style="display: none;">
-        <table class="json-table">
-            <thead>
-                <tr>
-                    <th>Valor</th>
-                    <th>Fonte</th>
-                    <th>Match</th>
-                    <th>Produto</th>
-                    <th>Anúncio</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${(precos || []).map(p => {
-                    const valor = p.valor || p.v;
-                    const fonte = p.fonte || p.f;
-                    const match = p.tipo_match || p.match || p.m;
-                    const produto = p.produto || p.p;
-                    const url = p.url || p.u;
-                    
-                    let corMatch = '#6c757d';
-                    if (match === 'Exato') corMatch = '#28a745';
-                    else if (match === 'Equivalente') corMatch = '#007bff';
-                    else if (match === 'Substituto') corMatch = '#ffc107';
-                    
-                    return `
+        <div style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
+            <table class="json-table" style="min-width: 600px;">
+                <thead>
                     <tr>
-                        <td>R$ ${valor.toFixed(2)}</td>
-                        <td>${fonte}</td>
-                        <td><span style="color: ${corMatch}; font-weight: bold;">${match}</span></td>
-                        <td><small>${produto}</small></td>
-                        <td>
-                            ${url ? 
-                                `<button onclick="abrirModalAnuncio('${url}', '${produto.replace(/'/g, "\\'")}'); event.stopPropagation();" style="
-                                    background: #667eea;
-                                    color: white;
-                                    border: none;
-                                    padding: 6px 12px;
-                                    border-radius: 4px;
-                                    cursor: pointer;
-                                    font-size: 12px;
-                                    font-weight: 500;
-                                    display: inline-flex;
-                                    align-items: center;
-                                    gap: 4px;
-                                    transition: all 0.2s;
-                                " onmouseover="this.style.background='#5a67d8'" onmouseout="this.style.background='#667eea'">
-                                    🔗 Ver
-                                </button>` 
-                                : '<span style="color: #cbd5e0;">-</span>'
-                            }
-                        </td>
+                        <th>Valor</th>
+                        <th>Fonte</th>
+                        <th>Match</th>
+                        <th>Produto</th>
+                        <th style="min-width: 100px;">Anúncio</th>
                     </tr>
-                    `;
-                }).join('')}
-            </tbody>
-        </table>
+                </thead>
+                <tbody>
+                    ${(precos || []).map(p => {
+                        const valor = p.valor || p.v;
+                        const fonte = p.fonte || p.f;
+                        const match = p.tipo_match || p.match || p.m;
+                        const produto = p.produto || p.p;
+                        const url = p.url || p.u;
+                        
+                        let corMatch = '#6c757d';
+                        if (match === 'Exato') corMatch = '#28a745';
+                        else if (match === 'Equivalente') corMatch = '#007bff';
+                        else if (match === 'Substituto') corMatch = '#ffc107';
+                        
+                        return `
+                        <tr>
+                            <td style="white-space: nowrap;">R$ ${valor.toFixed(2)}</td>
+                            <td style="white-space: nowrap;">${fonte}</td>
+                            <td><span style="color: ${corMatch}; font-weight: bold; white-space: nowrap;">${match}</span></td>
+                            <td><small>${produto}</small></td>
+                            <td style="text-align: center;">
+                                ${url ? 
+                                    `<button onclick="abrirModalAnuncio('${url}', '${produto.replace(/'/g, "\\'")}'); event.stopPropagation();" style="
+                                        background: #667eea;
+                                        color: white;
+                                        border: none;
+                                        padding: 6px 12px;
+                                        border-radius: 4px;
+                                        cursor: pointer;
+                                        font-size: 12px;
+                                        font-weight: 500;
+                                        display: inline-flex;
+                                        align-items: center;
+                                        gap: 4px;
+                                        transition: all 0.2s;
+                                        white-space: nowrap;
+                                    " onmouseover="this.style.background='#5a67d8'" onmouseout="this.style.background='#667eea'">
+                                        🔗 Ver
+                                    </button>` 
+                                    : '<span style="color: #cbd5e0;">-</span>'
+                                }
+                            </td>
+                        </tr>
+                        `;
+                    }).join('')}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 
@@ -763,7 +766,7 @@ function toggleSection(header) {
 }
 
 // ===================================================================
-// MODAL DE ANÚNCIO
+// MODAL DE ANÚNCIO COM FALLBACK
 // ===================================================================
 
 function abrirModalAnuncio(url, produto) {
@@ -814,8 +817,29 @@ function abrirModalAnuncio(url, produto) {
         font-weight: 600;
         color: #2d3748;
         font-size: 16px;
+        flex: 1;
     `;
     title.textContent = produto || 'Anúncio';
+    
+    // Botão abrir em nova aba
+    const openBtn = document.createElement('button');
+    openBtn.innerHTML = '🔗 Abrir Nova Aba';
+    openBtn.style.cssText = `
+        background: #667eea;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 13px;
+        cursor: pointer;
+        margin-right: 10px;
+        transition: all 0.2s;
+    `;
+    openBtn.onmouseover = () => openBtn.style.background = '#5a67d8';
+    openBtn.onmouseout = () => openBtn.style.background = '#667eea';
+    openBtn.onclick = () => {
+        window.open(url, '_blank', 'noopener,noreferrer');
+    };
     
     const closeBtn = document.createElement('button');
     closeBtn.innerHTML = '✕';
@@ -844,7 +868,30 @@ function abrirModalAnuncio(url, produto) {
     closeBtn.onclick = () => fecharModalAnuncio();
     
     header.appendChild(title);
+    header.appendChild(openBtn);
     header.appendChild(closeBtn);
+    
+    // Container de conteúdo
+    const iframeContainer = document.createElement('div');
+    iframeContainer.style.cssText = `
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f7fafc;
+        border-radius: 0 0 12px 12px;
+        position: relative;
+    `;
+    
+    // Loading
+    const loading = document.createElement('div');
+    loading.innerHTML = '⏳ Carregando...';
+    loading.style.cssText = `
+        position: absolute;
+        color: #718096;
+        font-size: 14px;
+    `;
+    iframeContainer.appendChild(loading);
     
     // Iframe
     const iframe = document.createElement('iframe');
@@ -854,11 +901,70 @@ function abrirModalAnuncio(url, produto) {
         height: 100%;
         border: none;
         border-radius: 0 0 12px 12px;
+        display: none;
     `;
+    
+    // Detectar se iframe carregou ou foi bloqueado
+    let iframeBlocked = false;
+    let fallbackTimeout = setTimeout(() => {
+        if (!iframe.contentWindow || !iframe.contentDocument) {
+            iframeBlocked = true;
+            mostrarFallback();
+        }
+    }, 3000);
+    
+    iframe.onload = () => {
+        clearTimeout(fallbackTimeout);
+        try {
+            // Tenta acessar o iframe
+            const test = iframe.contentWindow.location.href;
+            loading.style.display = 'none';
+            iframe.style.display = 'block';
+        } catch (e) {
+            // Bloqueado por CSP
+            iframeBlocked = true;
+            mostrarFallback();
+        }
+    };
+    
+    iframe.onerror = () => {
+        clearTimeout(fallbackTimeout);
+        iframeBlocked = true;
+        mostrarFallback();
+    };
+    
+    function mostrarFallback() {
+        loading.innerHTML = `
+            <div style="text-align: center; padding: 40px;">
+                <div style="font-size: 48px; margin-bottom: 20px;">🔒</div>
+                <div style="font-size: 18px; font-weight: 600; color: #2d3748; margin-bottom: 10px;">
+                    Este site não permite visualização em modal
+                </div>
+                <div style="font-size: 14px; color: #718096; margin-bottom: 20px;">
+                    Clique no botão abaixo para abrir em uma nova aba
+                </div>
+                <button onclick="window.open('${url}', '_blank'); fecharModalAnuncio();" style="
+                    background: #667eea;
+                    color: white;
+                    border: none;
+                    padding: 12px 24px;
+                    border-radius: 6px;
+                    font-size: 14px;
+                    font-weight: 500;
+                    cursor: pointer;
+                ">
+                    🔗 Abrir em Nova Aba
+                </button>
+            </div>
+        `;
+        iframe.style.display = 'none';
+    }
+    
+    iframeContainer.appendChild(iframe);
     
     // Montar modal
     container.appendChild(header);
-    container.appendChild(iframe);
+    container.appendChild(iframeContainer);
     modal.appendChild(container);
     document.body.appendChild(modal);
     
