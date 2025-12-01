@@ -78,6 +78,8 @@ ATENÇÃO: Responda SOMENTE com o JSON, nada mais.`;
 async function classificarProduto(dados) {
     console.log('🤖 [CLASSIFICAR] Analisando produto...');
     
+    let text = ''; // Declarar aqui para estar acessível no catch
+    
     try {
         const model = genAI.getGenerativeModel({
             model: MODEL,
@@ -88,7 +90,7 @@ async function classificarProduto(dados) {
         });
 
         const result = await model.generateContent(PROMPT_CLASSIFICAR(dados));
-        const text = result.response.text();
+        text = result.response.text();
         
         const usage = result.response.usageMetadata;
         const tokIn = usage?.promptTokenCount || 0;
@@ -121,7 +123,9 @@ async function classificarProduto(dados) {
 
     } catch (error) {
         console.error('❌ Erro na classificação:', error.message);
-        console.error('📄 Resposta completa:', text);
+        if (text) {
+            console.error('📄 Resposta completa:', text);
+        }
         
         // Fallback: usar classificação padrão baseada no nome
         const nomeLower = dados.nome_produto.toLowerCase();
