@@ -224,7 +224,6 @@ module.exports = async (req, res) => {
             tools: [{ googleSearch: {} }],
             generationConfig: { 
                 temperature: 0.1,
-                maxOutputTokens: 1000  // ← LIMITE DE OUTPUT
             }
         });
 
