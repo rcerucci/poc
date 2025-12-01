@@ -51,24 +51,28 @@ const FATORES_DEPRECIACAO = {
 // =============================================================================
 
 const PROMPT_CLASSIFICAR = (dados) => {
-    return `Analise este bem patrimonial e classifique:
+    return `Classifique este produto e retorne APENAS um JSON válido:
 
+PRODUTO:
 Nome: ${dados.nome_produto}
 Marca: ${dados.marca || 'N/A'}
 Modelo: ${dados.modelo || 'N/A'}
-Especificações: ${dados.especificacoes || 'N/A'}
+Specs: ${dados.especificacoes || 'N/A'}
 
-Responda APENAS com JSON válido:
+RESPONDA APENAS COM ESTE JSON (sem texto adicional, sem markdown):
 {
-  "categoria": "equipamento_industrial" | "informatica" | "moveis" | "veiculo" | "ferramenta" | "eletrodomestico" | "outro",
-  "termo_busca": "termo otimizado com marca e modelo",
-  "termo_alternativo": "termo genérico sem marca",
-  "api_sugerida": "mercadolivre_b2b" | "mercadolivre" | "fipe" | "nenhuma",
-  "confianca": 0-100,
-  "justificativa": "breve explicação"
+  "categoria": "equipamento_industrial",
+  "termo_busca": "Marca Modelo",
+  "termo_alternativo": "termo genérico",
+  "api_sugerida": "mercadolivre",
+  "confianca": 85,
+  "justificativa": "breve"
 }
 
-SEM markdown, SEM texto adicional, APENAS JSON.`;
+CATEGORIAS: equipamento_industrial | informatica | moveis | veiculo | ferramenta | eletrodomestico | outro
+API: mercadolivre_b2b | mercadolivre | fipe | nenhuma
+
+ATENÇÃO: Responda SOMENTE com o JSON, nada mais.`;
 };
 
 async function classificarProduto(dados) {
@@ -94,12 +98,18 @@ async function classificarProduto(dados) {
         const custoTot = custoIn + custoOut;
         
         console.log('📊 Classificação - Tokens:', tokIn, '/', tokOut, '| R$', custoTot.toFixed(6));
+        console.log('📄 Resposta Gemini:', text.substring(0, 200));
 
         let jsonText = text.trim()
             .replace(/```json\n?/g, '')
-            .replace(/```\n?/g, '');
+            .replace(/```\n?/g, '')
+            .trim();
+        
         const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) jsonText = jsonMatch[0];
+        if (!jsonMatch) {
+            throw new Error('Nenhum JSON encontrado na resposta: ' + text.substring(0, 100));
+        }
+        jsonText = jsonMatch[0];
         
         const classificacao = JSON.parse(jsonText);
         
@@ -111,9 +121,37 @@ async function classificarProduto(dados) {
 
     } catch (error) {
         console.error('❌ Erro na classificação:', error.message);
+        console.error('📄 Resposta completa:', text);
+        
+        // Fallback: usar classificação padrão baseada no nome
+        const nomeLower = dados.nome_produto.toLowerCase();
+        let categoriaFallback = 'outro';
+        let apiFallback = 'mercadolivre';
+        
+        if (nomeLower.includes('cadeira') || nomeLower.includes('mesa') || nomeLower.includes('armario')) {
+            categoriaFallback = 'moveis';
+        } else if (nomeLower.includes('computador') || nomeLower.includes('notebook') || nomeLower.includes('monitor')) {
+            categoriaFallback = 'informatica';
+        } else if (nomeLower.includes('carro') || nomeLower.includes('caminhao') || nomeLower.includes('veiculo')) {
+            categoriaFallback = 'veiculo';
+            apiFallback = 'fipe';
+        } else if (nomeLower.includes('maquina') || nomeLower.includes('gerador') || nomeLower.includes('equipamento')) {
+            categoriaFallback = 'equipamento_industrial';
+            apiFallback = 'mercadolivre_b2b';
+        }
+        
+        console.log('⚠️ Usando fallback:', categoriaFallback, '/', apiFallback);
+        
         return {
-            sucesso: false,
-            erro: error.message,
+            sucesso: true,
+            dados: {
+                categoria: categoriaFallback,
+                termo_busca: `${dados.marca || ''} ${dados.modelo || ''} ${dados.nome_produto}`.trim(),
+                termo_alternativo: dados.nome_produto,
+                api_sugerida: apiFallback,
+                confianca: 50,
+                justificativa: 'Classificação automática (fallback)'
+            },
             meta: { tokens: { in: 0, out: 0 }, custo: 0 }
         };
     }
@@ -489,14 +527,6 @@ module.exports = async (req, res) => {
             modelo,
             especificacoes
         });
-
-        if (!classificacao.sucesso) {
-            return res.status(500).json({
-                status: 'Erro',
-                mensagem: 'Falha na classificação: ' + classificacao.erro,
-                dados: { preco_encontrado: false }
-            });
-        }
 
         const metaClassificacao = classificacao.meta;
         
