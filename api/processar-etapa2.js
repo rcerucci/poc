@@ -51,7 +51,7 @@ const FATORES_DEPRECIACAO = {
 // =============================================================================
 
 const PROMPT_CLASSIFICAR = (dados) => {
-    return `Classifique este produto e retorne APENAS um JSON válido:
+    return `Classifique este produto e crie termos de busca otimizados.
 
 PRODUTO:
 Nome: ${dados.nome_produto}
@@ -59,20 +59,29 @@ Marca: ${dados.marca || 'N/A'}
 Modelo: ${dados.modelo || 'N/A'}
 Specs: ${dados.especificacoes || 'N/A'}
 
-RESPONDA APENAS COM ESTE JSON (sem texto adicional, sem markdown):
+REGRAS PARA TERMO DE BUSCA:
+- Se tem marca+modelo: use "Marca Modelo"
+- Se só tem nome genérico: adicione característica chave das specs
+- Remova palavras como "N/A", "não informado"
+- Máximo 5-6 palavras
+
+EXEMPLOS:
+- Cadeira, N/A, N/A, "Giratória rodas" → termo: "Cadeira Escritório Giratória"
+- Notebook, Dell, Inspiron 15, "i5 8GB" → termo: "Dell Inspiron 15"
+- Gerador, Honda, N/A, "5500W gasolina" → termo: "Gerador Honda 5500W"
+
+RESPONDA APENAS ESTE JSON (sem texto adicional):
 {
-  "categoria": "equipamento_industrial",
-  "termo_busca": "Marca Modelo",
-  "termo_alternativo": "termo genérico",
+  "categoria": "moveis",
+  "termo_busca": "Cadeira Escritório Giratória",
+  "termo_alternativo": "Cadeira Escritório",
   "api_sugerida": "mercadolivre",
   "confianca": 85,
   "justificativa": "breve"
 }
 
 CATEGORIAS: equipamento_industrial | informatica | moveis | veiculo | ferramenta | eletrodomestico | outro
-API: mercadolivre_b2b | mercadolivre | fipe | nenhuma
-
-ATENÇÃO: Responda SOMENTE com o JSON, nada mais.`;
+API: mercadolivre_b2b | mercadolivre | fipe | nenhuma`;
 };
 
 async function classificarProduto(dados) {
@@ -132,25 +141,68 @@ async function classificarProduto(dados) {
         let categoriaFallback = 'outro';
         let apiFallback = 'mercadolivre';
         
-        if (nomeLower.includes('cadeira') || nomeLower.includes('mesa') || nomeLower.includes('armario')) {
+        if (nomeLower.includes('cadeira') || nomeLower.includes('mesa') || nomeLower.includes('armario') || nomeLower.includes('estante')) {
             categoriaFallback = 'moveis';
-        } else if (nomeLower.includes('computador') || nomeLower.includes('notebook') || nomeLower.includes('monitor')) {
+        } else if (nomeLower.includes('computador') || nomeLower.includes('notebook') || nomeLower.includes('monitor') || nomeLower.includes('impressora')) {
             categoriaFallback = 'informatica';
-        } else if (nomeLower.includes('carro') || nomeLower.includes('caminhao') || nomeLower.includes('veiculo')) {
+        } else if (nomeLower.includes('carro') || nomeLower.includes('caminhao') || nomeLower.includes('veiculo') || nomeLower.includes('moto')) {
             categoriaFallback = 'veiculo';
             apiFallback = 'fipe';
-        } else if (nomeLower.includes('maquina') || nomeLower.includes('gerador') || nomeLower.includes('equipamento')) {
+        } else if (nomeLower.includes('maquina') || nomeLower.includes('gerador') || nomeLower.includes('equipamento') || nomeLower.includes('compressor')) {
             categoriaFallback = 'equipamento_industrial';
+            apiFallback = 'mercadolivre_b2b';
+        } else if (nomeLower.includes('furadeira') || nomeLower.includes('serra') || nomeLower.includes('chave') || nomeLower.includes('martelo')) {
+            categoriaFallback = 'ferramenta';
             apiFallback = 'mercadolivre_b2b';
         }
         
         console.log('⚠️ Usando fallback:', categoriaFallback, '/', apiFallback);
         
+        // Construir termo de busca inteligente
+        let termoBusca = [];
+        
+        // Adicionar marca e modelo se não forem N/A
+        if (dados.marca && dados.marca !== 'N/A' && dados.marca.toLowerCase() !== 'não informado') {
+            termoBusca.push(dados.marca);
+        }
+        if (dados.modelo && dados.modelo !== 'N/A' && dados.modelo.toLowerCase() !== 'não informado') {
+            termoBusca.push(dados.modelo);
+        }
+        
+        // Adicionar nome do produto
+        termoBusca.push(dados.nome_produto);
+        
+        // Extrair palavras-chave das especificações
+        if (dados.especificacoes && dados.especificacoes !== 'N/A') {
+            const specs = dados.especificacoes.toLowerCase();
+            const palavrasChave = [];
+            
+            // Padrões importantes: potência, tamanho, capacidade
+            const padroes = [
+                /(\d+\.?\d*)\s*(kva|kw|hp|w|gb|tb|litros?|pol|polegadas?|m[²³]?|v|a|btu)/gi,
+                /\b(giratória?|elétrica?|manual|automática?|portátil|fixo|móvel)\b/gi
+            ];
+            
+            padroes.forEach(padrao => {
+                const matches = specs.match(padrao);
+                if (matches) {
+                    palavrasChave.push(...matches.slice(0, 2)); // Max 2 por padrão
+                }
+            });
+            
+            if (palavrasChave.length > 0) {
+                termoBusca.push(...palavrasChave.slice(0, 2)); // Max 2 palavras-chave
+            }
+        }
+        
+        const termoFinal = termoBusca.join(' ').trim();
+        console.log('🔎 Termo construído:', termoFinal);
+        
         return {
             sucesso: true,
             dados: {
                 categoria: categoriaFallback,
-                termo_busca: `${dados.marca || ''} ${dados.modelo || ''} ${dados.nome_produto}`.trim(),
+                termo_busca: termoFinal,
                 termo_alternativo: dados.nome_produto,
                 api_sugerida: apiFallback,
                 confianca: 50,
