@@ -664,6 +664,7 @@ function gerarJSONFormatado(dados) {
                     <th>Fonte</th>
                     <th>Match</th>
                     <th>Produto</th>
+                    <th>Anúncio</th>
                 </tr>
             </thead>
             <tbody>
@@ -672,6 +673,7 @@ function gerarJSONFormatado(dados) {
                     const fonte = p.fonte || p.f;
                     const match = p.tipo_match || p.match || p.m;
                     const produto = p.produto || p.p;
+                    const url = p.url || p.u;
                     
                     let corMatch = '#6c757d';
                     if (match === 'Exato') corMatch = '#28a745';
@@ -684,6 +686,27 @@ function gerarJSONFormatado(dados) {
                         <td>${fonte}</td>
                         <td><span style="color: ${corMatch}; font-weight: bold;">${match}</span></td>
                         <td><small>${produto}</small></td>
+                        <td>
+                            ${url ? 
+                                `<button onclick="abrirModalAnuncio('${url}', '${produto.replace(/'/g, "\\'")}'); event.stopPropagation();" style="
+                                    background: #667eea;
+                                    color: white;
+                                    border: none;
+                                    padding: 6px 12px;
+                                    border-radius: 4px;
+                                    cursor: pointer;
+                                    font-size: 12px;
+                                    font-weight: 500;
+                                    display: inline-flex;
+                                    align-items: center;
+                                    gap: 4px;
+                                    transition: all 0.2s;
+                                " onmouseover="this.style.background='#5a67d8'" onmouseout="this.style.background='#667eea'">
+                                    🔗 Ver
+                                </button>` 
+                                : '<span style="color: #cbd5e0;">-</span>'
+                            }
+                        </td>
                     </tr>
                     `;
                 }).join('')}
@@ -736,6 +759,129 @@ function toggleSection(header) {
     } else {
         content.style.display = 'none';
         toggle.textContent = '▶';
+    }
+}
+
+// ===================================================================
+// MODAL DE ANÚNCIO
+// ===================================================================
+
+function abrirModalAnuncio(url, produto) {
+    // Criar modal
+    const modal = document.createElement('div');
+    modal.id = 'modalAnuncio';
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.8);
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+    `;
+    
+    // Container do iframe
+    const container = document.createElement('div');
+    container.style.cssText = `
+        background: white;
+        border-radius: 12px;
+        width: 100%;
+        max-width: 1200px;
+        height: 90vh;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    `;
+    
+    // Header do modal
+    const header = document.createElement('div');
+    header.style.cssText = `
+        padding: 20px;
+        border-bottom: 1px solid #e2e8f0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: #f7fafc;
+        border-radius: 12px 12px 0 0;
+    `;
+    
+    const title = document.createElement('div');
+    title.style.cssText = `
+        font-weight: 600;
+        color: #2d3748;
+        font-size: 16px;
+    `;
+    title.textContent = produto || 'Anúncio';
+    
+    const closeBtn = document.createElement('button');
+    closeBtn.innerHTML = '✕';
+    closeBtn.style.cssText = `
+        background: none;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        color: #718096;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        transition: all 0.2s;
+    `;
+    closeBtn.onmouseover = () => {
+        closeBtn.style.background = '#edf2f7';
+        closeBtn.style.color = '#2d3748';
+    };
+    closeBtn.onmouseout = () => {
+        closeBtn.style.background = 'none';
+        closeBtn.style.color = '#718096';
+    };
+    closeBtn.onclick = () => fecharModalAnuncio();
+    
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+    
+    // Iframe
+    const iframe = document.createElement('iframe');
+    iframe.src = url;
+    iframe.style.cssText = `
+        width: 100%;
+        height: 100%;
+        border: none;
+        border-radius: 0 0 12px 12px;
+    `;
+    
+    // Montar modal
+    container.appendChild(header);
+    container.appendChild(iframe);
+    modal.appendChild(container);
+    document.body.appendChild(modal);
+    
+    // Fechar ao clicar fora
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            fecharModalAnuncio();
+        }
+    });
+    
+    // Fechar com ESC
+    document.addEventListener('keydown', function escHandler(e) {
+        if (e.key === 'Escape') {
+            fecharModalAnuncio();
+            document.removeEventListener('keydown', escHandler);
+        }
+    });
+}
+
+function fecharModalAnuncio() {
+    const modal = document.getElementById('modalAnuncio');
+    if (modal) {
+        modal.remove();
     }
 }
 

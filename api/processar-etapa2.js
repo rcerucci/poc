@@ -76,7 +76,7 @@ function extrairEspecificacaoPrincipal(especificacoes, nome_produto) {
     return palavras.length > 100 ? palavras.substring(0, 50) + '...' : palavras;
 }
 
-// --- Prompt Ultra Otimizado ---
+// --- Prompt Ultra Otimizado COM URL ---
 const PROMPT_BUSCA_PRECO = (dados) => {
     const especPrincipal = extrairEspecificacaoPrincipal(dados.especificacoes, dados.nome_produto);
     
@@ -88,16 +88,19 @@ REGRAS:
 1. Termo: Marca+Modelo OU spec chave
 2. Aceitar: Exato, Equivalente (±10%), Substituto
 3. Só NOVOS, preços visíveis
-4. Fontes: ML, Amazon, B2B
+4. Fontes: ML, Amazon, B2C, B2B
 5. PRÉ-FILTRAR: Remova outliers (±30% da mediana)
 
-JSON MÍNIMO:
-{"ok":true,"termo":"texto","precos":[{"v":1599.9,"f":"Loja","m":"Exato","p":"Nome"}]}
+JSON MÍNIMO (INCLUIR URL DO ANÚNCIO):
+{"ok":true,"termo":"texto","precos":[{"v":1599.9,"f":"Loja","m":"Exato","p":"Nome","u":"https://..."}]}
 
 Sem preços:
 {"ok":false,"motivo":"razão","termo":"texto"}
 
-CRÍTICO: JSON válido, nomes até 40 chars, SEM markdown`;
+CRÍTICO: 
+- JSON válido, nomes até 40 chars
+- SEM markdown
+- SEMPRE incluir URL completa do anúncio no campo "u"`;
 };
 
 // --- Cálculo de Média - FUNCIONA COM 1+ PREÇOS ---
@@ -127,6 +130,7 @@ function calcularMediaPonderada(coleta_precos) {
         const match = precoUnico.m || precoUnico.tipo_match || '';
         const fonte = precoUnico.f || precoUnico.fonte || '';
         const produto = precoUnico.p || precoUnico.produto || 'N/A';
+        const url = precoUnico.u || precoUnico.url || null;
         
         console.log('⚠️ [EMA] Apenas 1 preço: R$', precoUnico.valor.toFixed(2));
         
@@ -139,14 +143,15 @@ function calcularMediaPonderada(coleta_precos) {
                 max: precoUnico.valor,
                 desvio: 0,
                 coef_var: 0,
-                confianca: 30 // ✅ Confiança baixa (apenas 1 preço)
+                confianca: 30
             },
             precos: [{
                 valor: precoUnico.valor,
                 fonte: fonte,
                 match: match,
                 peso: 1.0,
-                produto: produto
+                produto: produto,
+                url: url
             }]
         };
     }
@@ -169,6 +174,7 @@ function calcularMediaPonderada(coleta_precos) {
             fonte: fonte,
             tipo_match: match,
             produto: item.p || item.produto || 'N/A',
+            url: item.u || item.url || null,
             peso_total: pesoTotal 
         };
     });
@@ -182,12 +188,10 @@ function calcularMediaPonderada(coleta_precos) {
     const desvioPadrao = Math.sqrt(variancia);
     const coefVariacao = (desvioPadrao / media) * 100;
     
-    // ✅ Score de confiança baseado em quantidade + variação
     let scoreBase = 100 - coefVariacao;
     
-    // Penalizar se poucos preços
-    if (precosValidos.length === 2) scoreBase *= 0.7; // 70% do score
-    else if (precosValidos.length === 3) scoreBase *= 0.85; // 85% do score
+    if (precosValidos.length === 2) scoreBase *= 0.7;
+    else if (precosValidos.length === 3) scoreBase *= 0.85;
     
     const scoreConfianca = Math.max(0, Math.min(100, scoreBase));
 
@@ -209,7 +213,8 @@ function calcularMediaPonderada(coleta_precos) {
             fonte: p.fonte,
             match: p.tipo_match,
             peso: parseFloat(p.peso_total.toFixed(2)),
-            produto: p.produto
+            produto: p.produto,
+            url: p.url
         }))
     };
 }
@@ -255,14 +260,12 @@ module.exports = async (req, res) => {
         const model = genAI.getGenerativeModel({
             model: MODEL,
             tools: [{ googleSearch: {} }],
-            generationConfig: { temperature: 0.1 },
-            responseMimeType: 'application/json'
+            generationConfig: { temperature: 0.1 }
         });
 
         const result = await model.generateContent(promptBusca);
         const text = result.response.text();
 
-        // ===== 📊 AUDITORIA =====
         const usage = result.response.usageMetadata;
         const tokIn = usage?.promptTokenCount || 0;
         const tokOut = usage?.candidatesTokenCount || 0;
@@ -273,7 +276,6 @@ module.exports = async (req, res) => {
         const custoTot = custoIn + custoOut;
         
         console.log('📊 Tokens:', tokIn, '/', tokOut, '| R$', custoTot.toFixed(4));
-        // ===== FIM =====
 
         let resultado;
         try {
@@ -288,7 +290,6 @@ module.exports = async (req, res) => {
             throw new Error('JSON inválido: ' + e.message);
         }
 
-        // ✅ SEM PREÇOS = RESULTADO VÁLIDO
         if (!resultado.ok || resultado.ok === false) {
             console.log('ℹ️ Preços não encontrados (normal)');
             return res.status(200).json({
@@ -307,7 +308,6 @@ module.exports = async (req, res) => {
 
         const precos = resultado.precos || [];
         
-        // ✅ SEM MÍNIMO! Aceita 1+
         if (precos.length === 0) {
             console.log('ℹ️ Array vazio');
             return res.status(200).json({
@@ -324,7 +324,6 @@ module.exports = async (req, res) => {
             });
         }
 
-        // ✅ CALCULAR COM 1+ PREÇOS
         const resultadoEMA = calcularMediaPonderada(precos);
 
         if (!resultadoEMA.sucesso) {
@@ -345,7 +344,6 @@ module.exports = async (req, res) => {
         let metodo = 'Média Ponderada';
         const { coef_var, num } = resultadoEMA.estatisticas;
 
-        // ✅ Ajustar método baseado em quantidade e variação
         if (num === 1) {
             metodo = 'Preço Único';
         } else if (coef_var > 40 && num > 1) {
@@ -391,7 +389,8 @@ module.exports = async (req, res) => {
                 v: p.valor,
                 f: p.fonte,
                 m: p.match,
-                p: p.produto
+                p: p.produto,
+                u: p.url || null
             })),
             
             busca: {
@@ -402,7 +401,7 @@ module.exports = async (req, res) => {
             meta: {
                 data: new Date().toISOString(),
                 modelo: MODEL,
-                versao: '2.4-SemMinimo',
+                versao: '2.5-ComURL',
                 tokens: { in: tokIn, out: tokOut, total: tokTot },
                 custo: parseFloat(custoTot.toFixed(4))
             }
