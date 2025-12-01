@@ -91,13 +91,18 @@ REGRAS:
 4. Fontes: ML, Amazon, B2B
 5. PRÉ-FILTRAR: Remova outliers (±30% da mediana) ANTES de retornar
 
-JSON MÍNIMO:
-{"ok": true, "termo": "...", "precos": [{"v": 1599.9, "f": "Loja", "m": "Exato", "p": "Nome"}]}
+FORMATO JSON OBRIGATÓRIO (copie exatamente):
+{"ok": true, "termo": "texto curto", "precos": [{"v": 1599.9, "f": "Loja", "m": "Exato", "p": "Nome curto"}]}
 
-Falha (<3 preços):
-{"ok": false, "motivo": "razão", "termo": "..."}
+Se falha (<3 preços):
+{"ok": false, "motivo": "razão breve", "termo": "texto"}
 
-CRÍTICO: Resposta ULTRA CURTA. Nomes de produto até 40 chars.`;
+CRÍTICO: 
+- Resposta DEVE SER JSON VÁLIDO
+- Feche todas as chaves corretamente
+- Nomes de produto até 40 caracteres
+- NÃO adicione texto antes ou depois do JSON
+- NÃO use markdown (sem \`\`\`json)`;
 };
 
 // --- Cálculo Simplificado (LLM já pré-filtrou) ---
@@ -219,7 +224,7 @@ module.exports = async (req, res) => {
             tools: [{ googleSearch: {} }],
             generationConfig: { 
                 temperature: 0.1,
-                maxOutputTokens: 400  // ← LIMITE DE OUTPUT
+                maxOutputTokens: 1000  // ← LIMITE DE OUTPUT
             }
         });
 
