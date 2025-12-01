@@ -665,7 +665,7 @@ function gerarJSONFormatado(dados) {
                         <th>Fonte</th>
                         <th>Match</th>
                         <th>Produto</th>
-                        <th style="min-width: 100px;">Anúncio</th>
+                        <th style="min-width: 100px;">Link</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -689,7 +689,9 @@ function gerarJSONFormatado(dados) {
                             <td><small>${produto}</small></td>
                             <td style="text-align: center;">
                                 ${url ? 
-                                    `<button onclick="abrirModalAnuncio('${url}', '${produto.replace(/'/g, "\\'")}'); event.stopPropagation();" style="
+                                    `<button onclick="abrirModalAnuncio('${url}', '${produto.replace(/'/g, "\\'")}'); event.stopPropagation();" 
+                                        title="Ver anúncio original"
+                                        style="
                                         background: #667eea;
                                         color: white;
                                         border: none;
@@ -706,7 +708,7 @@ function gerarJSONFormatado(dados) {
                                     " onmouseover="this.style.background='#5a67d8'" onmouseout="this.style.background='#667eea'">
                                         🔗 Ver
                                     </button>` 
-                                    : '<span style="color: #cbd5e0;">-</span>'
+                                    : `<span style="color: #a0aec0; font-size: 11px;" title="Link não disponível">-</span>`
                                 }
                             </td>
                         </tr>
@@ -715,6 +717,11 @@ function gerarJSONFormatado(dados) {
                 </tbody>
             </table>
         </div>
+        ${(precos || []).filter(p => !(p.url || p.u)).length > 0 ? `
+            <div style="margin-top: 10px; padding: 10px; background: #fff3cd; border-radius: 6px; font-size: 12px; color: #856404;">
+                ℹ️ Alguns preços não têm link disponível. Isso pode ocorrer quando o produto foi encontrado mas o link expirou ou é de acesso restrito.
+            </div>
+        ` : ''}
     </div>
 </div>
 

@@ -76,7 +76,7 @@ function extrairEspecificacaoPrincipal(especificacoes, nome_produto) {
     return palavras.length > 100 ? palavras.substring(0, 50) + '...' : palavras;
 }
 
-// --- Prompt Ultra Otimizado COM URL ---
+// --- Prompt Ultra Otimizado COM URL DIRETA ---
 const PROMPT_BUSCA_PRECO = (dados) => {
     const especPrincipal = extrairEspecificacaoPrincipal(dados.especificacoes, dados.nome_produto);
     
@@ -91,16 +91,17 @@ REGRAS:
 4. Fontes: ML, Amazon, B2C, B2B
 5. PRÉ-FILTRAR: Remova outliers (±30% da mediana)
 
-JSON MÍNIMO (INCLUIR URL DO ANÚNCIO):
-{"ok":true,"termo":"texto","precos":[{"v":1599.9,"f":"Loja","m":"Exato","p":"Nome","u":"https://..."}]}
+JSON MÍNIMO:
+{"ok":true,"termo":"texto","precos":[{"v":1599.9,"f":"Loja","m":"Exato","p":"Nome","u":"https://produto.mercadolivre.com.br/..."}]}
 
 Sem preços:
 {"ok":false,"motivo":"razão","termo":"texto"}
 
 CRÍTICO: 
-- JSON válido, nomes até 40 chars
-- SEM markdown
-- SEMPRE incluir URL completa do anúncio no campo "u"`;
+- JSON válido, nomes até 40 chars, SEM markdown
+- URL DIRETA do anúncio (mercadolivre.com.br, magazineluiza.com.br, etc)
+- NUNCA use links do Google (vertexaisearch, google.com)
+- Se não tiver URL direta, use null no campo "u"`;
 };
 
 // --- Cálculo de Média - FUNCIONA COM 1+ PREÇOS ---
@@ -111,7 +112,24 @@ function calcularMediaPonderada(coleta_precos) {
         return { sucesso: false, motivo: 'Nenhum preço' };
     }
 
-    const precosValidos = coleta_precos
+    // ✅ FILTRAR URLs INVÁLIDAS DO GOOGLE
+    const precosLimpos = coleta_precos.map(item => {
+        let url = item.u || item.url || null;
+        
+        // Limpar URLs do Google Grounding
+        if (url && (
+            url.includes('vertexaisearch.cloud.google.com') ||
+            url.includes('google.com/url') ||
+            url.includes('grounding-api-redirect')
+        )) {
+            console.log('⚠️ [EMA] URL do Google removida');
+            url = null;
+        }
+        
+        return { ...item, u: url };
+    });
+
+    const precosValidos = precosLimpos
         .map(item => ({
             ...item,
             valor: parseFloat(String(item.v || item.valor).replace(/[^\d,.]/g, '').replace(',', '.'))
@@ -130,7 +148,7 @@ function calcularMediaPonderada(coleta_precos) {
         const match = precoUnico.m || precoUnico.tipo_match || '';
         const fonte = precoUnico.f || precoUnico.fonte || '';
         const produto = precoUnico.p || precoUnico.produto || 'N/A';
-        const url = precoUnico.u || precoUnico.url || null;
+        const url = precoUnico.u || null;
         
         console.log('⚠️ [EMA] Apenas 1 preço: R$', precoUnico.valor.toFixed(2));
         
@@ -174,7 +192,7 @@ function calcularMediaPonderada(coleta_precos) {
             fonte: fonte,
             tipo_match: match,
             produto: item.p || item.produto || 'N/A',
-            url: item.u || item.url || null,
+            url: item.u || null,
             peso_total: pesoTotal 
         };
     });
