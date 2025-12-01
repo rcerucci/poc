@@ -1,9 +1,9 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const axios = require('axios');
 
 // --- Configuração ---
 const API_KEY = process.env.GOOGLE_API_KEY;
 const MODEL = process.env.VERTEX_MODEL || 'gemini-2.5-flash';
-
 const genAI = new GoogleGenerativeAI(API_KEY);
 
 // --- Fatores de Depreciação ---
@@ -46,155 +46,368 @@ const FATORES_DEPRECIACAO = {
     }
 };
 
-// --- Extrair Especificação Principal ---
-function extrairEspecificacaoPrincipal(especificacoes, nome_produto) {
-    if (!especificacoes || especificacoes === 'N/A') {
-        return nome_produto;
-    }
-    
-    const padroes = {
-        kva: /(\d+\.?\d*)\s*kVA/i,
-        kw: /(\d+\.?\d*)\s*kW/i,
-        hp: /(\d+\.?\d*)\s*HP/i,
-        w: /(\d+\.?\d*)\s*W(?![a-z])/i,
-        gb: /(\d+)\s*GB/i,
-        tb: /(\d+)\s*TB/i,
-        litros: /(\d+\.?\d*)\s*L(?:itros)?/i,
-        polegadas: /(\d+\.?\d*)(?:"|''|\s*pol)/i,
-        metros: /(\d+\.?\d*)\s*m(?![a-z])/i,
-        volts: /(\d+)\s*V(?![a-z])/i,
-        amperes: /(\d+)\s*A(?![a-z])/i,
-        btu: /(\d+)\s*BTU/i
-    };
-    
-    for (const [tipo, regex] of Object.entries(padroes)) {
-        const match = especificacoes.match(regex);
-        if (match) return match[0];
-    }
-    
-    const palavras = especificacoes.split(/[,;]|\.(?=\s)/)[0].trim();
-    return palavras.length > 100 ? palavras.substring(0, 50) + '...' : palavras;
+// =============================================================================
+// MÓDULO 1: CLASSIFICAÇÃO COM GEMINI (SEM GROUNDING)
+// =============================================================================
+
+const PROMPT_CLASSIFICAR = (dados) => {
+    return `Analise este bem patrimonial e classifique:
+
+Nome: ${dados.nome_produto}
+Marca: ${dados.marca || 'N/A'}
+Modelo: ${dados.modelo || 'N/A'}
+Especificações: ${dados.especificacoes || 'N/A'}
+
+Responda APENAS com JSON válido:
+{
+  "categoria": "equipamento_industrial" | "informatica" | "moveis" | "veiculo" | "ferramenta" | "eletrodomestico" | "outro",
+  "termo_busca": "termo otimizado com marca e modelo",
+  "termo_alternativo": "termo genérico sem marca",
+  "api_sugerida": "mercadolivre_b2b" | "mercadolivre" | "fipe" | "nenhuma",
+  "confianca": 0-100,
+  "justificativa": "breve explicação"
 }
 
-// --- Prompt Ultra Otimizado COM URL DIRETA ---
-const PROMPT_BUSCA_PRECO = (dados) => {
-    const especPrincipal = extrairEspecificacaoPrincipal(dados.especificacoes, dados.nome_produto);
-    
-    return `Encontre 1-4 preços NOVOS no Brasil para substituir:
-${dados.nome_produto} | ${dados.marca || 'N/A'} | ${dados.modelo || 'N/A'}
-Spec: ${especPrincipal}
-
-REGRAS:
-1. Termo: Marca+Modelo OU spec chave
-2. Aceitar: Exato, Equivalente (±10%), Substituto
-3. Só NOVOS, preços visíveis
-4. Fontes: ML, Amazon, B2C, B2B
-5. PRÉ-FILTRAR: Remova outliers (±30% da mediana)
-
-JSON MÍNIMO:
-{"ok":true,"termo":"texto","precos":[{"v":1599.9,"f":"Loja","m":"Exato","p":"Nome","u":"https://produto.mercadolivre.com.br/..."}]}
-
-Sem preços:
-{"ok":false,"motivo":"razão","termo":"texto"}
-
-CRÍTICO: 
-- JSON válido, nomes até 40 chars, SEM markdown
-- URL DIRETA do anúncio (mercadolivre.com.br, magazineluiza.com.br, etc)
-- NUNCA use links do Google (vertexaisearch, google.com)
-- Se não tiver URL direta, use null no campo "u"`;
+SEM markdown, SEM texto adicional, APENAS JSON.`;
 };
 
-// --- Cálculo de Média - FUNCIONA COM 1+ PREÇOS ---
-function calcularMediaPonderada(coleta_precos) {
-    console.log('📊 [EMA] Calculando...');
+async function classificarProduto(dados) {
+    console.log('🤖 [CLASSIFICAR] Analisando produto...');
     
-    if (!coleta_precos || coleta_precos.length === 0) {
-        return { sucesso: false, motivo: 'Nenhum preço' };
-    }
+    try {
+        const model = genAI.getGenerativeModel({
+            model: MODEL,
+            generationConfig: { 
+                temperature: 0.1,
+                maxOutputTokens: 300 // LIMITAR tokens
+            }
+        });
 
-    // ✅ FILTRAR URLs INVÁLIDAS DO GOOGLE
-    const precosLimpos = coleta_precos.map(item => {
-        let url = item.u || item.url || null;
+        const result = await model.generateContent(PROMPT_CLASSIFICAR(dados));
+        const text = result.response.text();
         
-        // Limpar URLs do Google Grounding
-        if (url && (
-            url.includes('vertexaisearch.cloud.google.com') ||
-            url.includes('google.com/url') ||
-            url.includes('grounding-api-redirect')
-        )) {
-            console.log('⚠️ [EMA] URL do Google removida');
-            url = null;
-        }
+        const usage = result.response.usageMetadata;
+        const tokIn = usage?.promptTokenCount || 0;
+        const tokOut = usage?.candidatesTokenCount || 0;
+        const custoIn = tokIn * 0.0000016;
+        const custoOut = tokOut * 0.0000133;
+        const custoTot = custoIn + custoOut;
         
-        return { ...item, u: url };
-    });
+        console.log('📊 Classificação - Tokens:', tokIn, '/', tokOut, '| R$', custoTot.toFixed(6));
 
-    const precosValidos = precosLimpos
-        .map(item => ({
-            ...item,
-            valor: parseFloat(String(item.v || item.valor).replace(/[^\d,.]/g, '').replace(',', '.'))
-        }))
-        .filter(item => !isNaN(item.valor) && item.valor > 0);
-
-    if (precosValidos.length === 0) {
-        return { sucesso: false, motivo: 'Nenhum preço válido' };
-    }
-
-    console.log('✅ [EMA] ' + precosValidos.length + ' preço(s)');
-
-    // ✅ CASO 1: APENAS 1 PREÇO
-    if (precosValidos.length === 1) {
-        const precoUnico = precosValidos[0];
-        const match = precoUnico.m || precoUnico.tipo_match || '';
-        const fonte = precoUnico.f || precoUnico.fonte || '';
-        const produto = precoUnico.p || precoUnico.produto || 'N/A';
-        const url = precoUnico.u || null;
+        let jsonText = text.trim()
+            .replace(/```json\n?/g, '')
+            .replace(/```\n?/g, '');
+        const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) jsonText = jsonMatch[0];
         
-        console.log('⚠️ [EMA] Apenas 1 preço: R$', precoUnico.valor.toFixed(2));
+        const classificacao = JSON.parse(jsonText);
         
         return {
             sucesso: true,
-            valor_mercado: parseFloat(precoUnico.valor.toFixed(2)),
+            dados: classificacao,
+            meta: { tokens: { in: tokIn, out: tokOut }, custo: custoTot }
+        };
+
+    } catch (error) {
+        console.error('❌ Erro na classificação:', error.message);
+        return {
+            sucesso: false,
+            erro: error.message,
+            meta: { tokens: { in: 0, out: 0 }, custo: 0 }
+        };
+    }
+}
+
+// =============================================================================
+// MÓDULO 2: APIS DE BUSCA
+// =============================================================================
+
+// --- API Mercado Livre ---
+async function buscarMercadoLivre(termo, limite = 10, b2b = false) {
+    console.log('🛒 [ML] Buscando:', termo, b2b ? '(B2B)' : '');
+    
+    try {
+        const params = {
+            q: termo,
+            limit: limite,
+            condition: 'new',
+            sort: 'price_asc'
+        };
+        
+        // Filtros B2B
+        if (b2b) {
+            params.shipping = 'fulfillment'; // Entrega garantida
+            params.official_store = 'all'; // Incluir lojas oficiais
+        }
+        
+        const response = await axios.get(
+            'https://api.mercadolibre.com/sites/MLB/search',
+            { params, timeout: 8000 }
+        );
+        
+        const produtos = response.data.results
+            .filter(item => item.available_quantity > 0)
+            .filter(item => item.price > 0)
+            .slice(0, limite)
+            .map(item => ({
+                valor: item.price,
+                fonte: item.official_store_id ? 'ML Loja Oficial' : 'Mercado Livre',
+                match: calcularMatch(termo, item.title),
+                produto: item.title.substring(0, 60),
+                url: item.permalink,
+                estoque: item.available_quantity,
+                vendedor: item.seller.nickname
+            }));
+        
+        console.log('✅ [ML] ' + produtos.length + ' produtos encontrados');
+        
+        return {
+            sucesso: produtos.length > 0,
+            precos: produtos,
+            total: produtos.length
+        };
+        
+    } catch (error) {
+        console.error('❌ [ML] Erro:', error.message);
+        return { sucesso: false, precos: [], total: 0 };
+    }
+}
+
+// --- API FIPE (Veículos) ---
+async function buscarFIPE(marca, modelo, ano = new Date().getFullYear()) {
+    console.log('🚗 [FIPE] Buscando:', marca, modelo, ano);
+    
+    try {
+        // Simplificado - na prática precisa de vários endpoints
+        const baseURL = 'https://parallelum.com.br/fipe/api/v1/carros';
+        
+        // 1. Buscar marca
+        const marcasResp = await axios.get(`${baseURL}/marcas`);
+        const marcaObj = marcasResp.data.find(m => 
+            m.nome.toLowerCase().includes(marca.toLowerCase())
+        );
+        
+        if (!marcaObj) {
+            console.log('⚠️ [FIPE] Marca não encontrada');
+            return { sucesso: false, precos: [], total: 0 };
+        }
+        
+        // 2. Buscar modelo
+        const modelosResp = await axios.get(`${baseURL}/marcas/${marcaObj.codigo}/modelos`);
+        const modeloObj = modelosResp.data.modelos.find(m => 
+            m.nome.toLowerCase().includes(modelo.toLowerCase())
+        );
+        
+        if (!modeloObj) {
+            console.log('⚠️ [FIPE] Modelo não encontrado');
+            return { sucesso: false, precos: [], total: 0 };
+        }
+        
+        // 3. Buscar ano
+        const anosResp = await axios.get(
+            `${baseURL}/marcas/${marcaObj.codigo}/modelos/${modeloObj.codigo}/anos`
+        );
+        const anoObj = anosResp.data.find(a => a.nome.includes(String(ano)));
+        
+        if (!anoObj) {
+            console.log('⚠️ [FIPE] Ano não encontrado');
+            return { sucesso: false, precos: [], total: 0 };
+        }
+        
+        // 4. Buscar preço
+        const precoResp = await axios.get(
+            `${baseURL}/marcas/${marcaObj.codigo}/modelos/${modeloObj.codigo}/anos/${anoObj.codigo}`
+        );
+        
+        const valor = parseFloat(
+            precoResp.data.Valor.replace(/[^\d,]/g, '').replace(',', '.')
+        );
+        
+        console.log('✅ [FIPE] Valor encontrado: R$', valor);
+        
+        return {
+            sucesso: true,
+            precos: [{
+                valor: valor,
+                fonte: 'Tabela FIPE',
+                match: 'Exato',
+                produto: `${precoResp.data.Marca} ${precoResp.data.Modelo} ${precoResp.data.AnoModelo}`,
+                url: 'https://veiculos.fipe.org.br',
+                referencia: precoResp.data.MesReferencia
+            }],
+            total: 1
+        };
+        
+    } catch (error) {
+        console.error('❌ [FIPE] Erro:', error.message);
+        return { sucesso: false, precos: [], total: 0 };
+    }
+}
+
+// --- Calcular Match ---
+function calcularMatch(busca, titulo) {
+    const palavrasBusca = busca.toLowerCase()
+        .split(' ')
+        .filter(p => p.length > 2); // Ignorar palavras muito curtas
+    
+    const tituloLower = titulo.toLowerCase();
+    
+    const matches = palavrasBusca.filter(p => tituloLower.includes(p)).length;
+    const percentual = (matches / palavrasBusca.length) * 100;
+    
+    if (percentual >= 80) return 'Exato';
+    if (percentual >= 50) return 'Equivalente';
+    return 'Substituto';
+}
+
+// =============================================================================
+// MÓDULO 3: ORQUESTRADOR DE BUSCAS
+// =============================================================================
+
+async function buscarPrecos(dados, classificacao) {
+    console.log('🔍 [BUSCA] Iniciando busca - API:', classificacao.api_sugerida);
+    
+    let resultados = { sucesso: false, precos: [], total: 0 };
+    
+    // Estratégia baseada na classificação
+    switch (classificacao.api_sugerida) {
+        
+        case 'fipe':
+            // Veículos - Usar FIPE
+            resultados = await buscarFIPE(
+                dados.marca || '', 
+                dados.modelo || ''
+            );
+            
+            // Fallback: tentar ML também
+            if (!resultados.sucesso || resultados.total < 2) {
+                const mlResults = await buscarMercadoLivre(
+                    classificacao.termo_busca,
+                    5
+                );
+                if (mlResults.sucesso) {
+                    resultados.precos.push(...mlResults.precos);
+                    resultados.total += mlResults.total;
+                    resultados.sucesso = true;
+                }
+            }
+            break;
+        
+        case 'mercadolivre_b2b':
+            // Equipamentos industriais - ML B2B
+            resultados = await buscarMercadoLivre(
+                classificacao.termo_busca,
+                10,
+                true // B2B mode
+            );
+            
+            // Tentar termo alternativo se falhar
+            if (!resultados.sucesso && classificacao.termo_alternativo) {
+                resultados = await buscarMercadoLivre(
+                    classificacao.termo_alternativo,
+                    10,
+                    true
+                );
+            }
+            break;
+        
+        case 'mercadolivre':
+            // Produtos comuns - ML regular
+            resultados = await buscarMercadoLivre(
+                classificacao.termo_busca,
+                10
+            );
+            
+            // Tentar termo alternativo se poucos resultados
+            if (resultados.total < 3 && classificacao.termo_alternativo) {
+                const mlAlt = await buscarMercadoLivre(
+                    classificacao.termo_alternativo,
+                    10
+                );
+                if (mlAlt.sucesso) {
+                    resultados.precos.push(...mlAlt.precos);
+                    resultados.total += mlAlt.total;
+                    resultados.sucesso = true;
+                }
+            }
+            break;
+        
+        case 'nenhuma':
+        default:
+            // Produto muito específico ou sem mercado online
+            console.log('⚠️ [BUSCA] Produto sem API adequada');
+            break;
+    }
+    
+    return resultados;
+}
+
+// =============================================================================
+// MÓDULO 4: CÁLCULO DE MÉDIA
+// =============================================================================
+
+function calcularMediaPonderada(precos) {
+    console.log('📊 [EMA] Calculando média...');
+    
+    if (!precos || precos.length === 0) {
+        return { sucesso: false, motivo: 'Nenhum preço encontrado' };
+    }
+
+    // Remover outliers extremos (opcional)
+    const valores = precos.map(p => p.valor).sort((a, b) => a - b);
+    const q1 = valores[Math.floor(valores.length * 0.25)];
+    const q3 = valores[Math.floor(valores.length * 0.75)];
+    const iqr = q3 - q1;
+    const limiteInf = q1 - (1.5 * iqr);
+    const limiteSup = q3 + (1.5 * iqr);
+    
+    const precosFiltrados = precos.filter(p => 
+        p.valor >= limiteInf && p.valor <= limiteSup
+    );
+    
+    if (precosFiltrados.length === 0) {
+        return { sucesso: false, motivo: 'Todos os preços foram outliers' };
+    }
+    
+    console.log('✅ [EMA] ' + precosFiltrados.length + ' preço(s) válido(s)');
+
+    // CASO 1: Apenas 1 preço
+    if (precosFiltrados.length === 1) {
+        const p = precosFiltrados[0];
+        return {
+            sucesso: true,
+            valor_mercado: p.valor,
             estatisticas: {
                 num: 1,
-                min: precoUnico.valor,
-                max: precoUnico.valor,
+                min: p.valor,
+                max: p.valor,
                 desvio: 0,
                 coef_var: 0,
                 confianca: 30
             },
             precos: [{
-                valor: precoUnico.valor,
-                fonte: fonte,
-                match: match,
+                valor: p.valor,
+                fonte: p.fonte,
+                match: p.match,
                 peso: 1.0,
-                produto: produto,
-                url: url
+                produto: p.produto,
+                url: p.url
             }]
         };
     }
 
-    // ✅ CASO 2: 2+ PREÇOS - Calcular pesos
-    const precosComPeso = precosValidos.map(item => {
+    // CASO 2: 2+ preços - Média ponderada
+    const precosComPeso = precosFiltrados.map(p => {
         let pesoMatch = 1.0;
-        const match = item.m || item.tipo_match || '';
-        if (match === 'Exato') pesoMatch = 2.0;
-        else if (match === 'Equivalente') pesoMatch = 1.5;
-        else if (match === 'Substituto') pesoMatch = 1.3;
+        if (p.match === 'Exato') pesoMatch = 2.0;
+        else if (p.match === 'Equivalente') pesoMatch = 1.5;
+        else if (p.match === 'Substituto') pesoMatch = 1.3;
         
-        const fonte = item.f || item.fonte || '';
-        const pesoFonte = fonte.includes('B2B') ? 1.5 : 1.0;
+        const pesoFonte = p.fonte.includes('Oficial') ? 1.3 : 1.0;
         const pesoTotal = pesoMatch * pesoFonte;
 
-        return { 
-            ...item, 
-            valor: item.valor,
-            fonte: fonte,
-            tipo_match: match,
-            produto: item.p || item.produto || 'N/A',
-            url: item.u || null,
-            peso_total: pesoTotal 
-        };
+        return { ...p, peso_total: pesoTotal };
     });
 
     const somaPonderada = precosComPeso.reduce((acc, p) => acc + (p.valor * p.peso_total), 0);
@@ -207,9 +420,8 @@ function calcularMediaPonderada(coleta_precos) {
     const coefVariacao = (desvioPadrao / media) * 100;
     
     let scoreBase = 100 - coefVariacao;
-    
-    if (precosValidos.length === 2) scoreBase *= 0.7;
-    else if (precosValidos.length === 3) scoreBase *= 0.85;
+    if (precosComPeso.length === 2) scoreBase *= 0.7;
+    else if (precosComPeso.length === 3) scoreBase *= 0.85;
     
     const scoreConfianca = Math.max(0, Math.min(100, scoreBase));
 
@@ -219,9 +431,9 @@ function calcularMediaPonderada(coleta_precos) {
         sucesso: true,
         valor_mercado: parseFloat(mediaPonderada.toFixed(2)),
         estatisticas: {
-            num: precosValidos.length,
-            min: Math.min(...precosValidos.map(p => p.valor)),
-            max: Math.max(...precosValidos.map(p => p.valor)),
+            num: precosComPeso.length,
+            min: Math.min(...precosComPeso.map(p => p.valor)),
+            max: Math.max(...precosComPeso.map(p => p.valor)),
             desvio: parseFloat(desvioPadrao.toFixed(2)),
             coef_var: parseFloat(coefVariacao.toFixed(2)),
             confianca: parseFloat(scoreConfianca.toFixed(1))
@@ -229,13 +441,17 @@ function calcularMediaPonderada(coleta_precos) {
         precos: precosComPeso.map(p => ({
             valor: p.valor,
             fonte: p.fonte,
-            match: p.tipo_match,
+            match: p.match,
             peso: parseFloat(p.peso_total.toFixed(2)),
             produto: p.produto,
             url: p.url
         }))
     };
 }
+
+// =============================================================================
+// ENDPOINT PRINCIPAL
+// =============================================================================
 
 module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -245,7 +461,7 @@ module.exports = async (req, res) => {
     if (req.method === 'OPTIONS') return res.status(200).end();
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-    console.log('🔍 [ETAPA2] Iniciando...');
+    console.log('🔍 [ETAPA2-V3] Iniciando processamento...');
 
     try {
         const {
@@ -261,103 +477,76 @@ module.exports = async (req, res) => {
         if (!nome_produto || nome_produto === 'N/A') {
             return res.status(400).json({
                 status: 'Erro',
-                mensagem: 'Nome obrigatório',
+                mensagem: 'Nome do produto é obrigatório',
                 dados: {}
             });
         }
 
-        const promptBusca = PROMPT_BUSCA_PRECO({
+        // ========== ETAPA 1: CLASSIFICAR ==========
+        const classificacao = await classificarProduto({
             nome_produto,
             marca,
             modelo,
             especificacoes
         });
 
-        console.log('🤖 [ETAPA2] Chamando Gemini...');
-
-        const model = genAI.getGenerativeModel({
-            model: MODEL,
-            tools: [{ googleSearch: {} }],
-            generationConfig: { temperature: 0.1 }
-        });
-
-        const result = await model.generateContent(promptBusca);
-        const text = result.response.text();
-
-        const usage = result.response.usageMetadata;
-        const tokIn = usage?.promptTokenCount || 0;
-        const tokOut = usage?.candidatesTokenCount || 0;
-        const tokTot = usage?.totalTokenCount || 0;
-        
-        const custoIn = tokIn * 0.0000016;
-        const custoOut = tokOut * 0.0000133;
-        const custoTot = custoIn + custoOut;
-        
-        console.log('📊 Tokens:', tokIn, '/', tokOut, '| R$', custoTot.toFixed(4));
-
-        let resultado;
-        try {
-            let jsonText = text.trim();
-            jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-            const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
-            if (jsonMatch) jsonText = jsonMatch[0];
-            resultado = JSON.parse(jsonText);
-            console.log('✅ JSON válido');
-        } catch (e) {
-            console.error('❌ JSON inválido:', text.substring(0, 200));
-            throw new Error('JSON inválido: ' + e.message);
+        if (!classificacao.sucesso) {
+            return res.status(500).json({
+                status: 'Erro',
+                mensagem: 'Falha na classificação: ' + classificacao.erro,
+                dados: { preco_encontrado: false }
+            });
         }
 
-        if (!resultado.ok || resultado.ok === false) {
-            console.log('ℹ️ Preços não encontrados (normal)');
+        const metaClassificacao = classificacao.meta;
+        
+        console.log('📋 Categoria:', classificacao.dados.categoria);
+        console.log('🎯 API:', classificacao.dados.api_sugerida);
+        console.log('🔎 Termo:', classificacao.dados.termo_busca);
+
+        // ========== ETAPA 2: BUSCAR PREÇOS ==========
+        const resultadoBusca = await buscarPrecos(
+            { nome_produto, marca, modelo, especificacoes },
+            classificacao.dados
+        );
+
+        if (!resultadoBusca.sucesso || resultadoBusca.total === 0) {
             return res.status(200).json({
                 status: 'Sem Preços',
-                mensagem: resultado.motivo || 'Produto sem preços online visíveis',
-                dados: { 
+                mensagem: 'Nenhum preço encontrado nas APIs disponíveis',
+                dados: {
                     preco_encontrado: false,
-                    termo_utilizado: resultado.termo || 'N/A'
+                    classificacao: classificacao.dados,
+                    termo_utilizado: classificacao.dados.termo_busca
                 },
                 meta: {
-                    tokens: { in: tokIn, out: tokOut, total: tokTot },
-                    custo: parseFloat(custoTot.toFixed(4))
+                    tokens: metaClassificacao.tokens,
+                    custo: parseFloat(metaClassificacao.custo.toFixed(6)),
+                    versao: 'v3-api-direta'
                 }
             });
         }
 
-        const precos = resultado.precos || [];
-        
-        if (precos.length === 0) {
-            console.log('ℹ️ Array vazio');
-            return res.status(200).json({
-                status: 'Sem Preços',
-                mensagem: 'Nenhum preço retornado',
-                dados: { 
-                    preco_encontrado: false,
-                    termo_utilizado: resultado.termo || 'N/A'
-                },
-                meta: {
-                    tokens: { in: tokIn, out: tokOut, total: tokTot },
-                    custo: parseFloat(custoTot.toFixed(4))
-                }
-            });
-        }
-
-        const resultadoEMA = calcularMediaPonderada(precos);
+        // ========== ETAPA 3: CALCULAR MÉDIA ==========
+        const resultadoEMA = calcularMediaPonderada(resultadoBusca.precos);
 
         if (!resultadoEMA.sucesso) {
             return res.status(200).json({
                 status: 'Sem Preços',
                 mensagem: resultadoEMA.motivo,
                 dados: { 
-                    preco_encontrado: false
+                    preco_encontrado: false,
+                    classificacao: classificacao.dados
                 },
                 meta: {
-                    tokens: { in: tokIn, out: tokOut, total: tokTot },
-                    custo: parseFloat(custoTot.toFixed(4))
+                    tokens: metaClassificacao.tokens,
+                    custo: parseFloat(metaClassificacao.custo.toFixed(6)),
+                    versao: 'v3-api-direta'
                 }
             });
         }
 
+        // ========== ETAPA 4: APLICAR DEPRECIAÇÃO ==========
         let valorMercado = resultadoEMA.valor_mercado;
         let metodo = 'Média Ponderada';
         const { coef_var, num } = resultadoEMA.estatisticas;
@@ -367,8 +556,8 @@ module.exports = async (req, res) => {
         } else if (coef_var > 40 && num > 1) {
             const valores = resultadoEMA.precos.map(p => p.valor).sort((a, b) => a - b);
             valorMercado = valores[Math.floor(valores.length / 2)];
-            metodo = 'Mediana (alta var)';
-            console.log('⚠️ Alta var:', coef_var.toFixed(1) + '% - usando mediana');
+            metodo = 'Mediana (alta variação)';
+            console.log('⚠️ Alta variação:', coef_var.toFixed(1) + '% - usando mediana');
         }
 
         const estado = estado_conservacao || 'Bom';
@@ -376,6 +565,7 @@ module.exports = async (req, res) => {
         const fatorDep = FATORES_DEPRECIACAO[estado]?.[categoria] || 0.7;
         const valorAtual = valorMercado * fatorDep;
 
+        // ========== RESPOSTA FINAL ==========
         const dadosCompletos = {
             numero_patrimonio,
             nome_produto,
@@ -408,20 +598,22 @@ module.exports = async (req, res) => {
                 f: p.fonte,
                 m: p.match,
                 p: p.produto,
-                u: p.url || null
+                u: p.url
             })),
             
             busca: {
-                termo: resultado.termo || 'N/A',
+                categoria: classificacao.dados.categoria,
+                termo: classificacao.dados.termo_busca,
+                api: classificacao.dados.api_sugerida,
                 num: num
             },
             
             meta: {
                 data: new Date().toISOString(),
                 modelo: MODEL,
-                versao: '2.5-ComURL',
-                tokens: { in: tokIn, out: tokOut, total: tokTot },
-                custo: parseFloat(custoTot.toFixed(4))
+                versao: 'v3-api-direta',
+                tokens: metaClassificacao.tokens,
+                custo: parseFloat(metaClassificacao.custo.toFixed(6))
             }
         };
 
@@ -430,11 +622,11 @@ module.exports = async (req, res) => {
         return res.status(200).json({
             status: 'Sucesso',
             dados: dadosCompletos,
-            mensagem: num + ' preço(s) | ' + resultadoEMA.estatisticas.confianca.toFixed(0) + '% conf'
+            mensagem: num + ' preço(s) encontrado(s) | ' + resultadoEMA.estatisticas.confianca.toFixed(0) + '% confiança'
         });
 
     } catch (error) {
-        console.error('❌ [ETAPA2] ERRO:', error.message);
+        console.error('❌ [ETAPA2-V3] ERRO:', error.message);
         return res.status(500).json({
             status: 'Erro',
             mensagem: error.message,
