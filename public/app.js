@@ -371,7 +371,7 @@ function bloquearCampos(campos) {
 }
 
 // ===================================================================
-// PROCESSAR ETAPA 2 - ✅ CORRIGIDO
+// PROCESSAR ETAPA 2
 // ===================================================================
 
 async function processarEtapa2() {
@@ -421,7 +421,6 @@ async function processarEtapa2() {
             
             mostrarAlerta('ℹ️ ' + resultado.mensagem, 'info');
             
-            // Mostrar resultado "sem preços"
             elementos.resultSection.style.display = 'block';
             
             elementos.resultIdentificacao.innerHTML = `
@@ -452,18 +451,16 @@ async function processarEtapa2() {
                 <p><strong>Data:</strong> ${new Date().toLocaleString('pt-BR')}</p>
             `;
             
-            elementos.jsonOutput.textContent = JSON.stringify(resultado, null, 2);
+            elementos.jsonOutput.innerHTML = '<pre>' + JSON.stringify(resultado, null, 2) + '</pre>';
             elementos.resultSection.scrollIntoView({ behavior: 'smooth' });
             
             esconderLoading();
-            return; // ✅ NÃO é erro!
+            return;
         }
         
-        // ✅ SUCESSO COM PREÇOS
         if (resultado.status === 'Sucesso') {
             AppState.dadosEtapa2 = resultado;
             
-            // Compatível com ambos os formatos
             const valores = resultado.dados.valores_estimados || resultado.dados.valores;
             const valorMercado = valores.valor_mercado_estimado || valores.mercado;
             const valorAtual = valores.valor_atual_estimado || valores.atual;
@@ -490,17 +487,12 @@ async function processarEtapa2() {
 }
 
 // ===================================================================
-// MOSTRAR RESULTADO - ✅ COMPATÍVEL
-// ===================================================================
-
-// ===================================================================
-// MOSTRAR RESULTADO - ✅ VISUALIZADOR INTELIGENTE
+// MOSTRAR RESULTADO - VISUALIZADOR INTELIGENTE
 // ===================================================================
 
 function mostrarResultado(resultado) {
     const dados = resultado.dados;
     
-    // ===== IDENTIFICAÇÃO =====
     elementos.resultIdentificacao.innerHTML = `
         <p><strong>Placa:</strong> ${dados.numero_patrimonio}</p>
         <p><strong>Nome:</strong> ${dados.nome_produto}</p>
@@ -509,13 +501,11 @@ function mostrarResultado(resultado) {
         <p><strong>Especificações:</strong> ${dados.especificacoes}</p>
     `;
     
-    // ===== CLASSIFICAÇÃO =====
     elementos.resultClassificacao.innerHTML = `
         <p><strong>Estado:</strong> ${dados.estado_conservacao}</p>
         <p><strong>Categoria:</strong> ${dados.categoria_depreciacao}</p>
     `;
     
-    // ===== VALORES (compatível) =====
     const valores = dados.valores_estimados || dados.valores;
     const valorMercado = valores.valor_mercado_estimado || valores.mercado;
     const valorAtual = valores.valor_atual_estimado || valores.atual;
@@ -523,9 +513,9 @@ function mostrarResultado(resultado) {
     const confianca = valores.score_confianca || valores.confianca;
     const metodo = valores.fonte_preco || valores.metodo || 'N/A';
     
-    let corConfianca = '#28a745'; // verde
-    if (confianca < 50) corConfianca = '#dc3545'; // vermelho
-    else if (confianca < 70) corConfianca = '#ffc107'; // amarelo
+    let corConfianca = '#28a745';
+    if (confianca < 50) corConfianca = '#dc3545';
+    else if (confianca < 70) corConfianca = '#ffc107';
     
     elementos.resultValores.innerHTML = `
         <p><strong>Mercado:</strong> R$ ${valorMercado.toFixed(2)}</p>
@@ -535,7 +525,6 @@ function mostrarResultado(resultado) {
         <p><strong>Confiança:</strong> <span style="color: ${corConfianca}; font-weight: bold;">${confianca.toFixed(0)}%</span></p>
     `;
     
-    // ===== METADADOS =====
     const meta = dados.metadados || dados.meta;
     const dataBusca = meta.data_busca || meta.data;
     const modeloIA = meta.modelo_ia || meta.modelo;
@@ -555,7 +544,6 @@ function mostrarResultado(resultado) {
         <p><strong>Custo total:</strong> R$ ${custoTotal?.toFixed(4) || '0.0000'}</p>
     `;
     
-    // ===== JSON ORGANIZADO (com seções expansíveis) =====
     const jsonFormatado = gerarJSONFormatado(dados);
     elementos.jsonOutput.innerHTML = jsonFormatado;
     
@@ -564,7 +552,7 @@ function mostrarResultado(resultado) {
 }
 
 // ===================================================================
-// GERAR JSON FORMATADO COM SEÇÕES EXPANSÍVEIS
+// GERAR JSON FORMATADO
 // ===================================================================
 
 function gerarJSONFormatado(dados) {
@@ -574,7 +562,6 @@ function gerarJSONFormatado(dados) {
     const busca = dados.estrategia_busca || dados.busca;
     const meta = dados.metadados || dados.meta;
     
-    // Compatibilidade de campos
     const valorMercado = valores.valor_mercado_estimado || valores.mercado;
     const valorAtual = valores.valor_atual_estimado || valores.atual;
     const fatorDep = valores.fator_depreciacao || valores.depreciacao;
@@ -599,7 +586,6 @@ function gerarJSONFormatado(dados) {
     const tokensOut = meta?.tokens_output || meta?.tokens?.out || 0;
     const tokensTotal = meta?.tokens_total || meta?.tokens?.total || 0;
     
-    // HTML formatado com seções
     return `
 <div class="json-section">
     <div class="json-header" onclick="toggleSection(this)">
@@ -776,7 +762,7 @@ function exportarJSON() {
 }
 
 function copiarJSON() {
-    const json = elementos.jsonOutput.textContent;
+    const json = AppState.dadosEtapa2 ? JSON.stringify(AppState.dadosEtapa2, null, 2) : '{}';
     navigator.clipboard.writeText(json).then(() => {
         mostrarAlerta('📋 JSON copiado!', 'success');
     });
