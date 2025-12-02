@@ -1,58 +1,15 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const axios = require('axios');
 const cheerio = require('cheerio');
+const { kv } = require('@vercel/kv');
 
-// Configurar Vercel KV a partir da REDIS_URL
-let kv;
-try {
-    if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
-        // Variáveis novas já existem
-        const { kv: kvClient } = require('@vercel/kv');
-        kv = kvClient;
-        console.log('✅ [KV] Usando variáveis KV_REST_API_*');
-    } else if (process.env.REDIS_URL) {
-        // Extrair credenciais da REDIS_URL
-        const redisUrl = new URL(process.env.REDIS_URL);
-        const token = redisUrl.password;
-        const host = redisUrl.hostname;
-        const port = redisUrl.port || '6379';
-        
-        console.log('🔍 [KV-DEBUG] REDIS_URL host:', host);
-        console.log('🔍 [KV-DEBUG] REDIS_URL port:', port);
-        console.log('🔍 [KV-DEBUG] Token length:', token?.length);
-        
-        // Upstash usa REST API na porta 443 (HTTPS)
-        // Não usa o protocolo Redis na porta 6379
-        const restApiUrl = `https://${host}`;
-        
-        console.log('🔍 [KV-DEBUG] REST API URL:', restApiUrl);
-        
-        // Configurar manualmente
-        process.env.KV_REST_API_URL = restApiUrl;
-        process.env.KV_REST_API_TOKEN = token;
-        
-        const { kv: kvClient } = require('@vercel/kv');
-        kv = kvClient;
-        console.log('✅ [KV] Configurado via REDIS_URL');
-        
-        // Teste rápido de conexão
-        kv.ping()
-            .then(() => console.log('✅ [KV] Ping OK - Redis respondendo'))
-            .catch(err => console.error('❌ [KV] Ping FALHOU:', err.message));
-    } else {
-        console.warn('⚠️ [KV] Redis não configurado - cache desabilitado');
-        kv = {
-            get: async () => null,
-            set: async () => null
-        };
-    }
-} catch (error) {
-    console.error('⚠️ [KV] Erro ao configurar:', error.message);
-    kv = {
-        get: async () => null,
-        set: async () => null
-    };
-}
+// @vercel/kv detecta UPSTASH_REDIS_REST_* automaticamente!
+console.log('✅ [CACHE] Vercel KV configurado (Upstash)');
+
+// Teste de conexão (não bloqueia)
+kv.ping()
+    .then(() => console.log('✅ [CACHE] Ping OK'))
+    .catch(err => console.error('⚠️ [CACHE] Ping falhou:', err.message));
 
 // --- Configuração ---
 const API_KEY = process.env.GOOGLE_API_KEY;
