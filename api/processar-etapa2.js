@@ -6,8 +6,7 @@ const API_KEY = process.env.GOOGLE_API_KEY;
 const MODEL = process.env.VERTEX_MODEL || 'gemini-2.5-flash';
 const genAI = new GoogleGenerativeAI(API_KEY);
 
-// Custom Search API
-const CUSTOM_SEARCH_API_KEY = process.env.CUSTOM_SEARCH_API_KEY;
+// Custom Search API (usa mesma chave do Gemini)
 const CUSTOM_SEARCH_CX_ID = process.env.CUSTOM_SEARCH_CX_ID;
 
 // --- Fatores de Depreciação ---
@@ -97,14 +96,14 @@ function construirTermoBusca(dados) {
 async function buscarCustomSearch(termo) {
     console.log('🌐 [SEARCH] Buscando...');
     
-    if (!CUSTOM_SEARCH_API_KEY || !CUSTOM_SEARCH_CX_ID) {
-        throw new Error('Custom Search não configurado (verifique variáveis de ambiente)');
+    if (!API_KEY || !CUSTOM_SEARCH_CX_ID) {
+        throw new Error('Custom Search não configurado (verifique GOOGLE_API_KEY e CUSTOM_SEARCH_CX_ID)');
     }
     
     try {
         const response = await axios.get('https://www.googleapis.com/customsearch/v1', {
             params: {
-                key: CUSTOM_SEARCH_API_KEY,
+                key: API_KEY,
                 cx: CUSTOM_SEARCH_CX_ID,
                 q: termo,
                 num: 10,
