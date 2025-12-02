@@ -282,8 +282,8 @@ async function refinarPrecosComLLM(produto, precosBrutos) {
         const model = genAI.getGenerativeModel({
             model: MODEL,
             generationConfig: {
-                temperature: 0.1
-                // Removido maxOutputTokens para teste
+                temperature: 0.1,
+                maxOutputTokens: 2048
             }
         });
         
