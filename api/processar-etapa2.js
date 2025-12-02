@@ -158,29 +158,17 @@ async function buscarCustomSearch(termo) {
 // =============================================================================
 
 const PROMPT_ANALISAR_PRECOS = (produto, resultados) => {
-    return `Extraia preços de produtos NOVOS dos resultados de busca.
+    return `Extraia preços (R$) de produtos NOVOS:
 
-PRODUTO: ${produto.nome_produto} ${produto.marca || ''} ${produto.modelo || ''}
+${resultados.map(r => `${r.id}. ${r.title} - ${r.snippet.substring(0, 100)}`).join('\n')}
 
-RESULTADOS (${resultados.length} sites):
-${resultados.map(r => `${r.id}. ${r.title}\n   ${r.snippet}\n   ${r.link}`).join('\n\n')}
+JSON:
+{"ok":true,"precos":[{"valor":299.9,"fonte":"Loja","match":"Exato","produto":"Nome","link":"url","justificativa":"ok"}]}
 
-TAREFA:
-1. Encontre preços em BRL (R$)
-2. Apenas produtos NOVOS
-3. Mínimo 3 preços
+Sem preços:
+{"ok":false,"motivo":"razao"}
 
-RESPONDA APENAS JSON:
-{
-  "ok": true,
-  "precos": [
-    {"valor": 299.90, "fonte": "Loja X", "match": "Exato", "produto": "Cadeira Y", "link": "url", "justificativa": "novo preço visível"}
-  ]
-}
-
-Sem preços: {"ok": false, "motivo": "nenhum preço encontrado"}
-
-IMPORTANTE: JSON válido, SEM markdown, SEM texto extra.`;
+SEM markdown, APENAS JSON.`;
 };
 
 async function analisarComLLM(produto, resultados) {
@@ -191,7 +179,7 @@ async function analisarComLLM(produto, resultados) {
             model: MODEL,
             generationConfig: {
                 temperature: 0.1,
-                maxOutputTokens: 800
+                maxOutputTokens: 2048 // Aumentado para permitir thinking + resposta
             }
         });
         
