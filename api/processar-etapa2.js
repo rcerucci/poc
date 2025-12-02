@@ -201,7 +201,7 @@ async function scrapearLinks(links, limite = 5) {
     
     const precos = [];
     const linksProcessar = links.slice(0, limite);
-    const BATCH_SIZE = 3;
+    const BATCH_SIZE = 5; // Aumentado de 3 para 5
     
     for (let i = 0; i < linksProcessar.length; i += BATCH_SIZE) {
         const batch = linksProcessar.slice(i, i + BATCH_SIZE);
@@ -247,7 +247,65 @@ async function scrapearLinks(links, limite = 5) {
 }
 
 // =============================================================================
-// MÓDULO 4: CALCULAR MÉDIA PONDERADA
+// MÓDULO 4: REMOVER OUTLIERS (PRODUTOS FORA DA CURVA)
+// =============================================================================
+
+function removerOutliers(precos) {
+    console.log('📊 [OUTLIERS] Analisando', precos.length, 'preços...');
+    
+    if (precos.length < 4) {
+        console.log('⚠️ [OUTLIERS] Poucos preços (<4), mantendo todos');
+        return { precos: precos, removidos: [] };
+    }
+    
+    // Extrair apenas valores numéricos
+    const valores = precos.map(p => p.valor).sort((a, b) => a - b);
+    
+    // Calcular quartis
+    const q1Index = Math.floor(valores.length * 0.25);
+    const q3Index = Math.floor(valores.length * 0.75);
+    const q1 = valores[q1Index];
+    const q3 = valores[q3Index];
+    const iqr = q3 - q1;
+    
+    // Limites (método IQR)
+    const lowerBound = q1 - (1.5 * iqr);
+    const upperBound = q3 + (1.5 * iqr);
+    
+    console.log('📐 [OUTLIERS] Q1:', q1.toFixed(2), '| Q3:', q3.toFixed(2), '| IQR:', iqr.toFixed(2));
+    console.log('📐 [OUTLIERS] Limites: [', lowerBound.toFixed(2), '-', upperBound.toFixed(2), ']');
+    
+    // Separar normais e outliers
+    const normais = [];
+    const removidos = [];
+    
+    precos.forEach(preco => {
+        if (preco.valor >= lowerBound && preco.valor <= upperBound) {
+            normais.push(preco);
+        } else {
+            removidos.push(preco);
+            console.log('🚫 [OUTLIERS] Removido: R$', preco.valor, '-', preco.fonte, '(fora da curva)');
+        }
+    });
+    
+    console.log('✅ [OUTLIERS] Mantidos:', normais.length, '| Removidos:', removidos.length);
+    
+    // Se remover todos, manter pelo menos 3 preços mais centrais
+    if (normais.length < 3) {
+        console.log('⚠️ [OUTLIERS] Muitos removidos, mantendo 3 centrais');
+        const sorted = [...precos].sort((a, b) => a.valor - b.valor);
+        const start = Math.max(0, Math.floor(sorted.length / 2) - 1);
+        return { 
+            precos: sorted.slice(start, start + 3),
+            removidos: []
+        };
+    }
+    
+    return { precos: normais, removidos };
+}
+
+// =============================================================================
+// MÓDULO 5: CALCULAR MÉDIA PONDERADA
 // =============================================================================
 
 function calcularMediaPonderada(precos) {
@@ -304,6 +362,7 @@ function calcularMediaPonderada(precos) {
     let scoreBase = 100 - coefVariacao;
     if (precosComPeso.length === 2) scoreBase *= 0.7;
     else if (precosComPeso.length === 3) scoreBase *= 0.85;
+    else if (precosComPeso.length >= 5) scoreBase *= 1.1; // Bonus por muitos preços
     
     const scoreConfianca = Math.max(0, Math.min(100, scoreBase));
     
@@ -388,7 +447,7 @@ module.exports = async (req, res) => {
         }
 
         // ========== PASSO 3: SCRAPING ==========
-        const precos = await scrapearLinks(resultadoBusca.links, 5);
+        const precos = await scrapearLinks(resultadoBusca.links, 10); // Aumentado de 5 para 10
 
         if (!precos || precos.length === 0) {
             return res.status(200).json({
@@ -406,8 +465,29 @@ module.exports = async (req, res) => {
             });
         }
 
-        // ========== PASSO 4: CALCULAR MÉDIA ==========
-        const resultadoEMA = calcularMediaPonderada(precos);
+        // ========== PASSO 4: REMOVER OUTLIERS ==========
+        const resultadoOutliers = removerOutliers(precos);
+        const precosLimpos = resultadoOutliers.precos;
+        const outliersRemovidos = resultadoOutliers.removidos;
+
+        if (precosLimpos.length === 0) {
+            return res.status(200).json({
+                status: 'Sem Preços',
+                mensagem: 'Todos os preços foram considerados outliers',
+                dados: {
+                    preco_encontrado: false,
+                    termo_utilizado: termo,
+                    precos_encontrados: precos.length
+                },
+                meta: {
+                    custo: 0,
+                    versao: 'v5-scraper'
+                }
+            });
+        }
+
+        // ========== PASSO 5: CALCULAR MÉDIA ==========
+        const resultadoEMA = calcularMediaPonderada(precosLimpos);
 
         if (!resultadoEMA.sucesso) {
             return res.status(200).json({
@@ -421,7 +501,7 @@ module.exports = async (req, res) => {
             });
         }
 
-        // ========== PASSO 5: APLICAR DEPRECIAÇÃO ==========
+        // ========== PASSO 6: APLICAR DEPRECIAÇÃO ==========
         let valorMercado = resultadoEMA.valor_mercado;
         let metodo = 'Média Ponderada';
         const { coef_var, num } = resultadoEMA.estatisticas;
@@ -478,8 +558,15 @@ module.exports = async (req, res) => {
             busca: {
                 termo: termo,
                 links_encontrados: resultadoBusca.links.length,
-                precos_extraidos: num
+                precos_extraidos: precos.length,
+                outliers_removidos: outliersRemovidos.length
             },
+            
+            outliers: outliersRemovidos.length > 0 ? outliersRemovidos.map(o => ({
+                valor: o.valor,
+                fonte: o.fonte,
+                motivo: 'Fora da curva estatística'
+            })) : undefined,
             
             meta: {
                 data: new Date().toISOString(),
