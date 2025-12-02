@@ -9,24 +9,38 @@ try {
         // Variáveis novas já existem
         const { kv: kvClient } = require('@vercel/kv');
         kv = kvClient;
+        console.log('✅ [KV] Usando variáveis KV_REST_API_*');
     } else if (process.env.REDIS_URL) {
         // Extrair credenciais da REDIS_URL
-        // Formato: redis://default:TOKEN@HOST:PORT
         const redisUrl = new URL(process.env.REDIS_URL);
         const token = redisUrl.password;
         const host = redisUrl.hostname;
         const port = redisUrl.port || '6379';
         
+        console.log('🔍 [KV-DEBUG] REDIS_URL host:', host);
+        console.log('🔍 [KV-DEBUG] REDIS_URL port:', port);
+        console.log('🔍 [KV-DEBUG] Token length:', token?.length);
+        
+        // Upstash usa REST API na porta 443 (HTTPS)
+        // Não usa o protocolo Redis na porta 6379
+        const restApiUrl = `https://${host}`;
+        
+        console.log('🔍 [KV-DEBUG] REST API URL:', restApiUrl);
+        
         // Configurar manualmente
-        process.env.KV_REST_API_URL = `https://${host}`;
+        process.env.KV_REST_API_URL = restApiUrl;
         process.env.KV_REST_API_TOKEN = token;
         
         const { kv: kvClient } = require('@vercel/kv');
         kv = kvClient;
         console.log('✅ [KV] Configurado via REDIS_URL');
+        
+        // Teste rápido de conexão
+        kv.ping()
+            .then(() => console.log('✅ [KV] Ping OK - Redis respondendo'))
+            .catch(err => console.error('❌ [KV] Ping FALHOU:', err.message));
     } else {
         console.warn('⚠️ [KV] Redis não configurado - cache desabilitado');
-        // Cache desabilitado - funções retornarão null
         kv = {
             get: async () => null,
             set: async () => null
@@ -133,14 +147,24 @@ function normalizarChaveCache(dados) {
 async function getCache(dados) {
     try {
         const chave = normalizarChaveCache(dados);
-        const cached = await kv.get(chave);
+        
+        // Timeout de 3 segundos
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Cache timeout')), 3000)
+        );
+        
+        const cached = await Promise.race([
+            kv.get(chave),
+            timeoutPromise
+        ]);
         
         if (cached) {
             console.log('✅ [CACHE] Hit:', chave);
             
-            // Incrementa contador de hits
-            const hits = await kv.get(`${chave}:hits`) || 0;
-            await kv.set(`${chave}:hits`, hits + 1, { ex: CACHE_DURATION });
+            // Incrementa contador (sem await - fire and forget)
+            kv.get(`${chave}:hits`)
+                .then(hits => kv.set(`${chave}:hits`, (hits || 0) + 1, { ex: CACHE_DURATION }))
+                .catch(() => {}); // Ignora erro
             
             return cached;
         }
