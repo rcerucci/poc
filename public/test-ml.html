@@ -369,15 +369,45 @@
         }
         
         function renderErro(data) {
+            let logsHtml = '';
+            if (data.logs && data.logs.length > 0) {
+                logsHtml = `
+                    <div class="debug-section">
+                        <div class="debug-title">📋 Logs de Execução</div>
+                        <pre>${data.logs.join('\n')}</pre>
+                    </div>
+                `;
+            }
+            
+            let tentativasHtml = '';
+            if (data.resultados && data.resultados.tentativas) {
+                tentativasHtml = `
+                    <div class="debug-section">
+                        <div class="debug-title">🔄 Tentativas Realizadas</div>
+                        ${data.resultados.tentativas.map((t, i) => `
+                            <div style="margin-bottom: 15px; padding: 10px; background: white; border-radius: 6px;">
+                                <strong>Tentativa ${i + 1}: ${t.estrategia}</strong><br>
+                                Status: ${t.status || 'N/A'}<br>
+                                Sucesso: ${t.sucesso ? '✅' : '❌'}<br>
+                                ${t.erro ? `Erro: ${t.erro}<br>` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+            
             const html = `
                 <div class="result-header">
                     <span class="badge badge-error">❌ FALHA</span>
                     <h3>${data.mensagem}</h3>
-                    <p>Termo: "${data.termo_buscado}" | Tentativas: ${data.tentativas || 'N/A'}</p>
+                    <p>Termo: "${data.termo_buscado}"</p>
                 </div>
                 
+                ${tentativasHtml}
+                ${logsHtml}
+                
                 <div class="debug-section">
-                    <div class="debug-title">🔧 Debug Info</div>
+                    <div class="debug-title">🔧 Resposta Completa</div>
                     <pre>${JSON.stringify(data, null, 2)}</pre>
                 </div>
             `;
