@@ -6,7 +6,7 @@ const API_KEY = process.env.GOOGLE_API_KEY;
 const MODEL = process.env.VERTEX_MODEL || 'gemini-2.5-flash';
 const genAI = new GoogleGenerativeAI(API_KEY);
 
-// Custom Search API (usa mesma chave do Gemini)
+// Custom Search API
 const CUSTOM_SEARCH_CX_ID = process.env.CUSTOM_SEARCH_CX_ID;
 
 // --- Fatores de Depreciação ---
@@ -58,14 +58,11 @@ function construirTermoBusca(dados) {
     
     let partes = [];
     
-    // Marca e modelo
     if (dados.marca && dados.marca !== 'N/A') partes.push(dados.marca);
     if (dados.modelo && dados.modelo !== 'N/A') partes.push(dados.modelo);
     
-    // Nome do produto
     partes.push(dados.nome_produto);
     
-    // Extrair specs importantes (potência, capacidade, tamanho)
     if (dados.especificacoes && dados.especificacoes !== 'N/A') {
         const specs = dados.especificacoes;
         const padroes = [
@@ -80,8 +77,7 @@ function construirTermoBusca(dados) {
         });
     }
     
-    // Adicionar contexto de busca
-    partes.push('novo', 'preço', 'Brasil');
+    partes.push('comprar', 'preço');
     
     const termo = partes.join(' ');
     console.log('✅ [TERMO]', termo);
@@ -94,187 +90,69 @@ function construirTermoBusca(dados) {
 // =============================================================================
 
 async function buscarCustomSearch(termo) {
-    console.log('🌐 [SEARCH] Iniciando busca...');
-    console.log('🔑 [SEARCH] API_KEY existe:', !!API_KEY);
-    console.log('🔑 [SEARCH] CX_ID:', CUSTOM_SEARCH_CX_ID);
-    console.log('🔍 [SEARCH] Termo:', termo);
+    console.log('🌐 [SEARCH] Buscando...');
     
     if (!API_KEY || !CUSTOM_SEARCH_CX_ID) {
-        throw new Error('Custom Search não configurado (verifique GOOGLE_API_KEY e CUSTOM_SEARCH_CX_ID)');
+        throw new Error('Custom Search não configurado');
     }
     
     try {
-        const params = {
-            key: API_KEY,
-            cx: CUSTOM_SEARCH_CX_ID,
-            q: termo,
-            num: 10,
-            gl: 'br',
-            lr: 'lang_pt'
-        };
-        
-        console.log('📡 [SEARCH] Chamando API...');
-        
         const response = await axios.get('https://www.googleapis.com/customsearch/v1', {
-            params,
+            params: {
+                key: API_KEY,
+                cx: CUSTOM_SEARCH_CX_ID,
+                q: termo,
+                num: 10,
+                gl: 'br',
+                lr: 'lang_pt'
+            },
             timeout: 10000
         });
         
         console.log('📥 [SEARCH] Status:', response.status);
-        console.log('📥 [SEARCH] searchInformation:', response.data.searchInformation);
         console.log('📥 [SEARCH] Itens:', response.data.items?.length || 0);
         
-        if (response.data.error) {
-            console.error('❌ [SEARCH] API Error:', response.data.error);
-            throw new Error('Custom Search Error: ' + response.data.error.message);
-        }
-        
         if (!response.data.items || response.data.items.length === 0) {
-            console.log('⚠️ [SEARCH] Nenhum resultado (verifique CX_ID)');
-            return { sucesso: false, resultados: [] };
+            return { sucesso: false, links: [] };
         }
         
-        // Simplificar resultados para reduzir tokens
-        const resultados = response.data.items.map((item, i) => ({
-            id: i + 1,
-            title: item.title,
-            snippet: item.snippet,
-            link: item.link,
-            site: item.displayLink
-        }));
+        const links = response.data.items.map(item => item.link);
         
-        return { sucesso: true, resultados };
+        return { sucesso: true, links };
         
     } catch (error) {
-        console.error('❌ [SEARCH] Erro:', error.message);
-        console.error('❌ [SEARCH] Status:', error.response?.status);
-        console.error('❌ [SEARCH] Data:', JSON.stringify(error.response?.data || {}));
-        return { sucesso: false, resultados: [] };
+        console.error('❌ [SEARCH]', error.message);
+        return { sucesso: false, links: [] };
     }
 }
 
 // =============================================================================
-// MÓDULO 3: ANALISAR RESULTADOS COM LLM
+// MÓDULO 3: CHAMAR SCRAPER
 // =============================================================================
 
-const PROMPT_ANALISAR_PRECOS = (produto, resultados) => {
-    return `Extraia preços (R$) de produtos NOVOS:
-
-${resultados.map(r => `${r.id}. ${r.title} - ${r.snippet.substring(0, 100)}`).join('\n')}
-
-JSON:
-{"ok":true,"precos":[{"valor":299.9,"fonte":"Loja","match":"Exato","produto":"Nome","link":"url","justificativa":"ok"}]}
-
-Sem preços:
-{"ok":false,"motivo":"razao"}
-
-SEM markdown, APENAS JSON.`;
-};
-
-async function analisarComLLM(produto, resultados) {
-    console.log('🤖 [LLM] Analisando', resultados.length, 'resultados...');
+async function chamarScraper(links) {
+    console.log('🕷️ [ETAPA2] Chamando scraper...');
     
     try {
-        const model = genAI.getGenerativeModel({
-            model: MODEL,
-            generationConfig: {
-                temperature: 0.1,
-                maxOutputTokens: 2048 // Aumentado para permitir thinking + resposta
-            }
+        // Chamar o endpoint scraper.js
+        const baseURL = process.env.VERCEL_URL 
+            ? `https://${process.env.VERCEL_URL}` 
+            : 'http://localhost:3000';
+        
+        const response = await axios.post(`${baseURL}/api/scraper`, {
+            links: links,
+            limite: 5
+        }, {
+            timeout: 30000 // 30s timeout (scraping pode demorar)
         });
         
-        const prompt = PROMPT_ANALISAR_PRECOS(produto, resultados);
+        console.log('✅ [ETAPA2] Scraper retornou:', response.data.precos?.length || 0, 'preços');
         
-        console.log('📤 [LLM] === PROMPT ENVIADO ===');
-        console.log(prompt);
-        console.log('📤 [LLM] === FIM DO PROMPT ===');
-        
-        const result = await model.generateContent(prompt);
-        const text = result.response.text();
-        
-        console.log('📥 [LLM] === RESPOSTA BRUTA ===');
-        console.log('Text:', text);
-        console.log('Length:', text?.length || 0);
-        console.log('Response object:', JSON.stringify(result.response, null, 2));
-        console.log('📥 [LLM] === FIM DA RESPOSTA ===');
-        
-        const usage = result.response.usageMetadata;
-        const tokIn = usage?.promptTokenCount || 0;
-        const tokOut = usage?.candidatesTokenCount || 0;
-        const custoIn = tokIn * 0.0000016;
-        const custoOut = tokOut * 0.0000133;
-        const custoTot = custoIn + custoOut;
-        
-        console.log('📊 [LLM] Tokens:', tokIn, '/', tokOut, '| R$', custoTot.toFixed(6));
-        
-        // Verificar se resposta está vazia
-        if (!text || text.trim().length === 0) {
-            console.error('❌ [LLM] Resposta vazia');
-            return {
-                sucesso: false,
-                precos: [],
-                meta: { tokens: { in: tokIn, out: tokOut }, custo: custoTot }
-            };
-        }
-        
-        console.log('📄 [LLM] Resposta (primeiros 200 chars):', text.substring(0, 200));
-        
-        console.log('📄 [LLM] Resposta (primeiros 200 chars):', text.substring(0, 200));
-        
-        // Parse JSON
-        let jsonText = text.trim()
-            .replace(/```json\n?/g, '')
-            .replace(/```\n?/g, '');
-        
-        const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) {
-            console.error('❌ [LLM] Nenhum JSON encontrado na resposta');
-            console.error('❌ [LLM] Texto completo:', text);
-            return {
-                sucesso: false,
-                precos: [],
-                meta: { tokens: { in: tokIn, out: tokOut }, custo: custoTot }
-            };
-        }
-        jsonText = jsonMatch[0];
-        
-        let resultado;
-        try {
-            resultado = JSON.parse(jsonText);
-        } catch (parseError) {
-            console.error('❌ [LLM] Erro ao parsear JSON:', parseError.message);
-            console.error('❌ [LLM] JSON text:', jsonText.substring(0, 300));
-            return {
-                sucesso: false,
-                precos: [],
-                meta: { tokens: { in: tokIn, out: tokOut }, custo: custoTot }
-            };
-        }
-        
-        if (!resultado.ok) {
-            console.log('⚠️ [LLM]', resultado.motivo || 'Nenhum preço encontrado');
-            return {
-                sucesso: false,
-                precos: [],
-                meta: { tokens: { in: tokIn, out: tokOut }, custo: custoTot }
-            };
-        }
-        
-        console.log('✅ [LLM]', resultado.precos.length, 'preços extraídos');
-        
-        return {
-            sucesso: true,
-            precos: resultado.precos,
-            meta: { tokens: { in: tokIn, out: tokOut }, custo: custoTot }
-        };
+        return response.data;
         
     } catch (error) {
-        console.error('❌ [LLM]', error.message);
-        return {
-            sucesso: false,
-            precos: [],
-            meta: { tokens: { in: 0, out: 0 }, custo: 0 }
-        };
+        console.error('❌ [ETAPA2] Erro ao chamar scraper:', error.message);
+        return { sucesso: false, precos: [] };
     }
 }
 
@@ -301,12 +179,12 @@ function calcularMediaPonderada(precos) {
                 max: p.valor,
                 desvio: 0,
                 coef_var: 0,
-                confianca: 30
+                confianca: 40
             },
             precos: [{
                 valor: p.valor,
                 fonte: p.fonte,
-                match: p.match,
+                match: 'Scraping',
                 peso: 1.0,
                 produto: p.produto,
                 link: p.link
@@ -316,15 +194,12 @@ function calcularMediaPonderada(precos) {
     
     // Caso 2: 2+ preços - Média ponderada
     const precosComPeso = precos.map(p => {
-        let pesoMatch = 1.0;
-        if (p.match === 'Exato') pesoMatch = 2.0;
-        else if (p.match === 'Equivalente') pesoMatch = 1.5;
-        else if (p.match === 'Substituto') pesoMatch = 1.3;
+        // Dar peso maior para fontes conhecidas
+        let pesoFonte = 1.0;
+        if (p.fonte.includes('Mercado Livre')) pesoFonte = 1.5;
+        else if (p.fonte.includes('Americanas') || p.fonte.includes('Magazine')) pesoFonte = 1.3;
         
-        const pesoFonte = p.fonte.toLowerCase().includes('oficial') ? 1.3 : 1.0;
-        const pesoTotal = pesoMatch * pesoFonte;
-        
-        return { ...p, peso_total: pesoTotal };
+        return { ...p, peso_total: pesoFonte, match: 'Scraping' };
     });
     
     const somaPonderada = precosComPeso.reduce((acc, p) => acc + (p.valor * p.peso_total), 0);
@@ -378,7 +253,7 @@ module.exports = async (req, res) => {
     if (req.method === 'OPTIONS') return res.status(200).end();
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-    console.log('🔍 [ETAPA2-CUSTOM] Iniciando...');
+    console.log('🔍 [ETAPA2-SCRAPER] Iniciando...');
 
     try {
         const {
@@ -407,7 +282,7 @@ module.exports = async (req, res) => {
         // ========== PASSO 2: BUSCAR (CUSTOM SEARCH API) ==========
         const resultadoBusca = await buscarCustomSearch(termo);
 
-        if (!resultadoBusca.sucesso || resultadoBusca.resultados.length === 0) {
+        if (!resultadoBusca.sucesso || resultadoBusca.links.length === 0) {
             return res.status(200).json({
                 status: 'Sem Preços',
                 mensagem: 'Nenhum resultado encontrado na busca',
@@ -416,35 +291,33 @@ module.exports = async (req, res) => {
                     termo_utilizado: termo
                 },
                 meta: {
-                    tokens: { in: 0, out: 0 },
                     custo: 0,
-                    versao: 'v4-custom-search'
+                    versao: 'v5-scraper'
                 }
             });
         }
 
-        // ========== PASSO 3: ANALISAR COM LLM ==========
-        const analise = await analisarComLLM(dadosProduto, resultadoBusca.resultados);
+        // ========== PASSO 3: SCRAPING ==========
+        const resultadoScraper = await chamarScraper(resultadoBusca.links);
 
-        if (!analise.sucesso || analise.precos.length === 0) {
+        if (!resultadoScraper.sucesso || resultadoScraper.precos.length === 0) {
             return res.status(200).json({
                 status: 'Sem Preços',
-                mensagem: 'LLM não encontrou preços válidos nos resultados',
+                mensagem: 'Scraping não extraiu preços válidos',
                 dados: {
                     preco_encontrado: false,
                     termo_utilizado: termo,
-                    resultados_busca: resultadoBusca.resultados.length
+                    links_tentados: resultadoBusca.links.length
                 },
                 meta: {
-                    tokens: analise.meta.tokens,
-                    custo: parseFloat(analise.meta.custo.toFixed(6)),
-                    versao: 'v4-custom-search'
+                    custo: 0,
+                    versao: 'v5-scraper'
                 }
             });
         }
 
         // ========== PASSO 4: CALCULAR MÉDIA ==========
-        const resultadoEMA = calcularMediaPonderada(analise.precos);
+        const resultadoEMA = calcularMediaPonderada(resultadoScraper.precos);
 
         if (!resultadoEMA.sucesso) {
             return res.status(200).json({
@@ -452,9 +325,8 @@ module.exports = async (req, res) => {
                 mensagem: resultadoEMA.motivo,
                 dados: { preco_encontrado: false },
                 meta: {
-                    tokens: analise.meta.tokens,
-                    custo: parseFloat(analise.meta.custo.toFixed(6)),
-                    versao: 'v4-custom-search'
+                    custo: 0,
+                    versao: 'v5-scraper'
                 }
             });
         }
@@ -470,7 +342,6 @@ module.exports = async (req, res) => {
             const valores = resultadoEMA.precos.map(p => p.valor).sort((a, b) => a - b);
             valorMercado = valores[Math.floor(valores.length / 2)];
             metodo = 'Mediana (alta variação)';
-            console.log('⚠️ Alta variação:', coef_var.toFixed(1) + '% - usando mediana');
         }
 
         const estado = estado_conservacao || 'Bom';
@@ -516,16 +387,14 @@ module.exports = async (req, res) => {
             
             busca: {
                 termo: termo,
-                resultados_encontrados: resultadoBusca.resultados.length,
+                links_encontrados: resultadoBusca.links.length,
                 precos_extraidos: num
             },
             
             meta: {
                 data: new Date().toISOString(),
-                modelo: MODEL,
-                versao: 'v4-custom-search',
-                tokens: analise.meta.tokens,
-                custo: parseFloat(analise.meta.custo.toFixed(6))
+                versao: 'v5-scraper',
+                custo: 0 // Scraping não tem custo de LLM
             }
         };
 
@@ -538,7 +407,7 @@ module.exports = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ [ETAPA2-CUSTOM] ERRO:', error.message);
+        console.error('❌ [ETAPA2-SCRAPER] ERRO:', error.message);
         return res.status(500).json({
             status: 'Erro',
             mensagem: error.message,
