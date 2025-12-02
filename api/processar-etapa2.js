@@ -6,6 +6,10 @@ const API_KEY = process.env.GOOGLE_API_KEY;
 const MODEL = process.env.VERTEX_MODEL || 'gemini-2.5-flash';
 const genAI = new GoogleGenerativeAI(API_KEY);
 
+// Custom Search API
+const CUSTOM_SEARCH_API_KEY = process.env.CUSTOM_SEARCH_API_KEY;
+const CUSTOM_SEARCH_CX_ID = process.env.CUSTOM_SEARCH_CX_ID;
+
 // --- Fatores de Depreciação ---
 const FATORES_DEPRECIACAO = {
     Excelente: {
@@ -47,59 +51,152 @@ const FATORES_DEPRECIACAO = {
 };
 
 // =============================================================================
-// MÓDULO 1: CLASSIFICAÇÃO COM GEMINI (SEM GROUNDING)
+// MÓDULO 1: CONSTRUIR TERMO DE BUSCA
 // =============================================================================
 
-const PROMPT_CLASSIFICAR = (dados) => {
-    return `Classifique este produto e crie termos de busca otimizados.
-
-PRODUTO:
-Nome: ${dados.nome_produto}
-Marca: ${dados.marca || 'N/A'}
-Modelo: ${dados.modelo || 'N/A'}
-Specs: ${dados.especificacoes || 'N/A'}
-
-REGRAS PARA TERMO DE BUSCA:
-- Se tem marca+modelo: use "Marca Modelo"
-- Se só tem nome genérico: adicione característica chave das specs
-- Remova palavras como "N/A", "não informado"
-- Máximo 5-6 palavras
-
-EXEMPLOS:
-- Cadeira, N/A, N/A, "Giratória rodas" → termo: "Cadeira Escritório Giratória"
-- Notebook, Dell, Inspiron 15, "i5 8GB" → termo: "Dell Inspiron 15"
-- Gerador, Honda, N/A, "5500W gasolina" → termo: "Gerador Honda 5500W"
-
-RESPONDA APENAS ESTE JSON (sem texto adicional):
-{
-  "categoria": "moveis",
-  "termo_busca": "Cadeira Escritório Giratória",
-  "termo_alternativo": "Cadeira Escritório",
-  "api_sugerida": "mercadolivre",
-  "confianca": 85,
-  "justificativa": "breve"
+function construirTermoBusca(dados) {
+    console.log('🔍 [TERMO] Construindo termo de busca...');
+    
+    let partes = [];
+    
+    // Marca e modelo
+    if (dados.marca && dados.marca !== 'N/A') partes.push(dados.marca);
+    if (dados.modelo && dados.modelo !== 'N/A') partes.push(dados.modelo);
+    
+    // Nome do produto
+    partes.push(dados.nome_produto);
+    
+    // Extrair specs importantes (potência, capacidade, tamanho)
+    if (dados.especificacoes && dados.especificacoes !== 'N/A') {
+        const specs = dados.especificacoes;
+        const padroes = [
+            /(\d+\.?\d*)\s*(kva|kw|hp|w)\b/gi,
+            /(\d+)\s*(gb|tb)\b/gi,
+            /(\d+\.?\d*)\s*(polegadas?|pol|")\b/gi
+        ];
+        
+        padroes.forEach(padrao => {
+            const match = specs.match(padrao);
+            if (match) partes.push(match[0]);
+        });
+    }
+    
+    // Adicionar contexto de busca
+    partes.push('novo', 'preço', 'Brasil');
+    
+    const termo = partes.join(' ');
+    console.log('✅ [TERMO]', termo);
+    
+    return termo;
 }
 
-CATEGORIAS: equipamento_industrial | informatica | moveis | veiculo | ferramenta | eletrodomestico | outro
-API: mercadolivre_b2b | mercadolivre | fipe | nenhuma`;
+// =============================================================================
+// MÓDULO 2: BUSCAR COM CUSTOM SEARCH API
+// =============================================================================
+
+async function buscarCustomSearch(termo) {
+    console.log('🌐 [SEARCH] Buscando...');
+    
+    if (!CUSTOM_SEARCH_API_KEY || !CUSTOM_SEARCH_CX_ID) {
+        throw new Error('Custom Search não configurado (verifique variáveis de ambiente)');
+    }
+    
+    try {
+        const response = await axios.get('https://www.googleapis.com/customsearch/v1', {
+            params: {
+                key: CUSTOM_SEARCH_API_KEY,
+                cx: CUSTOM_SEARCH_CX_ID,
+                q: termo,
+                num: 10,
+                gl: 'br',
+                lr: 'lang_pt'
+            },
+            timeout: 10000
+        });
+        
+        console.log('📥 [SEARCH]', response.data.items?.length || 0, 'resultados');
+        
+        if (!response.data.items || response.data.items.length === 0) {
+            return { sucesso: false, resultados: [] };
+        }
+        
+        // Simplificar resultados para reduzir tokens
+        const resultados = response.data.items.map((item, i) => ({
+            id: i + 1,
+            title: item.title,
+            snippet: item.snippet,
+            link: item.link,
+            site: item.displayLink
+        }));
+        
+        return { sucesso: true, resultados };
+        
+    } catch (error) {
+        console.error('❌ [SEARCH]', error.message);
+        if (error.response?.data) {
+            console.error('❌ [SEARCH]', JSON.stringify(error.response.data));
+        }
+        return { sucesso: false, resultados: [] };
+    }
+}
+
+// =============================================================================
+// MÓDULO 3: ANALISAR RESULTADOS COM LLM
+// =============================================================================
+
+const PROMPT_ANALISAR_PRECOS = (produto, resultados) => {
+    return `Analise os resultados de busca e extraia preços de produtos NOVOS.
+
+PRODUTO BUSCADO:
+${produto.nome_produto} ${produto.marca || ''} ${produto.modelo || ''}
+Specs: ${produto.especificacoes || 'N/A'}
+
+RESULTADOS DA BUSCA:
+${JSON.stringify(resultados, null, 2)}
+
+REGRAS:
+1. Apenas produtos NOVOS (ignorar usados, seminovos)
+2. Apenas preços em BRL (R$)
+3. Apenas produtos similares ou equivalentes
+4. Mínimo 3 preços, máximo 8
+5. Incluir link para auditoria
+
+RESPONDA APENAS COM JSON:
+{
+  "ok": true,
+  "precos": [
+    {
+      "valor": 1234.50,
+      "fonte": "Nome da Loja",
+      "match": "Exato" | "Equivalente" | "Substituto",
+      "produto": "Nome do produto (máx 50 chars)",
+      "link": "URL completa",
+      "justificativa": "breve (máx 5 palavras)"
+    }
+  ]
+}
+
+Se não encontrar preços válidos:
+{"ok": false, "motivo": "razão"}
+
+SEM markdown, SEM texto extra, APENAS JSON.`;
 };
 
-async function classificarProduto(dados) {
-    console.log('🤖 [CLASSIFICAR] Analisando produto...');
-    
-    let text = ''; // Declarar aqui para estar acessível no catch
+async function analisarComLLM(produto, resultados) {
+    console.log('🤖 [LLM] Analisando', resultados.length, 'resultados...');
     
     try {
         const model = genAI.getGenerativeModel({
             model: MODEL,
-            generationConfig: { 
+            generationConfig: {
                 temperature: 0.1,
-                maxOutputTokens: 300 // LIMITAR tokens
+                maxOutputTokens: 800
             }
         });
-
-        const result = await model.generateContent(PROMPT_CLASSIFICAR(dados));
-        text = result.response.text();
+        
+        const prompt = PROMPT_ANALISAR_PRECOS(produto, resultados);
+        const result = await model.generateContent(prompt);
+        const text = result.response.text();
         
         const usage = result.response.usageMetadata;
         const tokIn = usage?.promptTokenCount || 0;
@@ -108,443 +205,59 @@ async function classificarProduto(dados) {
         const custoOut = tokOut * 0.0000133;
         const custoTot = custoIn + custoOut;
         
-        console.log('📊 Classificação - Tokens:', tokIn, '/', tokOut, '| R$', custoTot.toFixed(6));
-        console.log('📄 Resposta Gemini:', text.substring(0, 200));
-
+        console.log('📊 [LLM] Tokens:', tokIn, '/', tokOut, '| R$', custoTot.toFixed(6));
+        
+        // Parse JSON
         let jsonText = text.trim()
             .replace(/```json\n?/g, '')
-            .replace(/```\n?/g, '')
-            .trim();
+            .replace(/```\n?/g, '');
         
         const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) {
-            throw new Error('Nenhum JSON encontrado na resposta: ' + text.substring(0, 100));
-        }
-        jsonText = jsonMatch[0];
+        if (jsonMatch) jsonText = jsonMatch[0];
         
-        const classificacao = JSON.parse(jsonText);
+        const resultado = JSON.parse(jsonText);
+        
+        if (!resultado.ok) {
+            console.log('⚠️ [LLM]', resultado.motivo || 'Nenhum preço encontrado');
+            return {
+                sucesso: false,
+                precos: [],
+                meta: { tokens: { in: tokIn, out: tokOut }, custo: custoTot }
+            };
+        }
+        
+        console.log('✅ [LLM]', resultado.precos.length, 'preços extraídos');
         
         return {
             sucesso: true,
-            dados: classificacao,
+            precos: resultado.precos,
             meta: { tokens: { in: tokIn, out: tokOut }, custo: custoTot }
         };
-
+        
     } catch (error) {
-        console.error('❌ Erro na classificação:', error.message);
-        if (text) {
-            console.error('📄 Resposta completa:', text);
-        }
-        
-        // Fallback: usar classificação padrão baseada no nome
-        const nomeLower = dados.nome_produto.toLowerCase();
-        let categoriaFallback = 'outro';
-        let apiFallback = 'mercadolivre';
-        
-        if (nomeLower.includes('cadeira') || nomeLower.includes('mesa') || nomeLower.includes('armario') || nomeLower.includes('estante')) {
-            categoriaFallback = 'moveis';
-        } else if (nomeLower.includes('computador') || nomeLower.includes('notebook') || nomeLower.includes('monitor') || nomeLower.includes('impressora')) {
-            categoriaFallback = 'informatica';
-        } else if (nomeLower.includes('carro') || nomeLower.includes('caminhao') || nomeLower.includes('veiculo') || nomeLower.includes('moto')) {
-            categoriaFallback = 'veiculo';
-            apiFallback = 'fipe';
-        } else if (nomeLower.includes('maquina') || nomeLower.includes('gerador') || nomeLower.includes('equipamento') || nomeLower.includes('compressor')) {
-            categoriaFallback = 'equipamento_industrial';
-            apiFallback = 'mercadolivre_b2b';
-        } else if (nomeLower.includes('furadeira') || nomeLower.includes('serra') || nomeLower.includes('chave') || nomeLower.includes('martelo')) {
-            categoriaFallback = 'ferramenta';
-            apiFallback = 'mercadolivre_b2b';
-        }
-        
-        console.log('⚠️ Usando fallback:', categoriaFallback, '/', apiFallback);
-        
-        // Construir termo de busca inteligente
-        let termoBusca = [];
-        
-        // Adicionar marca e modelo se não forem N/A
-        if (dados.marca && dados.marca !== 'N/A' && dados.marca.toLowerCase() !== 'não informado') {
-            termoBusca.push(dados.marca);
-        }
-        if (dados.modelo && dados.modelo !== 'N/A' && dados.modelo.toLowerCase() !== 'não informado') {
-            termoBusca.push(dados.modelo);
-        }
-        
-        // Adicionar nome do produto
-        termoBusca.push(dados.nome_produto);
-        
-        // Extrair palavras-chave das especificações
-        if (dados.especificacoes && dados.especificacoes !== 'N/A') {
-            const specs = dados.especificacoes.toLowerCase();
-            const palavrasChave = [];
-            
-            // Padrões importantes: potência, tamanho, capacidade
-            const padroes = [
-                /(\d+\.?\d*)\s*(kva|kw|hp|w|gb|tb|litros?|pol|polegadas?|m[²³]?|v|a|btu)/gi,
-                /\b(giratória?|elétrica?|manual|automática?|portátil|fixo|móvel)\b/gi
-            ];
-            
-            padroes.forEach(padrao => {
-                const matches = specs.match(padrao);
-                if (matches) {
-                    palavrasChave.push(...matches.slice(0, 2)); // Max 2 por padrão
-                }
-            });
-            
-            if (palavrasChave.length > 0) {
-                termoBusca.push(...palavrasChave.slice(0, 2)); // Max 2 palavras-chave
-            }
-        }
-        
-        const termoFinal = termoBusca.join(' ').trim();
-        console.log('🔎 Termo construído:', termoFinal);
-        
+        console.error('❌ [LLM]', error.message);
         return {
-            sucesso: true,
-            dados: {
-                categoria: categoriaFallback,
-                termo_busca: termoFinal,
-                termo_alternativo: dados.nome_produto,
-                api_sugerida: apiFallback,
-                confianca: 50,
-                justificativa: 'Classificação automática (fallback)'
-            },
+            sucesso: false,
+            precos: [],
             meta: { tokens: { in: 0, out: 0 }, custo: 0 }
         };
     }
 }
 
 // =============================================================================
-// MÓDULO 2: APIS DE BUSCA
-// =============================================================================
-
-// --- API Mercado Livre ---
-async function buscarMercadoLivre(termo, limite = 10, b2b = false) {
-    console.log('🛒 [ML] Buscando:', termo, b2b ? '(B2B)' : '');
-    
-    try {
-        const params = {
-            q: termo,
-            limit: limite,
-            condition: 'new',
-            sort: 'price_asc'
-        };
-        
-        // Filtros B2B
-        if (b2b) {
-            params.shipping = 'fulfillment';
-            params.official_store = 'all';
-        }
-        
-        console.log('📡 [ML] URL:', 'https://api.mercadolibre.com/sites/MLB/search');
-        console.log('📡 [ML] Params:', JSON.stringify(params));
-        
-        const response = await axios.get(
-            'https://api.mercadolibre.com/sites/MLB/search',
-            { 
-                params, 
-                timeout: 8000,
-                headers: {
-                    'User-Agent': 'PatriGestor/1.0 (Node.js)',
-                    'Accept': 'application/json',
-                    'Accept-Language': 'pt-BR,pt;q=0.9'
-                }
-            }
-        );
-        
-        console.log('📥 [ML] Status:', response.status);
-        console.log('📥 [ML] Total encontrado:', response.data.results?.length || 0);
-        
-        if (!response.data.results || response.data.results.length === 0) {
-            console.log('⚠️ [ML] Nenhum resultado retornado pela API');
-            return { sucesso: false, precos: [], total: 0 };
-        }
-        
-        const produtos = response.data.results
-            .filter(item => {
-                const temEstoque = item.available_quantity > 0;
-                const temPreco = item.price > 0;
-                console.log('🔍 [ML]', item.title.substring(0, 50), '| Estoque:', item.available_quantity, '| Preço:', item.price);
-                return temEstoque && temPreco;
-            })
-            .slice(0, limite)
-            .map(item => ({
-                valor: item.price,
-                fonte: item.official_store_id ? 'ML Loja Oficial' : 'Mercado Livre',
-                match: calcularMatch(termo, item.title),
-                produto: item.title.substring(0, 60),
-                url: item.permalink,
-                estoque: item.available_quantity,
-                vendedor: item.seller.nickname
-            }));
-        
-        console.log('✅ [ML] ' + produtos.length + ' produtos filtrados');
-        
-        return {
-            sucesso: produtos.length > 0,
-            precos: produtos,
-            total: produtos.length
-        };
-        
-    } catch (error) {
-        console.error('❌ [ML] Erro:', error.message);
-        
-        if (error.response) {
-            console.error('❌ [ML] Status:', error.response.status);
-            console.error('❌ [ML] Headers:', JSON.stringify(error.response.headers));
-            
-            // Se for 403, tentar com delay
-            if (error.response.status === 403) {
-                console.log('⚠️ [ML] 403 detectado - aguardando 2s e tentando novamente...');
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                
-                try {
-                    const retryResponse = await axios.get(
-                        'https://api.mercadolibre.com/sites/MLB/search',
-                        { 
-                            params: {
-                                q: termo,
-                                limit: limite,
-                                condition: 'new'
-                            },
-                            timeout: 10000,
-                            headers: {
-                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                                'Accept': 'application/json'
-                            }
-                        }
-                    );
-                    
-                    console.log('✅ [ML] Retry bem-sucedido!');
-                    const produtos = retryResponse.data.results
-                        .filter(item => item.available_quantity > 0 && item.price > 0)
-                        .slice(0, limite)
-                        .map(item => ({
-                            valor: item.price,
-                            fonte: 'Mercado Livre',
-                            match: calcularMatch(termo, item.title),
-                            produto: item.title.substring(0, 60),
-                            url: item.permalink,
-                            estoque: item.available_quantity,
-                            vendedor: item.seller?.nickname || 'N/A'
-                        }));
-                    
-                    return {
-                        sucesso: produtos.length > 0,
-                        precos: produtos,
-                        total: produtos.length
-                    };
-                    
-                } catch (retryError) {
-                    console.error('❌ [ML] Retry falhou:', retryError.message);
-                }
-            }
-        }
-        
-        return { sucesso: false, precos: [], total: 0 };
-    }
-}
-
-// --- API FIPE (Veículos) ---
-async function buscarFIPE(marca, modelo, ano = new Date().getFullYear()) {
-    console.log('🚗 [FIPE] Buscando:', marca, modelo, ano);
-    
-    try {
-        // Simplificado - na prática precisa de vários endpoints
-        const baseURL = 'https://parallelum.com.br/fipe/api/v1/carros';
-        
-        // 1. Buscar marca
-        const marcasResp = await axios.get(`${baseURL}/marcas`);
-        const marcaObj = marcasResp.data.find(m => 
-            m.nome.toLowerCase().includes(marca.toLowerCase())
-        );
-        
-        if (!marcaObj) {
-            console.log('⚠️ [FIPE] Marca não encontrada');
-            return { sucesso: false, precos: [], total: 0 };
-        }
-        
-        // 2. Buscar modelo
-        const modelosResp = await axios.get(`${baseURL}/marcas/${marcaObj.codigo}/modelos`);
-        const modeloObj = modelosResp.data.modelos.find(m => 
-            m.nome.toLowerCase().includes(modelo.toLowerCase())
-        );
-        
-        if (!modeloObj) {
-            console.log('⚠️ [FIPE] Modelo não encontrado');
-            return { sucesso: false, precos: [], total: 0 };
-        }
-        
-        // 3. Buscar ano
-        const anosResp = await axios.get(
-            `${baseURL}/marcas/${marcaObj.codigo}/modelos/${modeloObj.codigo}/anos`
-        );
-        const anoObj = anosResp.data.find(a => a.nome.includes(String(ano)));
-        
-        if (!anoObj) {
-            console.log('⚠️ [FIPE] Ano não encontrado');
-            return { sucesso: false, precos: [], total: 0 };
-        }
-        
-        // 4. Buscar preço
-        const precoResp = await axios.get(
-            `${baseURL}/marcas/${marcaObj.codigo}/modelos/${modeloObj.codigo}/anos/${anoObj.codigo}`
-        );
-        
-        const valor = parseFloat(
-            precoResp.data.Valor.replace(/[^\d,]/g, '').replace(',', '.')
-        );
-        
-        console.log('✅ [FIPE] Valor encontrado: R$', valor);
-        
-        return {
-            sucesso: true,
-            precos: [{
-                valor: valor,
-                fonte: 'Tabela FIPE',
-                match: 'Exato',
-                produto: `${precoResp.data.Marca} ${precoResp.data.Modelo} ${precoResp.data.AnoModelo}`,
-                url: 'https://veiculos.fipe.org.br',
-                referencia: precoResp.data.MesReferencia
-            }],
-            total: 1
-        };
-        
-    } catch (error) {
-        console.error('❌ [FIPE] Erro:', error.message);
-        return { sucesso: false, precos: [], total: 0 };
-    }
-}
-
-// --- Calcular Match ---
-function calcularMatch(busca, titulo) {
-    const palavrasBusca = busca.toLowerCase()
-        .split(' ')
-        .filter(p => p.length > 2); // Ignorar palavras muito curtas
-    
-    const tituloLower = titulo.toLowerCase();
-    
-    const matches = palavrasBusca.filter(p => tituloLower.includes(p)).length;
-    const percentual = (matches / palavrasBusca.length) * 100;
-    
-    if (percentual >= 80) return 'Exato';
-    if (percentual >= 50) return 'Equivalente';
-    return 'Substituto';
-}
-
-// =============================================================================
-// MÓDULO 3: ORQUESTRADOR DE BUSCAS
-// =============================================================================
-
-async function buscarPrecos(dados, classificacao) {
-    console.log('🔍 [BUSCA] Iniciando busca - API:', classificacao.api_sugerida);
-    
-    let resultados = { sucesso: false, precos: [], total: 0 };
-    
-    // Estratégia baseada na classificação
-    switch (classificacao.api_sugerida) {
-        
-        case 'fipe':
-            // Veículos - Usar FIPE
-            resultados = await buscarFIPE(
-                dados.marca || '', 
-                dados.modelo || ''
-            );
-            
-            // Fallback: tentar ML também
-            if (!resultados.sucesso || resultados.total < 2) {
-                const mlResults = await buscarMercadoLivre(
-                    classificacao.termo_busca,
-                    5
-                );
-                if (mlResults.sucesso) {
-                    resultados.precos.push(...mlResults.precos);
-                    resultados.total += mlResults.total;
-                    resultados.sucesso = true;
-                }
-            }
-            break;
-        
-        case 'mercadolivre_b2b':
-            // Equipamentos industriais - ML B2B
-            resultados = await buscarMercadoLivre(
-                classificacao.termo_busca,
-                10,
-                true // B2B mode
-            );
-            
-            // Tentar termo alternativo se falhar
-            if (!resultados.sucesso && classificacao.termo_alternativo) {
-                resultados = await buscarMercadoLivre(
-                    classificacao.termo_alternativo,
-                    10,
-                    true
-                );
-            }
-            break;
-        
-        case 'mercadolivre':
-            // Produtos comuns - ML regular
-            resultados = await buscarMercadoLivre(
-                classificacao.termo_busca,
-                10
-            );
-            
-            // Tentar termo alternativo se poucos resultados
-            if (resultados.total < 3 && classificacao.termo_alternativo) {
-                const mlAlt = await buscarMercadoLivre(
-                    classificacao.termo_alternativo,
-                    10
-                );
-                if (mlAlt.sucesso) {
-                    resultados.precos.push(...mlAlt.precos);
-                    resultados.total += mlAlt.total;
-                    resultados.sucesso = true;
-                }
-            }
-            break;
-        
-        case 'nenhuma':
-        default:
-            // Produto muito específico ou sem mercado online
-            console.log('⚠️ [BUSCA] Produto sem API adequada');
-            break;
-    }
-    
-    return resultados;
-}
-
-// =============================================================================
-// MÓDULO 4: CÁLCULO DE MÉDIA
+// MÓDULO 4: CALCULAR MÉDIA PONDERADA
 // =============================================================================
 
 function calcularMediaPonderada(precos) {
-    console.log('📊 [EMA] Calculando média...');
+    console.log('📊 [MEDIA] Calculando...');
     
     if (!precos || precos.length === 0) {
-        return { sucesso: false, motivo: 'Nenhum preço encontrado' };
-    }
-
-    // Remover outliers extremos (opcional)
-    const valores = precos.map(p => p.valor).sort((a, b) => a - b);
-    const q1 = valores[Math.floor(valores.length * 0.25)];
-    const q3 = valores[Math.floor(valores.length * 0.75)];
-    const iqr = q3 - q1;
-    const limiteInf = q1 - (1.5 * iqr);
-    const limiteSup = q3 + (1.5 * iqr);
-    
-    const precosFiltrados = precos.filter(p => 
-        p.valor >= limiteInf && p.valor <= limiteSup
-    );
-    
-    if (precosFiltrados.length === 0) {
-        return { sucesso: false, motivo: 'Todos os preços foram outliers' };
+        return { sucesso: false, motivo: 'Nenhum preço' };
     }
     
-    console.log('✅ [EMA] ' + precosFiltrados.length + ' preço(s) válido(s)');
-
-    // CASO 1: Apenas 1 preço
-    if (precosFiltrados.length === 1) {
-        const p = precosFiltrados[0];
+    // Caso 1: Apenas 1 preço
+    if (precos.length === 1) {
+        const p = precos[0];
         return {
             sucesso: true,
             valor_mercado: p.valor,
@@ -562,28 +275,28 @@ function calcularMediaPonderada(precos) {
                 match: p.match,
                 peso: 1.0,
                 produto: p.produto,
-                url: p.url
+                link: p.link
             }]
         };
     }
-
-    // CASO 2: 2+ preços - Média ponderada
-    const precosComPeso = precosFiltrados.map(p => {
+    
+    // Caso 2: 2+ preços - Média ponderada
+    const precosComPeso = precos.map(p => {
         let pesoMatch = 1.0;
         if (p.match === 'Exato') pesoMatch = 2.0;
         else if (p.match === 'Equivalente') pesoMatch = 1.5;
         else if (p.match === 'Substituto') pesoMatch = 1.3;
         
-        const pesoFonte = p.fonte.includes('Oficial') ? 1.3 : 1.0;
+        const pesoFonte = p.fonte.toLowerCase().includes('oficial') ? 1.3 : 1.0;
         const pesoTotal = pesoMatch * pesoFonte;
-
+        
         return { ...p, peso_total: pesoTotal };
     });
-
+    
     const somaPonderada = precosComPeso.reduce((acc, p) => acc + (p.valor * p.peso_total), 0);
     const somaPesos = precosComPeso.reduce((acc, p) => acc + p.peso_total, 0);
     const mediaPonderada = somaPonderada / somaPesos;
-
+    
     const media = precosComPeso.reduce((acc, p) => acc + p.valor, 0) / precosComPeso.length;
     const variancia = precosComPeso.reduce((acc, p) => acc + Math.pow(p.valor - media, 2), 0) / precosComPeso.length;
     const desvioPadrao = Math.sqrt(variancia);
@@ -594,9 +307,9 @@ function calcularMediaPonderada(precos) {
     else if (precosComPeso.length === 3) scoreBase *= 0.85;
     
     const scoreConfianca = Math.max(0, Math.min(100, scoreBase));
-
-    console.log('💰 R$', mediaPonderada.toFixed(2), '| Conf:', scoreConfianca.toFixed(0) + '%');
-
+    
+    console.log('💰 [MEDIA] R$', mediaPonderada.toFixed(2), '| Conf:', scoreConfianca.toFixed(0) + '%');
+    
     return {
         sucesso: true,
         valor_mercado: parseFloat(mediaPonderada.toFixed(2)),
@@ -614,7 +327,7 @@ function calcularMediaPonderada(precos) {
             match: p.match,
             peso: parseFloat(p.peso_total.toFixed(2)),
             produto: p.produto,
-            url: p.url
+            link: p.link
         }))
     };
 }
@@ -631,7 +344,7 @@ module.exports = async (req, res) => {
     if (req.method === 'OPTIONS') return res.status(200).end();
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-    console.log('🔍 [ETAPA2-V3] Iniciando processamento...');
+    console.log('🔍 [ETAPA2-CUSTOM] Iniciando...');
 
     try {
         const {
@@ -652,63 +365,67 @@ module.exports = async (req, res) => {
             });
         }
 
-        // ========== ETAPA 1: CLASSIFICAR ==========
-        const classificacao = await classificarProduto({
-            nome_produto,
-            marca,
-            modelo,
-            especificacoes
-        });
+        const dadosProduto = { nome_produto, marca, modelo, especificacoes };
 
-        const metaClassificacao = classificacao.meta;
-        
-        console.log('📋 Categoria:', classificacao.dados.categoria);
-        console.log('🎯 API:', classificacao.dados.api_sugerida);
-        console.log('🔎 Termo:', classificacao.dados.termo_busca);
+        // ========== PASSO 1: CONSTRUIR TERMO ==========
+        const termo = construirTermoBusca(dadosProduto);
 
-        // ========== ETAPA 2: BUSCAR PREÇOS ==========
-        const resultadoBusca = await buscarPrecos(
-            { nome_produto, marca, modelo, especificacoes },
-            classificacao.dados
-        );
+        // ========== PASSO 2: BUSCAR (CUSTOM SEARCH API) ==========
+        const resultadoBusca = await buscarCustomSearch(termo);
 
-        if (!resultadoBusca.sucesso || resultadoBusca.total === 0) {
+        if (!resultadoBusca.sucesso || resultadoBusca.resultados.length === 0) {
             return res.status(200).json({
                 status: 'Sem Preços',
-                mensagem: 'Nenhum preço encontrado nas APIs disponíveis',
+                mensagem: 'Nenhum resultado encontrado na busca',
                 dados: {
                     preco_encontrado: false,
-                    classificacao: classificacao.dados,
-                    termo_utilizado: classificacao.dados.termo_busca
+                    termo_utilizado: termo
                 },
                 meta: {
-                    tokens: metaClassificacao.tokens,
-                    custo: parseFloat(metaClassificacao.custo.toFixed(6)),
-                    versao: 'v3-api-direta'
+                    tokens: { in: 0, out: 0 },
+                    custo: 0,
+                    versao: 'v4-custom-search'
                 }
             });
         }
 
-        // ========== ETAPA 3: CALCULAR MÉDIA ==========
-        const resultadoEMA = calcularMediaPonderada(resultadoBusca.precos);
+        // ========== PASSO 3: ANALISAR COM LLM ==========
+        const analise = await analisarComLLM(dadosProduto, resultadoBusca.resultados);
+
+        if (!analise.sucesso || analise.precos.length === 0) {
+            return res.status(200).json({
+                status: 'Sem Preços',
+                mensagem: 'LLM não encontrou preços válidos nos resultados',
+                dados: {
+                    preco_encontrado: false,
+                    termo_utilizado: termo,
+                    resultados_busca: resultadoBusca.resultados.length
+                },
+                meta: {
+                    tokens: analise.meta.tokens,
+                    custo: parseFloat(analise.meta.custo.toFixed(6)),
+                    versao: 'v4-custom-search'
+                }
+            });
+        }
+
+        // ========== PASSO 4: CALCULAR MÉDIA ==========
+        const resultadoEMA = calcularMediaPonderada(analise.precos);
 
         if (!resultadoEMA.sucesso) {
             return res.status(200).json({
                 status: 'Sem Preços',
                 mensagem: resultadoEMA.motivo,
-                dados: { 
-                    preco_encontrado: false,
-                    classificacao: classificacao.dados
-                },
+                dados: { preco_encontrado: false },
                 meta: {
-                    tokens: metaClassificacao.tokens,
-                    custo: parseFloat(metaClassificacao.custo.toFixed(6)),
-                    versao: 'v3-api-direta'
+                    tokens: analise.meta.tokens,
+                    custo: parseFloat(analise.meta.custo.toFixed(6)),
+                    versao: 'v4-custom-search'
                 }
             });
         }
 
-        // ========== ETAPA 4: APLICAR DEPRECIAÇÃO ==========
+        // ========== PASSO 5: APLICAR DEPRECIAÇÃO ==========
         let valorMercado = resultadoEMA.valor_mercado;
         let metodo = 'Média Ponderada';
         const { coef_var, num } = resultadoEMA.estatisticas;
@@ -760,22 +477,21 @@ module.exports = async (req, res) => {
                 f: p.fonte,
                 m: p.match,
                 p: p.produto,
-                u: p.url
+                u: p.link
             })),
             
             busca: {
-                categoria: classificacao.dados.categoria,
-                termo: classificacao.dados.termo_busca,
-                api: classificacao.dados.api_sugerida,
-                num: num
+                termo: termo,
+                resultados_encontrados: resultadoBusca.resultados.length,
+                precos_extraidos: num
             },
             
             meta: {
                 data: new Date().toISOString(),
                 modelo: MODEL,
-                versao: 'v3-api-direta',
-                tokens: metaClassificacao.tokens,
-                custo: parseFloat(metaClassificacao.custo.toFixed(6))
+                versao: 'v4-custom-search',
+                tokens: analise.meta.tokens,
+                custo: parseFloat(analise.meta.custo.toFixed(6))
             }
         };
 
@@ -784,11 +500,11 @@ module.exports = async (req, res) => {
         return res.status(200).json({
             status: 'Sucesso',
             dados: dadosCompletos,
-            mensagem: num + ' preço(s) encontrado(s) | ' + resultadoEMA.estatisticas.confianca.toFixed(0) + '% confiança'
+            mensagem: num + ' preço(s) | ' + resultadoEMA.estatisticas.confianca.toFixed(0) + '% conf'
         });
 
     } catch (error) {
-        console.error('❌ [ETAPA2-V3] ERRO:', error.message);
+        console.error('❌ [ETAPA2-CUSTOM] ERRO:', error.message);
         return res.status(500).json({
             status: 'Erro',
             mensagem: error.message,
