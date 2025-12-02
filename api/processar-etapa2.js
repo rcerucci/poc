@@ -1,12 +1,9 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const axios = require('axios');
 const cheerio = require('cheerio');
-const { createClient } = require('@vercel/kv');
+const { kv } = require('@vercel/kv');
 
-// Configurar cliente Redis com REDIS_URL
-const kv = createClient({
-    url: process.env.REDIS_URL
-});
+// kv já está configurado com REDIS_URL automaticamente pela Vercel
 
 // --- Configuração ---
 const API_KEY = process.env.GOOGLE_API_KEY;
