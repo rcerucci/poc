@@ -1,9 +1,44 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const axios = require('axios');
 const cheerio = require('cheerio');
-const { kv } = require('@vercel/kv');
 
-// kv já está configurado com REDIS_URL automaticamente pela Vercel
+// Configurar Vercel KV a partir da REDIS_URL
+let kv;
+try {
+    if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+        // Variáveis novas já existem
+        const { kv: kvClient } = require('@vercel/kv');
+        kv = kvClient;
+    } else if (process.env.REDIS_URL) {
+        // Extrair credenciais da REDIS_URL
+        // Formato: redis://default:TOKEN@HOST:PORT
+        const redisUrl = new URL(process.env.REDIS_URL);
+        const token = redisUrl.password;
+        const host = redisUrl.hostname;
+        const port = redisUrl.port || '6379';
+        
+        // Configurar manualmente
+        process.env.KV_REST_API_URL = `https://${host}`;
+        process.env.KV_REST_API_TOKEN = token;
+        
+        const { kv: kvClient } = require('@vercel/kv');
+        kv = kvClient;
+        console.log('✅ [KV] Configurado via REDIS_URL');
+    } else {
+        console.warn('⚠️ [KV] Redis não configurado - cache desabilitado');
+        // Cache desabilitado - funções retornarão null
+        kv = {
+            get: async () => null,
+            set: async () => null
+        };
+    }
+} catch (error) {
+    console.error('⚠️ [KV] Erro ao configurar:', error.message);
+    kv = {
+        get: async () => null,
+        set: async () => null
+    };
+}
 
 // --- Configuração ---
 const API_KEY = process.env.GOOGLE_API_KEY;
