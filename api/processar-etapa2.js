@@ -94,28 +94,43 @@ function construirTermoBusca(dados) {
 // =============================================================================
 
 async function buscarCustomSearch(termo) {
-    console.log('🌐 [SEARCH] Buscando...');
+    console.log('🌐 [SEARCH] Iniciando busca...');
+    console.log('🔑 [SEARCH] API_KEY existe:', !!API_KEY);
+    console.log('🔑 [SEARCH] CX_ID:', CUSTOM_SEARCH_CX_ID);
+    console.log('🔍 [SEARCH] Termo:', termo);
     
     if (!API_KEY || !CUSTOM_SEARCH_CX_ID) {
         throw new Error('Custom Search não configurado (verifique GOOGLE_API_KEY e CUSTOM_SEARCH_CX_ID)');
     }
     
     try {
+        const params = {
+            key: API_KEY,
+            cx: CUSTOM_SEARCH_CX_ID,
+            q: termo,
+            num: 10,
+            gl: 'br',
+            lr: 'lang_pt'
+        };
+        
+        console.log('📡 [SEARCH] Chamando API...');
+        
         const response = await axios.get('https://www.googleapis.com/customsearch/v1', {
-            params: {
-                key: API_KEY,
-                cx: CUSTOM_SEARCH_CX_ID,
-                q: termo,
-                num: 10,
-                gl: 'br',
-                lr: 'lang_pt'
-            },
+            params,
             timeout: 10000
         });
         
-        console.log('📥 [SEARCH]', response.data.items?.length || 0, 'resultados');
+        console.log('📥 [SEARCH] Status:', response.status);
+        console.log('📥 [SEARCH] searchInformation:', response.data.searchInformation);
+        console.log('📥 [SEARCH] Itens:', response.data.items?.length || 0);
+        
+        if (response.data.error) {
+            console.error('❌ [SEARCH] API Error:', response.data.error);
+            throw new Error('Custom Search Error: ' + response.data.error.message);
+        }
         
         if (!response.data.items || response.data.items.length === 0) {
+            console.log('⚠️ [SEARCH] Nenhum resultado (verifique CX_ID)');
             return { sucesso: false, resultados: [] };
         }
         
@@ -131,10 +146,9 @@ async function buscarCustomSearch(termo) {
         return { sucesso: true, resultados };
         
     } catch (error) {
-        console.error('❌ [SEARCH]', error.message);
-        if (error.response?.data) {
-            console.error('❌ [SEARCH]', JSON.stringify(error.response.data));
-        }
+        console.error('❌ [SEARCH] Erro:', error.message);
+        console.error('❌ [SEARCH] Status:', error.response?.status);
+        console.error('❌ [SEARCH] Data:', JSON.stringify(error.response?.data || {}));
         return { sucesso: false, resultados: [] };
     }
 }
