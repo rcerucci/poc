@@ -1,15 +1,6 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const axios = require('axios');
 const cheerio = require('cheerio');
-const { kv } = require('@vercel/kv');
-
-// @vercel/kv detecta UPSTASH_REDIS_REST_* automaticamente!
-console.log('✅ [CACHE] Vercel KV configurado (Upstash)');
-
-// Teste de conexão (não bloqueia)
-kv.ping()
-    .then(() => console.log('✅ [CACHE] Ping OK'))
-    .catch(err => console.error('⚠️ [CACHE] Ping falhou:', err.message));
 
 // --- Configuração ---
 const API_KEY = process.env.GOOGLE_API_KEY;
@@ -58,102 +49,6 @@ const FATORES_DEPRECIACAO = {
         'Outros': 0.2
     }
 };
-
-// =============================================================================
-// MÓDULO 0: CACHE (VERCEL KV)
-// =============================================================================
-
-const CACHE_DURATION = 24 * 60 * 60; // 24 horas em segundos
-
-/**
- * Normaliza termo de busca para gerar chave de cache consistente
- * Remove stopwords, acentos, pontuação e ordena alfabeticamente
- */
-function normalizarChaveCache(dados) {
-    const stopwords = ['de', 'da', 'do', 'para', 'com', 'sem', 'comprar', 'preco', 'preço', 'brasil', 'novo', 'nova', 'usado'];
-    
-    const partes = [
-        dados.nome_produto || '',
-        dados.marca !== 'N/A' ? dados.marca : '',
-        dados.modelo !== 'N/A' ? dados.modelo : ''
-    ].filter(p => p);
-    
-    // Extrair specs importantes (números + unidades)
-    if (dados.especificacoes) {
-        const specs = dados.especificacoes;
-        const importantes = specs.match(/\d+\.?\d*\s*(kva|kw|gb|tb|mb|pol|polegadas|hp|w|watts|cm|mm|m)/gi);
-        if (importantes) partes.push(...importantes);
-    }
-    
-    const chave = partes.join(' ')
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '') // remove acentos
-        .replace(/[^\w\s]/g, ' ') // remove pontuação
-        .split(/\s+/)
-        .filter(w => w.length > 2 && !stopwords.includes(w))
-        .sort()
-        .join('-');
-    
-    return `cache:${chave}`;
-}
-
-/**
- * Busca dados no cache do Vercel KV
- */
-async function getCache(dados) {
-    try {
-        const chave = normalizarChaveCache(dados);
-        
-        // Timeout de 3 segundos
-        const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Cache timeout')), 3000)
-        );
-        
-        const cached = await Promise.race([
-            kv.get(chave),
-            timeoutPromise
-        ]);
-        
-        if (cached) {
-            console.log('✅ [CACHE] Hit:', chave);
-            
-            // Incrementa contador (sem await - fire and forget)
-            kv.get(`${chave}:hits`)
-                .then(hits => kv.set(`${chave}:hits`, (hits || 0) + 1, { ex: CACHE_DURATION }))
-                .catch(() => {}); // Ignora erro
-            
-            return cached;
-        }
-        
-        console.log('❌ [CACHE] Miss:', chave);
-        return null;
-        
-    } catch (error) {
-        console.error('⚠️ [CACHE] Erro ao buscar:', error.message);
-        return null; // Em caso de erro, continua sem cache
-    }
-}
-
-/**
- * Salva dados no cache do Vercel KV com TTL de 24h
- */
-async function setCache(dados, resultado) {
-    try {
-        const chave = normalizarChaveCache(dados);
-        
-        await kv.set(chave, resultado, { ex: CACHE_DURATION });
-        
-        // Inicializa contador de hits
-        await kv.set(`${chave}:hits`, 0, { ex: CACHE_DURATION });
-        
-        console.log('💾 [CACHE] Salvou:', chave, '(TTL: 24h)');
-        
-    } catch (error) {
-        console.error('⚠️ [CACHE] Erro ao salvar:', error.message);
-        // Não bloqueia execução se cache falhar
-    }
-}
 
 // =============================================================================
 // MÓDULO 1: CONSTRUIR TERMO DE BUSCA
@@ -387,8 +282,8 @@ async function refinarPrecosComLLM(produto, precosBrutos) {
         const model = genAI.getGenerativeModel({
             model: MODEL,
             generationConfig: {
-                temperature: 0.1
-                // Removido maxOutputTokens para teste
+                temperature: 0.1,
+                maxOutputTokens: 2048
             }
         });
         
@@ -657,21 +552,6 @@ module.exports = async (req, res) => {
 
         const dadosProduto = { nome_produto, marca, modelo, especificacoes };
 
-        // ========== PASSO 0: VERIFICAR CACHE ==========
-        const cachedResult = await getCache(dadosProduto);
-        if (cachedResult) {
-            console.log('⚡ [CACHE] Retornando resultado em cache');
-            return res.status(200).json({
-                status: 'Sucesso (Cache)',
-                dados: cachedResult.dados,
-                mensagem: cachedResult.mensagem + ' (cache)',
-                cache: {
-                    hit: true,
-                    chave: normalizarChaveCache(dadosProduto)
-                }
-            });
-        }
-
         // ========== PASSO 1: CONSTRUIR TERMO ==========
         const termo = construirTermoBusca(dadosProduto);
 
@@ -846,16 +726,11 @@ module.exports = async (req, res) => {
 
         console.log('✅ R$', valorMercado.toFixed(2), '| Atual: R$', valorAtual.toFixed(2), '| ' + num + ' preço(s)');
 
-        // ========== SALVAR NO CACHE ==========
-        const resultadoFinal = {
+        return res.status(200).json({
             status: 'Sucesso',
             dados: dadosCompletos,
             mensagem: num + ' preço(s) | ' + resultadoEMA.estatisticas.confianca.toFixed(0) + '% conf'
-        };
-        
-        await setCache(dadosProduto, resultadoFinal);
-
-        return res.status(200).json(resultadoFinal);
+        });
 
     } catch (error) {
         console.error('❌ [ETAPA2-SCRAPER] ERRO:', error.message);
