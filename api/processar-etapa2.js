@@ -240,7 +240,15 @@ async function buscarMercadoLivre(termo, limite = 10, b2b = false) {
         
         const response = await axios.get(
             'https://api.mercadolibre.com/sites/MLB/search',
-            { params, timeout: 8000 }
+            { 
+                params, 
+                timeout: 8000,
+                headers: {
+                    'User-Agent': 'PatriGestor/1.0 (Node.js)',
+                    'Accept': 'application/json',
+                    'Accept-Language': 'pt-BR,pt;q=0.9'
+                }
+            }
         );
         
         console.log('📥 [ML] Status:', response.status);
@@ -279,10 +287,59 @@ async function buscarMercadoLivre(termo, limite = 10, b2b = false) {
         
     } catch (error) {
         console.error('❌ [ML] Erro:', error.message);
+        
         if (error.response) {
             console.error('❌ [ML] Status:', error.response.status);
-            console.error('❌ [ML] Data:', error.response.data);
+            console.error('❌ [ML] Headers:', JSON.stringify(error.response.headers));
+            
+            // Se for 403, tentar com delay
+            if (error.response.status === 403) {
+                console.log('⚠️ [ML] 403 detectado - aguardando 2s e tentando novamente...');
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                try {
+                    const retryResponse = await axios.get(
+                        'https://api.mercadolibre.com/sites/MLB/search',
+                        { 
+                            params: {
+                                q: termo,
+                                limit: limite,
+                                condition: 'new'
+                            },
+                            timeout: 10000,
+                            headers: {
+                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                                'Accept': 'application/json'
+                            }
+                        }
+                    );
+                    
+                    console.log('✅ [ML] Retry bem-sucedido!');
+                    const produtos = retryResponse.data.results
+                        .filter(item => item.available_quantity > 0 && item.price > 0)
+                        .slice(0, limite)
+                        .map(item => ({
+                            valor: item.price,
+                            fonte: 'Mercado Livre',
+                            match: calcularMatch(termo, item.title),
+                            produto: item.title.substring(0, 60),
+                            url: item.permalink,
+                            estoque: item.available_quantity,
+                            vendedor: item.seller?.nickname || 'N/A'
+                        }));
+                    
+                    return {
+                        sucesso: produtos.length > 0,
+                        precos: produtos,
+                        total: produtos.length
+                    };
+                    
+                } catch (retryError) {
+                    console.error('❌ [ML] Retry falhou:', retryError.message);
+                }
+            }
         }
+        
         return { sucesso: false, precos: [], total: 0 };
     }
 }
