@@ -1,5 +1,6 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const axios = require('axios');
+const cheerio = require('cheerio');
 
 // --- Configuração ---
 const API_KEY = process.env.GOOGLE_API_KEY;
@@ -127,33 +128,122 @@ async function buscarCustomSearch(termo) {
 }
 
 // =============================================================================
-// MÓDULO 3: CHAMAR SCRAPER
+// MÓDULO 3: SCRAPING DIRETO
 // =============================================================================
 
-async function chamarScraper(links) {
-    console.log('🕷️ [ETAPA2] Chamando scraper...');
+function extrairPrecoDaPagina(html, url) {
+    console.log('🔍 [SCRAPER] Analisando:', url.substring(0, 50) + '...');
     
     try {
-        // Chamar o endpoint scraper.js
-        const baseURL = process.env.VERCEL_URL 
-            ? `https://${process.env.VERCEL_URL}` 
-            : 'http://localhost:3000';
+        const $ = cheerio.load(html);
         
-        const response = await axios.post(`${baseURL}/api/scraper`, {
-            links: links,
-            limite: 5
-        }, {
-            timeout: 30000 // 30s timeout (scraping pode demorar)
+        $('script, style, noscript').remove();
+        const textoCompleto = $('body').text();
+        
+        const padroes = [
+            /R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/g,
+            /(\d{1,3}(?:\.\d{3})*,\d{2})\s*reais?/gi,
+            /por\s*R?\$?\s*(\d{1,3}(?:\.\d{3})*,\d{2})/gi,
+            /preço:?\s*R?\$?\s*(\d{1,3}(?:\.\d{3})*,\d{2})/gi
+        ];
+        
+        const precosEncontrados = new Set();
+        
+        padroes.forEach(padrao => {
+            const matches = textoCompleto.matchAll(padrao);
+            for (const match of matches) {
+                const precoStr = match[1] || match[0];
+                const precoLimpo = precoStr.replace(/[^\d,]/g, '');
+                if (precoLimpo) precosEncontrados.add(precoLimpo);
+            }
         });
         
-        console.log('✅ [ETAPA2] Scraper retornou:', response.data.precos?.length || 0, 'preços');
+        const precos = Array.from(precosEncontrados)
+            .map(p => parseFloat(p.replace(',', '.')))
+            .filter(p => !isNaN(p) && p > 10 && p < 1000000)
+            .sort((a, b) => a - b);
         
-        return response.data;
+        if (precos.length === 0) {
+            console.log('⚠️ [SCRAPER] Nenhum preço encontrado');
+            return null;
+        }
+        
+        const titulo = $('title').text().trim().substring(0, 100) || 
+                      $('h1').first().text().trim().substring(0, 100) ||
+                      'Produto';
+        
+        let fonte = 'Site';
+        if (url.includes('mercadolivre.com') || url.includes('mercadolibre.com')) fonte = 'Mercado Livre';
+        else if (url.includes('americanas.com')) fonte = 'Americanas';
+        else if (url.includes('magazineluiza.com')) fonte = 'Magazine Luiza';
+        else if (url.includes('amazon.com')) fonte = 'Amazon';
+        
+        const precoFinal = precos.length === 1 ? precos[0] : precos[Math.floor(precos.length / 2)];
+        
+        console.log('✅ [SCRAPER] Preço encontrado: R$', precoFinal);
+        
+        return {
+            valor: precoFinal,
+            fonte: fonte,
+            produto: titulo,
+            link: url,
+            precos_encontrados: precos.length
+        };
         
     } catch (error) {
-        console.error('❌ [ETAPA2] Erro ao chamar scraper:', error.message);
-        return { sucesso: false, precos: [] };
+        console.error('❌ [SCRAPER] Erro:', error.message);
+        return null;
     }
+}
+
+async function scrapearLinks(links, limite = 5) {
+    console.log('🕷️ [SCRAPER] Iniciando scraping de', links.length, 'links...');
+    
+    const precos = [];
+    const linksProcessar = links.slice(0, limite);
+    const BATCH_SIZE = 3;
+    
+    for (let i = 0; i < linksProcessar.length; i += BATCH_SIZE) {
+        const batch = linksProcessar.slice(i, i + BATCH_SIZE);
+        
+        const resultados = await Promise.allSettled(
+            batch.map(async (link) => {
+                try {
+                    console.log('📡 [SCRAPER] Fetching:', link.substring(0, 60) + '...');
+                    
+                    const response = await axios.get(link, {
+                        timeout: 8000,
+                        headers: {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                            'Accept': 'text/html,application/xhtml+xml',
+                            'Accept-Language': 'pt-BR,pt;q=0.9',
+                        },
+                        maxRedirects: 5
+                    });
+                    
+                    return extrairPrecoDaPagina(response.data, link);
+                    
+                } catch (error) {
+                    console.error('❌ [SCRAPER] Erro ao buscar', link.substring(0, 40), ':', error.message);
+                    return null;
+                }
+            })
+        );
+        
+        resultados.forEach(result => {
+            if (result.status === 'fulfilled' && result.value) {
+                precos.push(result.value);
+            }
+        });
+        
+        if (i + BATCH_SIZE < linksProcessar.length) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+    }
+    
+    console.log('✅ [SCRAPER] Concluído:', precos.length, 'preços extraídos');
+    
+    return precos;
 }
 
 // =============================================================================
@@ -298,9 +388,9 @@ module.exports = async (req, res) => {
         }
 
         // ========== PASSO 3: SCRAPING ==========
-        const resultadoScraper = await chamarScraper(resultadoBusca.links);
+        const precos = await scrapearLinks(resultadoBusca.links, 5);
 
-        if (!resultadoScraper.sucesso || resultadoScraper.precos.length === 0) {
+        if (!precos || precos.length === 0) {
             return res.status(200).json({
                 status: 'Sem Preços',
                 mensagem: 'Scraping não extraiu preços válidos',
@@ -317,7 +407,7 @@ module.exports = async (req, res) => {
         }
 
         // ========== PASSO 4: CALCULAR MÉDIA ==========
-        const resultadoEMA = calcularMediaPonderada(resultadoScraper.precos);
+        const resultadoEMA = calcularMediaPonderada(precos);
 
         if (!resultadoEMA.sucesso) {
             return res.status(200).json({
