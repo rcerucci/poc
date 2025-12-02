@@ -177,6 +177,27 @@ function extrairPrecoDaPagina(html, url) {
         else if (url.includes('americanas.com')) fonte = 'Americanas';
         else if (url.includes('magazineluiza.com')) fonte = 'Magazine Luiza';
         else if (url.includes('amazon.com')) fonte = 'Amazon';
+        else if (url.includes('leroymerlin.com')) fonte = 'Leroy Merlin';
+        else if (url.includes('madeiramadeira.com')) fonte = 'MadeiraMadeira';
+        else if (url.includes('flexform.com')) fonte = 'Flexform';
+        else if (url.includes('novoambiente.com')) fonte = 'Novo Ambiente';
+        else if (url.includes('hermanmiller.com')) fonte = 'Herman Miller';
+        else if (url.includes('casasbahia.com')) fonte = 'Casas Bahia';
+        else if (url.includes('shoppingmatriz.com')) fonte = 'Shopping Matriz';
+        else if (url.includes('comfy.com')) fonte = 'Comfy';
+        else if (url.includes('carrefour.com')) fonte = 'Carrefour';
+        else {
+            // Extrair domínio principal como fallback
+            try {
+                const domain = url.match(/https?:\/\/(?:www\.)?([^\/]+)/);
+                if (domain && domain[1]) {
+                    fonte = domain[1].split('.')[0];
+                    fonte = fonte.charAt(0).toUpperCase() + fonte.slice(1);
+                }
+            } catch (e) {
+                fonte = 'Site';
+            }
+        }
         
         const precoFinal = precos.length === 1 ? precos[0] : precos[Math.floor(precos.length / 2)];
         
@@ -247,50 +268,156 @@ async function scrapearLinks(links, limite = 5) {
 }
 
 // =============================================================================
-// MÓDULO 4: REMOVER OUTLIERS (PRODUTOS FORA DA CURVA)
+// MÓDULO 4: REFINAR PREÇOS COM LLM (FILTRO SEMÂNTICO)
 // =============================================================================
 
-function removerOutliers(precos) {
-    console.log('📊 [OUTLIERS] Analisando', precos.length, 'preços...');
+async function refinarPrecosComLLM(produto, precosBrutos) {
+    console.log('🤖 [LLM-REFINAR] Analisando', precosBrutos.length, 'preços brutos...');
+    
+    if (precosBrutos.length === 0) {
+        return { sucesso: false, precos: [], removidos: [], custo: 0 };
+    }
+    
+    try {
+        const model = genAI.getGenerativeModel({
+            model: MODEL,
+            generationConfig: {
+                temperature: 0.1,
+                maxOutputTokens: 500
+            }
+        });
+        
+        const prompt = `Produto buscado: ${produto.nome_produto} ${produto.marca || ''} ${produto.modelo || ''}
+
+Preços encontrados:
+${precosBrutos.map((p, i) => `${i+1}. R$ ${p.valor.toFixed(2)} - ${p.fonte} - "${p.produto.substring(0, 80)}"`).join('\n')}
+
+TAREFA: Filtre apenas preços do MESMO TIPO de produto.
+
+REGRAS:
+- ✅ MANTER: Produtos similares/equivalentes ao buscado
+- ❌ REMOVER: Categorias diferentes (ex: "Presidente" vs "Giratória")
+- ❌ REMOVER: Versões premium/luxo (ex: Herman Miller Aeron)
+- ❌ REMOVER: Kits/conjuntos (ex: "Kit 2 cadeiras")
+- ✅ MANTER: Variações simples (cores, tecidos)
+
+JSON:
+{"ok":true,"validos":[1,2,4],"removidos":[{"id":3,"motivo":"categoria diferente"}]}
+
+SEM markdown, APENAS JSON.`;
+
+        console.log('📤 [LLM-REFINAR] Prompt:', prompt.substring(0, 200) + '...');
+        
+        const result = await model.generateContent(prompt);
+        const text = result.response.text();
+        
+        const usage = result.response.usageMetadata;
+        const tokIn = usage?.promptTokenCount || 0;
+        const tokOut = usage?.candidatesTokenCount || 0;
+        const custo = (tokIn * 0.0000016) + (tokOut * 0.0000133);
+        
+        console.log('📊 [LLM-REFINAR] Tokens:', tokIn, '/', tokOut, '| R$', custo.toFixed(6));
+        
+        if (!text || text.trim().length === 0) {
+            console.error('❌ [LLM-REFINAR] Resposta vazia');
+            return { sucesso: false, precos: precosBrutos, removidos: [], custo };
+        }
+        
+        // Parse JSON
+        let jsonText = text.trim()
+            .replace(/```json\n?/g, '')
+            .replace(/```\n?/g, '');
+        
+        const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+            console.error('❌ [LLM-REFINAR] Nenhum JSON encontrado');
+            return { sucesso: false, precos: precosBrutos, removidos: [], custo };
+        }
+        jsonText = jsonMatch[0];
+        
+        let resultado;
+        try {
+            resultado = JSON.parse(jsonText);
+        } catch (parseError) {
+            console.error('❌ [LLM-REFINAR] Erro ao parsear JSON:', parseError.message);
+            return { sucesso: false, precos: precosBrutos, removidos: [], custo };
+        }
+        
+        if (!resultado.ok || !resultado.validos || resultado.validos.length === 0) {
+            console.log('⚠️ [LLM-REFINAR] LLM não encontrou preços válidos');
+            return { sucesso: false, precos: precosBrutos, removidos: [], custo };
+        }
+        
+        // Separar válidos e removidos
+        const precosValidos = [];
+        const precosRemovidos = [];
+        
+        precosBrutos.forEach((preco, index) => {
+            const id = index + 1;
+            if (resultado.validos.includes(id)) {
+                precosValidos.push(preco);
+            } else {
+                const motivoObj = resultado.removidos?.find(r => r.id === id);
+                precosRemovidos.push({
+                    ...preco,
+                    motivo_llm: motivoObj?.motivo || 'filtrado pela LLM'
+                });
+                console.log('🚫 [LLM-REFINAR] Removido:', preco.fonte, 'R$', preco.valor, '-', motivoObj?.motivo || 'filtrado');
+            }
+        });
+        
+        console.log('✅ [LLM-REFINAR] Válidos:', precosValidos.length, '| Removidos:', precosRemovidos.length);
+        
+        return {
+            sucesso: true,
+            precos: precosValidos,
+            removidos: precosRemovidos,
+            custo
+        };
+        
+    } catch (error) {
+        console.error('❌ [LLM-REFINAR] Erro:', error.message);
+        return { sucesso: false, precos: precosBrutos, removidos: [], custo: 0 };
+    }
+}
+
+// =============================================================================
+// MÓDULO 5: REMOVER OUTLIERS ESTATÍSTICOS (FILTRO NUMÉRICO)
+// =============================================================================
+
+function removerOutliersEstatisticos(precos) {
+    console.log('📊 [OUTLIERS] Análise estatística final de', precos.length, 'preços...');
     
     if (precos.length < 4) {
         console.log('⚠️ [OUTLIERS] Poucos preços (<4), mantendo todos');
         return { precos: precos, removidos: [] };
     }
     
-    // Extrair apenas valores numéricos
     const valores = precos.map(p => p.valor).sort((a, b) => a - b);
+    const mediana = valores[Math.floor(valores.length / 2)];
     
-    // Calcular quartis
-    const q1Index = Math.floor(valores.length * 0.25);
-    const q3Index = Math.floor(valores.length * 0.75);
-    const q1 = valores[q1Index];
-    const q3 = valores[q3Index];
-    const iqr = q3 - q1;
+    // Apenas remover extremos óbvios (>4x ou <0.25x mediana)
+    const limiteSupMediana = mediana * 4;
+    const limiteInfMediana = mediana * 0.25;
     
-    // Limites (método IQR)
-    const lowerBound = q1 - (1.5 * iqr);
-    const upperBound = q3 + (1.5 * iqr);
+    console.log('📐 [OUTLIERS] Mediana:', mediana.toFixed(2));
+    console.log('📐 [OUTLIERS] Limites: [', limiteInfMediana.toFixed(2), '-', limiteSupMediana.toFixed(2), ']');
     
-    console.log('📐 [OUTLIERS] Q1:', q1.toFixed(2), '| Q3:', q3.toFixed(2), '| IQR:', iqr.toFixed(2));
-    console.log('📐 [OUTLIERS] Limites: [', lowerBound.toFixed(2), '-', upperBound.toFixed(2), ']');
-    
-    // Separar normais e outliers
     const normais = [];
     const removidos = [];
     
     precos.forEach(preco => {
-        if (preco.valor >= lowerBound && preco.valor <= upperBound) {
+        if (preco.valor >= limiteInfMediana && preco.valor <= limiteSupMediana) {
             normais.push(preco);
         } else {
             removidos.push(preco);
-            console.log('🚫 [OUTLIERS] Removido: R$', preco.valor, '-', preco.fonte, '(fora da curva)');
+            console.log('🚫 [OUTLIERS] Removido: R$', preco.valor, '-', preco.fonte, '(' + (preco.valor / mediana).toFixed(1) + 'x mediana)');
         }
     });
     
     console.log('✅ [OUTLIERS] Mantidos:', normais.length, '| Removidos:', removidos.length);
     
-    // Se remover todos, manter pelo menos 3 preços mais centrais
+    // Se remover todos, manter pelo menos 3 centrais
     if (normais.length < 3) {
         console.log('⚠️ [OUTLIERS] Muitos removidos, mantendo 3 centrais');
         const sorted = [...precos].sort((a, b) => a.valor - b.valor);
@@ -447,7 +574,7 @@ module.exports = async (req, res) => {
         }
 
         // ========== PASSO 3: SCRAPING ==========
-        const precos = await scrapearLinks(resultadoBusca.links, 10); // Aumentado de 5 para 10
+        const precos = await scrapearLinks(resultadoBusca.links, 10);
 
         if (!precos || precos.length === 0) {
             return res.status(200).json({
@@ -460,33 +587,44 @@ module.exports = async (req, res) => {
                 },
                 meta: {
                     custo: 0,
-                    versao: 'v5-scraper'
+                    versao: 'v6-llm-refinar'
                 }
             });
         }
 
-        // ========== PASSO 4: REMOVER OUTLIERS ==========
-        const resultadoOutliers = removerOutliers(precos);
+        // ========== PASSO 4: REFINAMENTO COM LLM (FILTRO SEMÂNTICO) ==========
+        const resultadoLLM = await refinarPrecosComLLM(dadosProduto, precos);
+        let precosRefinados = resultadoLLM.precos;
+        const precosRemovidosLLM = resultadoLLM.removidos;
+        const custoLLM = resultadoLLM.custo;
+
+        if (!resultadoLLM.sucesso || precosRefinados.length === 0) {
+            console.log('⚠️ [ETAPA2] LLM não aprovou nenhum preço, usando todos');
+            precosRefinados = precos; // Fallback: usar todos
+        }
+
+        // ========== PASSO 5: OUTLIERS ESTATÍSTICOS (FILTRO NUMÉRICO) ==========
+        const resultadoOutliers = removerOutliersEstatisticos(precosRefinados);
         const precosLimpos = resultadoOutliers.precos;
         const outliersRemovidos = resultadoOutliers.removidos;
 
         if (precosLimpos.length === 0) {
             return res.status(200).json({
                 status: 'Sem Preços',
-                mensagem: 'Todos os preços foram considerados outliers',
+                mensagem: 'Todos os preços foram filtrados',
                 dados: {
                     preco_encontrado: false,
                     termo_utilizado: termo,
                     precos_encontrados: precos.length
                 },
                 meta: {
-                    custo: 0,
-                    versao: 'v5-scraper'
+                    custo: custoLLM,
+                    versao: 'v6-llm-refinar'
                 }
             });
         }
 
-        // ========== PASSO 5: CALCULAR MÉDIA ==========
+        // ========== PASSO 6: CALCULAR MÉDIA ==========
         const resultadoEMA = calcularMediaPonderada(precosLimpos);
 
         if (!resultadoEMA.sucesso) {
@@ -495,13 +633,13 @@ module.exports = async (req, res) => {
                 mensagem: resultadoEMA.motivo,
                 dados: { preco_encontrado: false },
                 meta: {
-                    custo: 0,
-                    versao: 'v5-scraper'
+                    custo: custoLLM,
+                    versao: 'v6-llm-refinar'
                 }
             });
         }
 
-        // ========== PASSO 6: APLICAR DEPRECIAÇÃO ==========
+        // ========== PASSO 7: APLICAR DEPRECIAÇÃO ==========
         let valorMercado = resultadoEMA.valor_mercado;
         let metodo = 'Média Ponderada';
         const { coef_var, num } = resultadoEMA.estatisticas;
@@ -558,20 +696,31 @@ module.exports = async (req, res) => {
             busca: {
                 termo: termo,
                 links_encontrados: resultadoBusca.links.length,
-                precos_extraidos: precos.length,
-                outliers_removidos: outliersRemovidos.length
+                precos_scraping: precos.length,
+                removidos_llm: precosRemovidosLLM.length,
+                removidos_outliers: outliersRemovidos.length,
+                precos_finais: num
             },
             
-            outliers: outliersRemovidos.length > 0 ? outliersRemovidos.map(o => ({
-                valor: o.valor,
-                fonte: o.fonte,
-                motivo: 'Fora da curva estatística'
-            })) : undefined,
+            filtros: {
+                llm: precosRemovidosLLM.length > 0 ? precosRemovidosLLM.map(p => ({
+                    valor: p.valor,
+                    fonte: p.fonte,
+                    produto: p.produto.substring(0, 60),
+                    motivo: p.motivo_llm
+                })) : undefined,
+                outliers: outliersRemovidos.length > 0 ? outliersRemovidos.map(o => ({
+                    valor: o.valor,
+                    fonte: o.fonte,
+                    motivo: 'Outlier estatístico'
+                })) : undefined
+            },
             
             meta: {
                 data: new Date().toISOString(),
-                versao: 'v5-scraper',
-                custo: 0 // Scraping não tem custo de LLM
+                versao: 'v6-llm-refinar',
+                custo_llm: parseFloat(custoLLM.toFixed(6)),
+                custo_total: parseFloat(custoLLM.toFixed(6))
             }
         };
 
