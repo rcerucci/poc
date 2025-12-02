@@ -275,7 +275,7 @@ async function refinarPrecosComLLM(produto, precosBrutos) {
     console.log('🤖 [LLM-REFINAR] Analisando', precosBrutos.length, 'preços brutos...');
     
     if (precosBrutos.length === 0) {
-        return { sucesso: false, precos: [], removidos: [], custo: 0 };
+        return { sucesso: false, precos: precosBrutos, removidos: [], custo: 0 };
     }
     
     try {
@@ -283,30 +283,30 @@ async function refinarPrecosComLLM(produto, precosBrutos) {
             model: MODEL,
             generationConfig: {
                 temperature: 0.1,
-                maxOutputTokens: 500
+                maxOutputTokens: 2048 // Aumentado muito
             }
         });
         
-        const prompt = `Produto buscado: ${produto.nome_produto} ${produto.marca || ''} ${produto.modelo || ''}
+        // Prompt ULTRA simplificado
+        const prompt = `Produto: ${produto.nome_produto}
 
-Preços encontrados:
-${precosBrutos.map((p, i) => `${i+1}. R$ ${p.valor.toFixed(2)} - ${p.fonte} - "${p.produto.substring(0, 80)}"`).join('\n')}
+Preços:
+${precosBrutos.map((p, i) => `${i+1}. R$ ${p.valor.toFixed(2)} - ${p.fonte}`).join('\n')}
 
-TAREFA: Filtre apenas preços do MESMO TIPO de produto.
+Mantenha apenas preços similares. Remova:
+- Categorias diferentes (presidente, gamer, luxo)
+- Kits/conjuntos
+- Premium (Herman Miller, >R$ 5000)
 
-REGRAS:
-- ✅ MANTER: Produtos similares/equivalentes ao buscado
-- ❌ REMOVER: Categorias diferentes (ex: "Presidente" vs "Giratória")
-- ❌ REMOVER: Versões premium/luxo (ex: Herman Miller Aeron)
-- ❌ REMOVER: Kits/conjuntos (ex: "Kit 2 cadeiras")
-- ✅ MANTER: Variações simples (cores, tecidos)
+JSON (IDs dos válidos):
+{"ok":true,"validos":[1,2,3]}
 
-JSON:
-{"ok":true,"validos":[1,2,4],"removidos":[{"id":3,"motivo":"categoria diferente"}]}
+Sem válidos:
+{"ok":false}
 
-SEM markdown, APENAS JSON.`;
-
-        console.log('📤 [LLM-REFINAR] Prompt:', prompt.substring(0, 200) + '...');
+APENAS JSON.`;
+        
+        console.log('📤 [LLM-REFINAR] Enviando...');
         
         const result = await model.generateContent(prompt);
         const text = result.response.text();
@@ -317,9 +317,10 @@ SEM markdown, APENAS JSON.`;
         const custo = (tokIn * 0.0000016) + (tokOut * 0.0000133);
         
         console.log('📊 [LLM-REFINAR] Tokens:', tokIn, '/', tokOut, '| R$', custo.toFixed(6));
+        console.log('📄 [LLM-REFINAR] Resposta:', text.substring(0, 200));
         
         if (!text || text.trim().length === 0) {
-            console.error('❌ [LLM-REFINAR] Resposta vazia');
+            console.error('❌ [LLM-REFINAR] Resposta vazia - usando fallback');
             return { sucesso: false, precos: precosBrutos, removidos: [], custo };
         }
         
@@ -330,7 +331,7 @@ SEM markdown, APENAS JSON.`;
         
         const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
         if (!jsonMatch) {
-            console.error('❌ [LLM-REFINAR] Nenhum JSON encontrado');
+            console.error('❌ [LLM-REFINAR] Nenhum JSON - usando fallback');
             return { sucesso: false, precos: precosBrutos, removidos: [], custo };
         }
         jsonText = jsonMatch[0];
@@ -339,12 +340,12 @@ SEM markdown, APENAS JSON.`;
         try {
             resultado = JSON.parse(jsonText);
         } catch (parseError) {
-            console.error('❌ [LLM-REFINAR] Erro ao parsear JSON:', parseError.message);
+            console.error('❌ [LLM-REFINAR] Erro JSON - usando fallback');
             return { sucesso: false, precos: precosBrutos, removidos: [], custo };
         }
         
         if (!resultado.ok || !resultado.validos || resultado.validos.length === 0) {
-            console.log('⚠️ [LLM-REFINAR] LLM não encontrou preços válidos');
+            console.log('⚠️ [LLM-REFINAR] Nenhum preço aprovado - usando fallback');
             return { sucesso: false, precos: precosBrutos, removidos: [], custo };
         }
         
@@ -357,12 +358,11 @@ SEM markdown, APENAS JSON.`;
             if (resultado.validos.includes(id)) {
                 precosValidos.push(preco);
             } else {
-                const motivoObj = resultado.removidos?.find(r => r.id === id);
                 precosRemovidos.push({
                     ...preco,
-                    motivo_llm: motivoObj?.motivo || 'filtrado pela LLM'
+                    motivo_llm: 'filtrado pela LLM'
                 });
-                console.log('🚫 [LLM-REFINAR] Removido:', preco.fonte, 'R$', preco.valor, '-', motivoObj?.motivo || 'filtrado');
+                console.log('🚫 [LLM-REFINAR] Removido:', preco.fonte, 'R$', preco.valor);
             }
         });
         
