@@ -196,8 +196,19 @@ async function analisarComLLM(produto, resultados) {
         });
         
         const prompt = PROMPT_ANALISAR_PRECOS(produto, resultados);
+        
+        console.log('📤 [LLM] === PROMPT ENVIADO ===');
+        console.log(prompt);
+        console.log('📤 [LLM] === FIM DO PROMPT ===');
+        
         const result = await model.generateContent(prompt);
         const text = result.response.text();
+        
+        console.log('📥 [LLM] === RESPOSTA BRUTA ===');
+        console.log('Text:', text);
+        console.log('Length:', text?.length || 0);
+        console.log('Response object:', JSON.stringify(result.response, null, 2));
+        console.log('📥 [LLM] === FIM DA RESPOSTA ===');
         
         const usage = result.response.usageMetadata;
         const tokIn = usage?.promptTokenCount || 0;
