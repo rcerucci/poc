@@ -158,41 +158,29 @@ async function buscarCustomSearch(termo) {
 // =============================================================================
 
 const PROMPT_ANALISAR_PRECOS = (produto, resultados) => {
-    return `Analise os resultados de busca e extraia preços de produtos NOVOS.
+    return `Extraia preços de produtos NOVOS dos resultados de busca.
 
-PRODUTO BUSCADO:
-${produto.nome_produto} ${produto.marca || ''} ${produto.modelo || ''}
-Specs: ${produto.especificacoes || 'N/A'}
+PRODUTO: ${produto.nome_produto} ${produto.marca || ''} ${produto.modelo || ''}
 
-RESULTADOS DA BUSCA:
-${JSON.stringify(resultados, null, 2)}
+RESULTADOS (${resultados.length} sites):
+${resultados.map(r => `${r.id}. ${r.title}\n   ${r.snippet}\n   ${r.link}`).join('\n\n')}
 
-REGRAS:
-1. Apenas produtos NOVOS (ignorar usados, seminovos)
-2. Apenas preços em BRL (R$)
-3. Apenas produtos similares ou equivalentes
-4. Mínimo 3 preços, máximo 8
-5. Incluir link para auditoria
+TAREFA:
+1. Encontre preços em BRL (R$)
+2. Apenas produtos NOVOS
+3. Mínimo 3 preços
 
-RESPONDA APENAS COM JSON:
+RESPONDA APENAS JSON:
 {
   "ok": true,
   "precos": [
-    {
-      "valor": 1234.50,
-      "fonte": "Nome da Loja",
-      "match": "Exato" | "Equivalente" | "Substituto",
-      "produto": "Nome do produto (máx 50 chars)",
-      "link": "URL completa",
-      "justificativa": "breve (máx 5 palavras)"
-    }
+    {"valor": 299.90, "fonte": "Loja X", "match": "Exato", "produto": "Cadeira Y", "link": "url", "justificativa": "novo preço visível"}
   ]
 }
 
-Se não encontrar preços válidos:
-{"ok": false, "motivo": "razão"}
+Sem preços: {"ok": false, "motivo": "nenhum preço encontrado"}
 
-SEM markdown, SEM texto extra, APENAS JSON.`;
+IMPORTANTE: JSON válido, SEM markdown, SEM texto extra.`;
 };
 
 async function analisarComLLM(produto, resultados) {
@@ -220,15 +208,49 @@ async function analisarComLLM(produto, resultados) {
         
         console.log('📊 [LLM] Tokens:', tokIn, '/', tokOut, '| R$', custoTot.toFixed(6));
         
+        // Verificar se resposta está vazia
+        if (!text || text.trim().length === 0) {
+            console.error('❌ [LLM] Resposta vazia');
+            return {
+                sucesso: false,
+                precos: [],
+                meta: { tokens: { in: tokIn, out: tokOut }, custo: custoTot }
+            };
+        }
+        
+        console.log('📄 [LLM] Resposta (primeiros 200 chars):', text.substring(0, 200));
+        
+        console.log('📄 [LLM] Resposta (primeiros 200 chars):', text.substring(0, 200));
+        
         // Parse JSON
         let jsonText = text.trim()
             .replace(/```json\n?/g, '')
             .replace(/```\n?/g, '');
         
         const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) jsonText = jsonMatch[0];
+        if (!jsonMatch) {
+            console.error('❌ [LLM] Nenhum JSON encontrado na resposta');
+            console.error('❌ [LLM] Texto completo:', text);
+            return {
+                sucesso: false,
+                precos: [],
+                meta: { tokens: { in: tokIn, out: tokOut }, custo: custoTot }
+            };
+        }
+        jsonText = jsonMatch[0];
         
-        const resultado = JSON.parse(jsonText);
+        let resultado;
+        try {
+            resultado = JSON.parse(jsonText);
+        } catch (parseError) {
+            console.error('❌ [LLM] Erro ao parsear JSON:', parseError.message);
+            console.error('❌ [LLM] JSON text:', jsonText.substring(0, 300));
+            return {
+                sucesso: false,
+                precos: [],
+                meta: { tokens: { in: tokIn, out: tokOut }, custo: custoTot }
+            };
+        }
         
         if (!resultado.ok) {
             console.log('⚠️ [LLM]', resultado.motivo || 'Nenhum preço encontrado');
