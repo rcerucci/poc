@@ -325,6 +325,30 @@ function verificarFotosMinimas() {
     console.log('📸 Fotos válidas:', totalFotos + '/' + CONFIG.minFotos);
 }
 
+// ✅ ADICIONAR esta função nova
+function mostrarValidacaoLLM(dados) {
+    const validacaoBox = document.getElementById('validacaoLLM');
+    
+    if (!validacaoBox) return;
+    
+    if (dados.observacao_validada && dados.observacao_validada !== 'N/A') {
+        const emoji = {
+            'Confirmada': '✅',
+            'Provável': '🟡',
+            'Conflitante': '⚠️'
+        }[dados.observacao_validada] || '💡';
+        
+        validacaoBox.textContent = `${emoji} ${dados.nota_observacao}`;
+        validacaoBox.classList.add('validacao-ativa');
+        
+        console.log('📝 Validação LLM exibida');
+    } else {
+        validacaoBox.textContent = '';
+        validacaoBox.classList.remove('validacao-ativa');
+    }
+}
+
+// ✅ ATUALIZAR a função processarEtapa1 (adicionar chamada)
 async function processarEtapa1() {
     console.log('🔍 Iniciando Etapa 1...');
     
@@ -343,7 +367,6 @@ async function processarEtapa1() {
             timestamp: foto.timestamp
         }));
         
-        // ✅ CONSTRUIR OBSERVAÇÃO PADRONIZADA
         const tipoSelecionado = document.querySelector('input[name="tipoObservacao"]:checked')?.value;
         const nomeEquipamento = elementos.nomeEquipamento?.value?.trim();
         
@@ -381,7 +404,10 @@ async function processarEtapa1() {
             AppState.dadosEtapa1 = resultado.dados;
             preencherFormulario(resultado.dados);
             
-            // ✅ MOSTRAR VALIDAÇÃO DA OBSERVAÇÃO
+            // ✅ MOSTRAR VALIDAÇÃO NA SECTION
+            mostrarValidacaoLLM(resultado.dados);
+            
+            // ✅ TAMBÉM MOSTRAR NO ALERTA (mantém compatibilidade)
             if (resultado.dados.observacao_validada && resultado.dados.observacao_validada !== 'N/A') {
                 const emoji = {
                     'Confirmada': '✅',
@@ -393,9 +419,9 @@ async function processarEtapa1() {
                 console.log('📝 Nota:', resultado.dados.nota_observacao);
                 
                 mostrarAlerta(
-                    emoji + ' Observação ' + resultado.dados.observacao_validada.toLowerCase() + ': ' + resultado.dados.nota_observacao, 
+                    emoji + ' Observação ' + resultado.dados.observacao_validada.toLowerCase(), 
                     resultado.dados.observacao_validada === 'Conflitante' ? 'warning' : 'success',
-                    10000  // 10 segundos para ler
+                    5000
                 );
             } else {
                 mostrarAlerta('✅ ' + resultado.mensagem, 'success');

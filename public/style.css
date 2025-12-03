@@ -847,7 +847,7 @@ kbd {
 }
 
 /* ============================================ */
-/* SECTION: Conhecimento do Operador           */
+/* SECTION: Conhecimento do Operador - FIXES  */
 /* ============================================ */
 
 #observacaoSection {
@@ -862,9 +862,43 @@ kbd {
     margin-bottom: 8px;
 }
 
+/* ✅ FIX: Help-text agora é área de notificação da LLM */
 #observacaoSection .help-text {
-    color: rgba(255, 255, 255, 0.9);
+    color: white; /* ✅ CORRIGIDO: era rgba que ficava invisível */
+    background: rgba(255, 255, 255, 0.15);
+    padding: 12px 16px;
+    border-radius: 6px;
     margin-bottom: 20px;
+    font-size: 14px;
+    line-height: 1.5;
+    border-left: 4px solid rgba(255, 255, 255, 0.5);
+    max-height: 120px; /* ✅ Scroll automático */
+    overflow-y: auto;
+    display: none; /* Oculto por padrão */
+}
+
+/* ✅ Quando houver validação, mostrar */
+#observacaoSection .help-text.validacao-ativa {
+    display: block;
+}
+
+/* ✅ Scrollbar customizada */
+#observacaoSection .help-text::-webkit-scrollbar {
+    width: 6px;
+}
+
+#observacaoSection .help-text::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+}
+
+#observacaoSection .help-text::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.4);
+    border-radius: 3px;
+}
+
+#observacaoSection .help-text::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.6);
 }
 
 .observacao-container {
@@ -961,13 +995,6 @@ kbd {
     color: rgba(255, 255, 255, 0.6);
     cursor: not-allowed;
     border-color: rgba(255, 255, 255, 0.2);
-}
-
-.input-hint {
-    display: block;
-    color: rgba(255, 255, 255, 0.8);
-    font-size: 12px;
-    margin-top: 6px;
 }
 
 /* Mobile Responsive */

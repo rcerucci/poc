@@ -80,14 +80,12 @@
             </div>
         </section>
 
-        <!-- ============================================ -->
-        <!-- SECTION: Conhecimento do Operador (NOVA)    -->
-        <!-- Inserir ENTRE section de fotos e formulário -->
-        <!-- ============================================ -->
         <section class="card" id="observacaoSection" style="display: none;">
             <h3>💡 Você conhece este equipamento?</h3>
-            <p class="help-text">
-                Se souber o que é este equipamento, informe abaixo para melhorar a precisão da identificação.
+            
+            <!-- ✅ Help-text agora será preenchido dinamicamente pela validação da LLM -->
+            <p class="help-text" id="validacaoLLM">
+                <!-- Vazio por padrão, será preenchido após processamento -->
             </p>
             
             <div class="observacao-container">
@@ -129,13 +127,10 @@
                         maxlength="100"
                         disabled
                     >
-                    <small class="input-hint" style="display: none;">
-                        Digite o nome técnico do equipamento
-                    </small>
                 </div>
             </div>
         </section>
-
+        
         <!-- Formulário de Dados -->
         <section class="card" id="formSection" style="display: none;">
             <h3>📋 Dados do Patrimônio</h3>
