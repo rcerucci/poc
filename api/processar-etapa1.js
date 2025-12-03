@@ -6,11 +6,17 @@ const MODEL = process.env.VERTEX_MODEL || 'gemini-2.5-flash';
 
 const genAI = new GoogleGenerativeAI(API_KEY);
 
+// --- Definições de Custo ---
+const CUSTO_INPUT_POR_TOKEN = 0.0000016;   // R$ 1,60/1M tokens
+const CUSTO_OUTPUT_POR_TOKEN = 0.0000133;  // R$ 13,34/1M tokens
+const TOKENS_POR_IMAGEM_BAIXA_RESOLUCAO = 255; // Estimativa para 512px
+
 const PROMPT_SISTEMA = `Extraia informações do ativo em JSON (sem markdown):
 
 {
   "numero_patrimonio": "placa/etiqueta ou N/A",
-  "nome_produto": "nome genérico (max 4 palavras)",
+  "nome_produto": "nome genérico catalográfico (max 4 palavras)",
+  "termo_busca_comercial": "termo para buscar produto similar novo em marketplace (max 6 palavras)",
   "marca": "fabricante ou N/A",
   "modelo": "código ou N/A",
   "especificacoes": "specs técnicas da placa ou observáveis ou N/A",
@@ -29,19 +35,36 @@ REGRAS DE PADRONIZAÇÃO:
    - Se não houver: N/A
 
 2. nome_produto:
-   - Use o termo de BUSCA comercial (como você digitaria no Mercado Livre para COMPRAR este produto novo)
-   - Genérico, técnico, máximo 4 palavras
-   - Exemplos: "Cadeira de Escritório", "Impressora Multifuncional", "Furadeira de Impacto"
-   - NUNCA: Termos vagos ("Cadeira") ou descrições funcionais ("Sistema de remoção")
+   - Termo TÉCNICO/CATALOGRÁFICO para inventário
+   - Genérico, máximo 4 palavras
+   - Exemplos: "Armário de Gavetas", "Impressora Multifuncional", "Furadeira de Impacto"
 
-3. marca/modelo (NÃO CONFUNDIR COM PROPRIETÁRIO):
+3. termo_busca_comercial (NOVO - CRÍTICO):
+   - Como digitaria no MERCADO LIVRE para COMPRAR este produto NOVO
+   - Incluir características VISÍVEIS que diferenciam o produto
+   - Priorizar termos comerciais que vendedores usam em anúncios
+   - MÁXIMO 6 palavras
+   - REGRAS:
+     * Se vê número de gavetas/portas → incluir (ex: "5 gavetas")
+     * Se vê material claramente → incluir (ex: "metal", "madeira")
+     * Se vê marca conhecida → incluir no início
+     * Se vê características únicas → incluir
+   - EXEMPLOS:
+     * Armário branco metal 5 gavetas → "Gaveteiro Industrial 5 Gavetas Metal"
+     * Cadeira presidente couro preta → "Cadeira Presidente Giratória Couro"
+     * Furadeira amarela DeWalt → "Furadeira Impacto DeWalt 20V"
+     * Mesa escritório MDF branca → "Mesa Escritório MDF 120cm"
+     * Notebook Dell preto → "Notebook Dell Core i5"
+     * Ar condicionado Samsung 12000 BTU → "Ar Condicionado Samsung 12000 BTU"
+
+4. marca/modelo (NÃO CONFUNDIR COM PROPRIETÁRIO):
    - marca: Fabricante do EQUIPAMENTO (Dell, HP, Makita, Samsung)
    - NUNCA usar: Nome da empresa proprietária da plaqueta
    - modelo: Código comercial do fabricante
    - S/N NÃO é modelo (vai em descricao)
    - Se ausente: N/A
 
-4. especificacoes (TRANSCRIÇÃO LITERAL OU OBSERVAÇÃO):
+5. especificacoes (TRANSCRIÇÃO LITERAL OU OBSERVAÇÃO):
    - SE HOUVER PLACA TÉCNICA: Copiar exatamente todos dados técnicos
    - SE NÃO HOUVER PLACA: Incluir características técnicas OBSERVÁVEIS:
      * Material (aço inox, madeira, plástico, alumínio, MDF)
@@ -57,20 +80,20 @@ REGRAS DE PADRONIZAÇÃO:
    - Exemplo SEM placa: "Aço inoxidável, 3 gavetas, prateleira inferior fixa, rodízios"
    - Se não houver placa NEM características observáveis: N/A
 
-5. estado_conservacao:
+6. estado_conservacao:
    - CRITÉRIOS OBJETIVOS:
    - Excelente: Novo/como novo, sem marcas de uso
    - Bom: Uso normal, funcionando, sem danos estruturais
    - Regular: Marcas de uso acentuado, riscos, manchas
    - Ruim: Danos visíveis, ferrugem, peças quebradas
 
-6. motivo_conservacao:
+7. motivo_conservacao:
    - OBRIGATÓRIO se Regular/Ruim
    - MÁXIMO 3 palavras
    - Exemplos: "ferrugem avançada", "peças faltando", "tinta descascada", "desgaste visível"
    - Se Excelente/Bom: N/A
 
-7. categoria_depreciacao:
+8. categoria_depreciacao:
    - ESCOLHER EXATAMENTE UM da lista
    - PADRONIZAÇÃO POR TIPO:
      * Notebooks, PCs, impressoras, tablets → "Computadores e Informática"
@@ -81,7 +104,7 @@ REGRAS DE PADRONIZAÇÃO:
      * Carros, motos, empilhadeiras, caminhões → "Veículos"
      * Qualquer outro → "Outros"
 
-8. descricao (FORMATO PADRONIZADO):
+9. descricao (FORMATO PADRONIZADO):
    - ESTRUTURA FIXA: "[nome_produto] [marca] [modelo], [specs principais], [S/N se houver], [ano se houver], [características físicas fixas]"
    - PRIORIZAR NESTA ORDEM: Ano, S/N, normas técnicas
    - INCLUIR se aplicável: "embalado parcialmente" ou "embalado totalmente"
@@ -90,6 +113,8 @@ REGRAS DE PADRONIZAÇÃO:
 
 VALIDAÇÃO FINAL OBRIGATÓRIA (checklist mental antes de retornar):
 □ numero_patrimonio contém APENAS números (sem CNPJ, sem empresa)
+□ nome_produto é termo catalográfico (não termo de busca)
+□ termo_busca_comercial é termo comercial de marketplace (max 6 palavras)
 □ marca é do fabricante do equipamento (não da empresa dona)
 □ especificacoes está em ordem da placa original OU contém características observáveis
 □ S/N está em descricao (nunca em especificacoes ou modelo)
@@ -100,15 +125,89 @@ VALIDAÇÃO FINAL OBRIGATÓRIA (checklist mental antes de retornar):
 
 EXEMPLOS DE PADRONIZAÇÃO CORRETA:
 
-Cadeira: {"numero_patrimonio":"00157","nome_produto":"Cadeira de Escritório","marca":"Cavaletti","modelo":"Air Plus","especificacoes":"Apoio lombar ajustável, base giratória, rodízios duplos, suporte até 120kg","estado_conservacao":"Bom","motivo_conservacao":"N/A","categoria_depreciacao":"Móveis e Utensílios","descricao":"Cadeira de Escritório Cavaletti Air Plus, apoio lombar, base giratória, S/N: CP-2019-4521."}
+Gaveteiro Industrial:
+{
+  "numero_patrimonio": "02149",
+  "nome_produto": "Armário de Gavetas",
+  "termo_busca_comercial": "Gaveteiro Industrial 5 Gavetas Metal",
+  "marca": "N/A",
+  "modelo": "N/A",
+  "especificacoes": "metal, 5 gavetas, tampo liso, rodízios",
+  "estado_conservacao": "Regular",
+  "motivo_conservacao": "desgaste visível",
+  "categoria_depreciacao": "Móveis e Utensílios",
+  "descricao": "Armário de Gavetas, metal, 5 gavetas, tampo liso."
+}
 
-Impressora: {"numero_patrimonio":"08934","nome_produto":"Impressora Multifuncional","marca":"HP","modelo":"LaserJet Pro MFP M428fdw","especificacoes":"Laser monocromático, duplex automático, ADF 50 folhas, rede ethernet, WiFi","estado_conservacao":"Excelente","motivo_conservacao":"N/A","categoria_depreciacao":"Computadores e Informática","descricao":"Impressora HP LaserJet Pro M428fdw, laser mono, duplex, rede, S/N: BRDB8K2Q7N."}
+Cadeira de Escritório:
+{
+  "numero_patrimonio": "00157",
+  "nome_produto": "Cadeira de Escritório",
+  "termo_busca_comercial": "Cadeira Presidente Giratória Preta",
+  "marca": "Cavaletti",
+  "modelo": "Air Plus",
+  "especificacoes": "Apoio lombar ajustável, base giratória, rodízios duplos, suporte até 120kg",
+  "estado_conservacao": "Bom",
+  "motivo_conservacao": "N/A",
+  "categoria_depreciacao": "Móveis e Utensílios",
+  "descricao": "Cadeira de Escritório Cavaletti Air Plus, apoio lombar, base giratória, S/N: CP-2019-4521."
+}
 
-Furadeira: {"numero_patrimonio":"01245","nome_produto":"Furadeira de Impacto","marca":"Makita","modelo":"HP1640","especificacoes":"710W, 220V, 60Hz, rotação variável 0-2800 rpm, mandril 13mm","estado_conservacao":"Regular","motivo_conservacao":"desgaste visível","categoria_depreciacao":"Ferramentas","descricao":"Furadeira Makita HP1640, 710W, 220V, mandril 13mm, Ano 2017."}
+Impressora:
+{
+  "numero_patrimonio": "08934",
+  "nome_produto": "Impressora Multifuncional",
+  "termo_busca_comercial": "Impressora HP LaserJet M428 Laser",
+  "marca": "HP",
+  "modelo": "LaserJet Pro MFP M428fdw",
+  "especificacoes": "Laser monocromático, duplex automático, ADF 50 folhas, rede ethernet, WiFi",
+  "estado_conservacao": "Excelente",
+  "motivo_conservacao": "N/A",
+  "categoria_depreciacao": "Computadores e Informática",
+  "descricao": "Impressora HP LaserJet Pro M428fdw, laser mono, duplex, rede, S/N: BRDB8K2Q7N."
+}
 
-Gerador: {"numero_patrimonio":"00892","nome_produto":"Gerador Diesel","marca":"Toyama","modelo":"TDG8000SLE3","especificacoes":"Diesel, 6500W contínuos, monofásico 220V, partida elétrica, autonomia 8h","estado_conservacao":"Bom","motivo_conservacao":"N/A","categoria_depreciacao":"Máquinas e Equipamentos","descricao":"Gerador Toyama TDG8000SLE3, diesel 6500W, partida elétrica, Ano 2020."}
+Furadeira:
+{
+  "numero_patrimonio": "01245",
+  "nome_produto": "Furadeira de Impacto",
+  "termo_busca_comercial": "Furadeira Impacto Makita 710W",
+  "marca": "Makita",
+  "modelo": "HP1640",
+  "especificacoes": "710W, 220V, 60Hz, rotação variável 0-2800 rpm, mandril 13mm",
+  "estado_conservacao": "Regular",
+  "motivo_conservacao": "desgaste visível",
+  "categoria_depreciacao": "Ferramentas",
+  "descricao": "Furadeira Makita HP1640, 710W, 220V, mandril 13mm, Ano 2017."
+}
 
-Ar-Condicionado: {"numero_patrimonio":"03421","nome_produto":"Ar Condicionado Split","marca":"Samsung","modelo":"AR12BVHZCWK","especificacoes":"12000 BTU, inverter, gás R410A, 220V, classe A, Digital Inverter Compressor","estado_conservacao":"Excelente","motivo_conservacao":"N/A","categoria_depreciacao":"Instalações","descricao":"Ar Condicionado Samsung 12000 BTU inverter, R410A, 220V, S/N: A201BC4578."}
+Gerador:
+{
+  "numero_patrimonio": "00892",
+  "nome_produto": "Gerador Diesel",
+  "termo_busca_comercial": "Gerador Toyama Diesel 6500W",
+  "marca": "Toyama",
+  "modelo": "TDG8000SLE3",
+  "especificacoes": "Diesel, 6500W contínuos, monofásico 220V, partida elétrica, autonomia 8h",
+  "estado_conservacao": "Bom",
+  "motivo_conservacao": "N/A",
+  "categoria_depreciacao": "Máquinas e Equipamentos",
+  "descricao": "Gerador Toyama TDG8000SLE3, diesel 6500W, partida elétrica, Ano 2020."
+}
+
+Ar-Condicionado:
+{
+  "numero_patrimonio": "03421",
+  "nome_produto": "Ar Condicionado Split",
+  "termo_busca_comercial": "Ar Condicionado Samsung 12000 BTU",
+  "marca": "Samsung",
+  "modelo": "AR12BVHZCWK",
+  "especificacoes": "12000 BTU, inverter, gás R410A, 220V, classe A, Digital Inverter Compressor",
+  "estado_conservacao": "Excelente",
+  "motivo_conservacao": "N/A",
+  "categoria_depreciacao": "Instalações",
+  "descricao": "Ar Condicionado Samsung 12000 BTU inverter, R410A, 220V, S/N: A201BC4578."
+}
 `;
 
 module.exports = async (req, res) => {
@@ -160,7 +259,7 @@ module.exports = async (req, res) => {
             }
         });
         
-        console.log('🖼️ [ETAPA1] Preparando ' + imagens.length + ' imagens...');
+        console.log('🖼️ [ETAPA1] Preparando ' + imagens.length + ' imagens (512px)...');
         
         const imageParts = imagens.map(img => ({
             inlineData: {
@@ -176,13 +275,30 @@ module.exports = async (req, res) => {
             ...imageParts
         ]);
         
-        // ===== 📊 AUDITORIA DE TOKENS =====
+        // ===== 📊 AUDITORIA DE TOKENS (CORRIGIDA) =====
         const usage = result.response.usageMetadata;
+        const numImagens = imagens.length;
+        
+        const tokensInput = usage?.promptTokenCount || 0;  // Texto + imagens
+        const tokensOutput = usage?.candidatesTokenCount || 0;
+        const tokensTotal = tokensInput + tokensOutput;
+        
+        // Estimativa de tokens de imagem (para documentação)
+        const tokensImagemEstimados = numImagens * TOKENS_POR_IMAGEM_BAIXA_RESOLUCAO;
+        
+        // Cálculo de custo separado
+        const custoInput = tokensInput * CUSTO_INPUT_POR_TOKEN;
+        const custoOutput = tokensOutput * CUSTO_OUTPUT_POR_TOKEN;
+        const custoTotal = custoInput + custoOutput;
+        
         console.log('📊 [ETAPA1-DIAGNÓSTICO] Tokens:', {
-            input: usage?.promptTokenCount,
-            output: usage?.candidatesTokenCount,
-            total: usage?.totalTokenCount,
-            custo_estimado: 'R$ ' + ((usage?.totalTokenCount || 0) * 0.00001).toFixed(4)
+            Input_Total: tokensInput,
+            Output_Total: tokensOutput,
+            Tokens_Imagem_Est: tokensImagemEstimados,
+            Total: tokensTotal,
+            Custo_Input: `R$ ${custoInput.toFixed(4)}`,
+            Custo_Output: `R$ ${custoOutput.toFixed(4)}`,
+            Custo_Total: `R$ ${custoTotal.toFixed(4)}`
         });
         // ===== FIM AUDITORIA =====
         
@@ -193,7 +309,7 @@ module.exports = async (req, res) => {
         
         console.log('📝 [ETAPA1-DIAGNÓSTICO] Resposta:', {
             caracteres: text.length,
-            tokens_estimados: Math.ceil(text.length / 4)
+            tokens_output: tokensOutput
         });
         
         // Parse JSON
@@ -222,6 +338,7 @@ module.exports = async (req, res) => {
         const camposObrigatorios = [
             'numero_patrimonio',
             'nome_produto',
+            'termo_busca_comercial',  // NOVO CAMPO
             'marca',
             'modelo',
             'especificacoes',
@@ -270,7 +387,7 @@ module.exports = async (req, res) => {
             dadosExtraidos.categoria_depreciacao = 'Outros';
         }
         
-        // Adicionar metadados
+        // Adicionar metadados (CORRIGIDOS)
         const dadosCompletos = {
             ...dadosExtraidos,
             metadados: {
@@ -278,17 +395,23 @@ module.exports = async (req, res) => {
                 confianca_ia: 95,
                 total_imagens_processadas: imagens.length,
                 modelo_ia: MODEL,
-                versao_sistema: '2.1-Padronizado-Otimizado',
-                tokens_consumidos: usage?.totalTokenCount || 0,
-                custo_extracao: parseFloat(((usage?.totalTokenCount || 0) * 0.00001).toFixed(4))
+                versao_sistema: '2.2-Termo-Busca',
+                tokens_input: tokensInput,
+                tokens_output: tokensOutput,
+                tokens_total: tokensTotal,
+                tokens_imagem_estimados: tokensImagemEstimados,
+                custo_input: parseFloat(custoInput.toFixed(4)),
+                custo_output: parseFloat(custoOutput.toFixed(4)),
+                custo_total: parseFloat(custoTotal.toFixed(4))
             }
         };
         
         console.log('✅ [ETAPA1] Extração concluída!');
         console.log('📦 [ETAPA1] Produto:', dadosExtraidos.nome_produto);
+        console.log('🔍 [ETAPA1] Termo busca:', dadosExtraidos.termo_busca_comercial);
         console.log('🏷️ [ETAPA1] Marca/Modelo:', dadosExtraidos.marca + ' / ' + dadosExtraidos.modelo);
         console.log('⚙️ [ETAPA1] Specs:', dadosExtraidos.especificacoes);
-        console.log('💰 [ETAPA1] Custo:', 'R$ ' + dadosCompletos.metadados.custo_extracao);
+        console.log('💰 [ETAPA1] Custo Total:', 'R$ ' + dadosCompletos.metadados.custo_total);
         
         return res.status(200).json({
             status: 'Sucesso',
@@ -306,6 +429,7 @@ module.exports = async (req, res) => {
             dados: {
                 numero_patrimonio: 'N/A',
                 nome_produto: 'N/A',
+                termo_busca_comercial: 'N/A',
                 marca: 'N/A',
                 modelo: 'N/A',
                 especificacoes: 'N/A',

@@ -186,7 +186,6 @@ function extrairPrecoDaPagina(html, url) {
         else if (url.includes('shoppingmatriz.com')) fonte = 'Shopping Matriz';
         else if (url.includes('comfy.com')) fonte = 'Comfy';
         else if (url.includes('carrefour.com')) fonte = 'Carrefour';
-        else if (url.includes('google.com')) fonte = 'Google';
         else {
             // Extrair domínio principal como fallback
             try {

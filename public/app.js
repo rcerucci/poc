@@ -7,8 +7,9 @@ const CONFIG = {
     maxFotos: 3,
     minFotos: 2,
     compressao: {
-        qualidade: 0.65,
-        maxResolucao: 1024
+        qualidade: 0.65,          // 65% para ambas
+        resolucaoIA: 512,         // 512px para IA (baixo custo)
+        resolucaoStorage: 1024    // 1024px para storage
     }
 };
 
@@ -94,10 +95,17 @@ function limparTudo() {
 }
 
 // ===================================================================
-// COMPRESSÃO DE IMAGENS
+// COMPRESSÃO DE IMAGENS - DUPLA VERSÃO
 // ===================================================================
 
-async function comprimirImagem(base64, qualidade = 0.65, maxResolucao = 1024) {
+/**
+ * Comprime uma imagem para uma resolução e qualidade específicas
+ * @param {string} base64 - Imagem em base64
+ * @param {number} maxResolucao - Resolução máxima (512 ou 1024)
+ * @param {number} qualidade - Qualidade JPEG (0.0 a 1.0)
+ * @returns {Promise<string>} - Base64 comprimido
+ */
+async function comprimirImagem(base64, maxResolucao, qualidade) {
     return new Promise((resolve) => {
         const img = new Image();
         img.onload = () => {
@@ -131,7 +139,7 @@ async function comprimirImagem(base64, qualidade = 0.65, maxResolucao = 1024) {
             const tamanhoComprimido = comprimido.length;
             const reducao = ((tamanhoOriginal - tamanhoComprimido) / tamanhoOriginal) * 100;
             
-            console.log('📦 Compressão:', {
+            console.log('📦 Compressão ' + maxResolucao + 'px:', {
                 resolucao: width + 'x' + height,
                 qualidade: (qualidade * 100) + '%',
                 original: (tamanhoOriginal / 1024).toFixed(0) + ' KB',
@@ -143,6 +151,35 @@ async function comprimirImagem(base64, qualidade = 0.65, maxResolucao = 1024) {
         };
         img.src = base64;
     });
+}
+
+/**
+ * Processa imagem gerando 2 versões:
+ * - 512px para IA (baixo custo)
+ * - 1024px para storage
+ * Ambas com 65% de qualidade
+ */
+async function processarImagemDupla(base64Original) {
+    console.log('🖼️ Gerando 2 versões da imagem (65% qualidade)...');
+    
+    const [versaoIA, versaoStorage] = await Promise.all([
+        comprimirImagem(
+            base64Original, 
+            CONFIG.compressao.resolucaoIA, 
+            CONFIG.compressao.qualidade
+        ),
+        comprimirImagem(
+            base64Original, 
+            CONFIG.compressao.resolucaoStorage, 
+            CONFIG.compressao.qualidade
+        )
+    ]);
+    
+    return {
+        ia: versaoIA,           // 512px - Envia para Gemini
+        storage: versaoStorage, // 1024px - Guarda no storage
+        timestamp: new Date().toISOString()
+    };
 }
 
 // ===================================================================
@@ -178,7 +215,7 @@ function handleFileSelect(event, index) {
         return;
     }
     
-    mostrarAlerta('🔄 Comprimindo imagem...', 'info');
+    mostrarAlerta('🔄 Comprimindo imagem (2 versões)...', 'info');
     
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -195,25 +232,26 @@ async function adicionarFoto(base64, index) {
     const placeholder = slot.querySelector('.photo-placeholder');
     const btnRemove = slot.querySelector('.btn-remove');
     
-    const base64Comprimido = await comprimirImagem(
-        base64,
-        CONFIG.compressao.qualidade,
-        CONFIG.compressao.maxResolucao
-    );
+    // Gerar 2 versões
+    const versoes = await processarImagemDupla(base64);
     
-    preview.src = base64Comprimido;
+    // Mostrar preview (versão storage)
+    preview.src = versoes.storage;
     preview.style.display = 'block';
     placeholder.style.display = 'none';
     btnRemove.style.display = 'flex';
     
+    // Armazenar ambas as versões
     AppState.fotos[index] = {
-        data: base64Comprimido.split(',')[1],
-        timestamp: new Date().toISOString(),
-        thumbnail: base64Comprimido
+        ia: versoes.ia.split(',')[1],           // Base64 sem prefixo (512px)
+        storage: versoes.storage.split(',')[1], // Base64 sem prefixo (1024px)
+        thumbnail: versoes.storage,             // Com prefixo para preview
+        timestamp: versoes.timestamp
     };
     
-    console.log('✅ Foto ' + (index + 1) + ' adicionada');
+    console.log('✅ Foto ' + (index + 1) + ' adicionada (2 versões)');
     verificarFotosMinimas();
+    mostrarAlerta('✅ Foto processada com sucesso!', 'success');
 }
 
 function removerFoto(index) {
@@ -242,51 +280,24 @@ function verificarFotosMinimas() {
     const totalFotos = AppState.fotos.filter(f => f !== null).length;
     
     if (elementos.processarEtapa1) {
-        elementos.processarEtapa1.disabled = totalFotos < CONFIG.minFotos;
+        if (totalFotos >= CONFIG.minFotos) {
+            elementos.processarEtapa1.disabled = false;
+            elementos.processarEtapa1.classList.add('ready');
+        } else {
+            elementos.processarEtapa1.disabled = true;
+            elementos.processarEtapa1.classList.remove('ready');
+        }
     }
     
-    console.log('📸 Total:', totalFotos + '/' + CONFIG.maxFotos);
+    console.log('📸 Fotos válidas:', totalFotos + '/' + CONFIG.minFotos);
 }
 
 // ===================================================================
-// CTRL+V PARA COLAR IMAGENS
-// ===================================================================
-
-document.addEventListener('paste', (event) => {
-    const items = event.clipboardData?.items;
-    if (!items) return;
-    
-    for (let i = 0; i < items.length; i++) {
-        if (items[i].type.indexOf('image') !== -1) {
-            event.preventDefault();
-            
-            const blob = items[i].getAsFile();
-            const reader = new FileReader();
-            
-            reader.onload = async (e) => {
-                const indexVazio = AppState.fotos.findIndex(f => f === null);
-                
-                if (indexVazio !== -1) {
-                    mostrarAlerta('🔄 Comprimindo imagem colada...', 'info');
-                    await adicionarFoto(e.target.result, indexVazio);
-                    mostrarAlerta('✅ Imagem colada no slot ' + (indexVazio + 1), 'success');
-                } else {
-                    mostrarAlerta('⚠️ Todos os slots estão preenchidos!', 'warning');
-                }
-            };
-            
-            reader.readAsDataURL(blob);
-            break;
-        }
-    }
-});
-
-// ===================================================================
-// PROCESSAR ETAPA 1
+// PROCESSAMENTO - ETAPA 1 (EXTRAÇÃO)
 // ===================================================================
 
 async function processarEtapa1() {
-    console.log('🔍 Iniciando Etapa 1');
+    console.log('🔍 Iniciando Etapa 1...');
     
     const fotosValidas = AppState.fotos.filter(f => f !== null);
     
@@ -295,40 +306,43 @@ async function processarEtapa1() {
         return;
     }
     
-    const tamanhoTotal = fotosValidas.reduce((acc, f) => acc + f.data.length, 0);
-    console.log('📊 Tamanho total:', (tamanhoTotal / 1024).toFixed(0) + ' KB');
-    
-    mostrarLoading('🤖 Extraindo dados das imagens...');
+    mostrarLoading('🤖 Analisando imagens com IA...');
     
     try {
+        // IMPORTANTE: Enviar versão IA (512px) para reduzir custo
+        const imagensParaIA = fotosValidas.map(foto => ({
+            data: foto.ia,  // Usar versão 512px
+            timestamp: foto.timestamp
+        }));
+        
+        console.log('📤 Enviando ' + imagensParaIA.length + ' imagens (512px) para API...');
+        
         const response = await fetch(CONFIG.apiUrl + '/api/processar-etapa1', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ imagens: fotosValidas })
+            body: JSON.stringify({ imagens: imagensParaIA })
         });
         
-        if (!response.ok) {
-            throw new Error('Erro HTTP: ' + response.status);
-        }
-        
         const resultado = await response.json();
-        console.log('✅ Etapa 1 concluída:', resultado);
+        
+        console.log('📥 Etapa 1 - Resposta:', resultado);
         
         if (resultado.status === 'Sucesso') {
-            AppState.dadosEtapa1 = resultado;
+            AppState.dadosEtapa1 = resultado.dados;
             preencherFormulario(resultado.dados);
+            mostrarAlerta('✅ ' + resultado.mensagem, 'success');
             
-            elementos.formSection.style.display = 'block';
-            elementos.helpTextForm.style.display = 'block';
-            
-            mostrarAlerta('✅ Dados extraídos! Valide e busque o preço.', 'success');
+            // Mostrar custo
+            if (resultado.dados.metadados?.custo_total) {
+                console.log('💰 Custo Etapa 1: R$', resultado.dados.metadados.custo_total);
+            }
         } else {
-            throw new Error(resultado.mensagem || 'Erro na extração');
+            throw new Error(resultado.mensagem || 'Erro na Etapa 1');
         }
         
-    } catch (erro) {
-        console.error('❌ Erro Etapa 1:', erro);
-        mostrarAlerta('❌ Erro: ' + erro.message, 'error');
+    } catch (error) {
+        console.error('❌ Erro na Etapa 1:', error);
+        mostrarAlerta('❌ Erro: ' + error.message, 'error');
     } finally {
         esconderLoading();
     }
@@ -341,661 +355,164 @@ function preencherFormulario(dados) {
     if (elementos.depreciacao) elementos.depreciacao.value = dados.categoria_depreciacao || '';
     if (elementos.descricao) elementos.descricao.value = dados.descricao || '';
     
-    bloquearCampos([
-        elementos.numeroPatrimonio,
-        elementos.nomeProduto,
-        elementos.estado,
-        elementos.depreciacao,
-        elementos.descricao
-    ]);
+    if (elementos.formSection) elementos.formSection.style.display = 'block';
+    if (elementos.helpTextForm) elementos.helpTextForm.style.display = 'block';
     
-    console.log('📋 Formulário preenchido');
-}
-
-function bloquearCampos(campos) {
-    campos.forEach(campo => {
-        if (campo) {
-            if (campo.tagName === 'SELECT') {
-                campo.disabled = true;
-            } else {
-                campo.readOnly = true;
-            }
-            
-            campo.addEventListener('click', function() {
-                this.select();
-                document.execCommand('copy');
-                mostrarAlerta('📋 Copiado: ' + this.value.substring(0, 30) + '...', 'info');
-            });
-        }
-    });
+    console.log('✅ Formulário preenchido');
 }
 
 // ===================================================================
-// PROCESSAR ETAPA 2
+// PROCESSAMENTO - ETAPA 2 (BUSCA DE PREÇO)
 // ===================================================================
 
 async function processarEtapa2() {
-    console.log('🔍 Iniciando Etapa 2');
+    console.log('💰 Iniciando Etapa 2...');
     
     if (!AppState.dadosEtapa1) {
         mostrarAlerta('⚠️ Execute a Etapa 1 primeiro!', 'warning');
         return;
     }
     
-    const dadosEtapa1 = AppState.dadosEtapa1.dados;
-    
-    const dadosParaBusca = {
-        numero_patrimonio: elementos.numeroPatrimonio?.value || dadosEtapa1.numero_patrimonio || 'N/A',
-        nome_produto: elementos.nomeProduto?.value || dadosEtapa1.nome_produto || 'N/A',
-        marca: dadosEtapa1.marca || 'N/A',
-        modelo: dadosEtapa1.modelo || 'N/A',
-        especificacoes: dadosEtapa1.especificacoes || 'N/A',
-        descricao: dadosEtapa1.descricao || elementos.descricao?.value || 'N/A',
-        estado_conservacao: elementos.estado?.value || dadosEtapa1.estado_conservacao || 'Bom',
-        categoria_depreciacao: elementos.depreciacao?.value || dadosEtapa1.categoria_depreciacao || 'Outros'
+    const payload = {
+        nome_produto: elementos.nomeProduto.value || AppState.dadosEtapa1.nome_produto,
+        termo_busca_comercial: AppState.dadosEtapa1.termo_busca_comercial,
+        marca: AppState.dadosEtapa1.marca,
+        modelo: AppState.dadosEtapa1.modelo,
+        especificacoes: AppState.dadosEtapa1.especificacoes,
+        estado_conservacao: elementos.estado.value,
+        categoria_depreciacao: elementos.depreciacao.value,
+        numero_patrimonio: elementos.numeroPatrimonio.value
     };
     
-    console.log('📤 Enviando para Etapa 2:', dadosParaBusca);
-    
-    mostrarLoading('💰 Buscando preços de mercado...');
+    mostrarLoading('🔍 Buscando preços de mercado...');
     
     try {
+        console.log('📤 Enviando dados para busca de preço...');
+        
         const response = await fetch(CONFIG.apiUrl + '/api/processar-etapa2', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(dadosParaBusca)
+            body: JSON.stringify(payload)
         });
         
-        if (!response.ok) {
-            throw new Error('Erro HTTP: ' + response.status);
-        }
-        
         const resultado = await response.json();
-        console.log('✅ Etapa 2 concluída:', resultado);
         
-        // ✅ TRATAR "SEM PREÇOS" COMO RESULTADO VÁLIDO
-        if (resultado.status === 'Sem Preços') {
-            console.log('ℹ️ Produto sem preços online');
-            
-            AppState.dadosEtapa2 = resultado;
-            
-            mostrarAlerta('ℹ️ ' + resultado.mensagem, 'info');
-            
-            elementos.resultSection.style.display = 'block';
-            
-            elementos.resultIdentificacao.innerHTML = `
-                <p><strong>Placa:</strong> ${dadosParaBusca.numero_patrimonio}</p>
-                <p><strong>Nome:</strong> ${dadosParaBusca.nome_produto}</p>
-                <p><strong>Marca:</strong> ${dadosParaBusca.marca}</p>
-                <p><strong>Modelo:</strong> ${dadosParaBusca.modelo}</p>
-            `;
-            
-            elementos.resultClassificacao.innerHTML = `
-                <p><strong>Estado:</strong> ${dadosParaBusca.estado_conservacao}</p>
-                <p><strong>Categoria:</strong> ${dadosParaBusca.categoria_depreciacao}</p>
-            `;
-            
-            elementos.resultValores.innerHTML = `
-                <div style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; padding: 15px;">
-                    <p style="margin: 0 0 10px 0;"><strong>⚠️ Sem Preços Online</strong></p>
-                    <p style="margin: 0 0 10px 0; color: #666;">${resultado.mensagem}</p>
-                    <p style="margin: 0; font-size: 0.9em; color: #666;">
-                        💡 Produto específico/industrial sem vendas online visíveis. Recomenda-se cotação manual.
-                    </p>
-                </div>
-            `;
-            
-            elementos.resultMetadados.innerHTML = `
-                <p><strong>Termo buscado:</strong> ${resultado.dados?.termo_utilizado || 'N/A'}</p>
-                <p><strong>Custo busca:</strong> R$ ${resultado.meta?.custo?.toFixed(4) || '0.0000'}</p>
-                <p><strong>Data:</strong> ${new Date().toLocaleString('pt-BR')}</p>
-            `;
-            
-            elementos.jsonOutput.innerHTML = '<pre>' + JSON.stringify(resultado, null, 2) + '</pre>';
-            elementos.resultSection.scrollIntoView({ behavior: 'smooth' });
-            
-            esconderLoading();
-            return;
-        }
+        console.log('📥 Etapa 2 - Resposta:', resultado);
         
         if (resultado.status === 'Sucesso') {
-            AppState.dadosEtapa2 = resultado;
+            AppState.dadosEtapa2 = resultado.dados;
+            atualizarValores(resultado.dados);
+            mostrarResultadoFinal();
+            mostrarAlerta('✅ ' + resultado.mensagem, 'success');
             
-            const valores = resultado.dados.valores_estimados || resultado.dados.valores;
-            const valorMercado = valores.valor_mercado_estimado || valores.mercado;
-            const valorAtual = valores.valor_atual_estimado || valores.atual;
-            
-            if (elementos.valorMercado) elementos.valorMercado.value = formatarMoeda(valorMercado);
-            if (elementos.valorAtual) elementos.valorAtual.value = formatarMoeda(valorAtual);
-            
-            bloquearCampos([elementos.valorMercado, elementos.valorAtual]);
-            
-            mostrarResultado(resultado);
-            
-            const confianca = valores.score_confianca || valores.confianca || 0;
-            mostrarAlerta('✅ Precificação concluída! Score: ' + confianca.toFixed(0) + '%', 'success');
+            // Mostrar custo
+            if (resultado.dados.meta?.custo_total) {
+                console.log('💰 Custo Etapa 2: R$', resultado.dados.meta.custo_total);
+            }
         } else {
-            throw new Error(resultado.mensagem || 'Falha na precificação');
+            throw new Error(resultado.mensagem || 'Erro na Etapa 2');
         }
         
-    } catch (erro) {
-        console.error('❌ Erro Etapa 2:', erro);
-        mostrarAlerta('❌ Erro: ' + erro.message, 'error');
+    } catch (error) {
+        console.error('❌ Erro na Etapa 2:', error);
+        mostrarAlerta('❌ Erro: ' + error.message, 'error');
     } finally {
         esconderLoading();
     }
 }
 
-// ===================================================================
-// MOSTRAR RESULTADO - VISUALIZADOR INTELIGENTE
-// ===================================================================
-
-function mostrarResultado(resultado) {
-    const dados = resultado.dados;
-    
-    elementos.resultIdentificacao.innerHTML = `
-        <p><strong>Placa:</strong> ${dados.numero_patrimonio}</p>
-        <p><strong>Nome:</strong> ${dados.nome_produto}</p>
-        <p><strong>Marca:</strong> ${dados.marca}</p>
-        <p><strong>Modelo:</strong> ${dados.modelo}</p>
-        <p><strong>Especificações:</strong> ${dados.especificacoes}</p>
-    `;
-    
-    elementos.resultClassificacao.innerHTML = `
-        <p><strong>Estado:</strong> ${dados.estado_conservacao}</p>
-        <p><strong>Categoria:</strong> ${dados.categoria_depreciacao}</p>
-    `;
-    
-    const valores = dados.valores_estimados || dados.valores;
-    const valorMercado = valores.valor_mercado_estimado || valores.mercado;
-    const valorAtual = valores.valor_atual_estimado || valores.atual;
-    const fatorDep = valores.fator_depreciacao || valores.depreciacao;
-    const confianca = valores.score_confianca || valores.confianca;
-    const metodo = valores.fonte_preco || valores.metodo || 'N/A';
-    
-    let corConfianca = '#28a745';
-    if (confianca < 50) corConfianca = '#dc3545';
-    else if (confianca < 70) corConfianca = '#ffc107';
-    
-    elementos.resultValores.innerHTML = `
-        <p><strong>Mercado:</strong> R$ ${valorMercado.toFixed(2)}</p>
-        <p><strong>Atual:</strong> R$ ${valorAtual.toFixed(2)}</p>
-        <p><strong>Depreciação:</strong> ${(fatorDep * 100).toFixed(0)}%</p>
-        <p><strong>Método:</strong> ${metodo}</p>
-        <p><strong>Confiança:</strong> <span style="color: ${corConfianca}; font-weight: bold;">${confianca.toFixed(0)}%</span></p>
-    `;
-    
-    const meta = dados.metadados || dados.meta;
-    const dataBusca = meta.data_busca || meta.data;
-    const modeloIA = meta.modelo_ia || meta.modelo;
-    const custoTotal = meta.custo_total || meta.custo;
-    
-    const stats = dados.analise_estatistica || dados.stats;
-    const numPrecos = stats?.num_precos_coletados || stats?.num || 0;
-    
-    const busca = dados.estrategia_busca || dados.busca;
-    const termoBusca = busca?.termo_utilizado || busca?.termo || 'N/A';
-    
-    elementos.resultMetadados.innerHTML = `
-        <p><strong>Preços encontrados:</strong> ${numPrecos}</p>
-        <p><strong>Termo de busca:</strong> ${termoBusca}</p>
-        <p><strong>Data:</strong> ${new Date(dataBusca).toLocaleString('pt-BR')}</p>
-        <p><strong>Modelo IA:</strong> ${modeloIA}</p>
-        <p><strong>Custo total:</strong> R$ ${custoTotal?.toFixed(4) || '0.0000'}</p>
-    `;
-    
-    const jsonFormatado = gerarJSONFormatado(dados);
-    elementos.jsonOutput.innerHTML = jsonFormatado;
-    
-    elementos.resultSection.style.display = 'block';
-    elementos.resultSection.scrollIntoView({ behavior: 'smooth' });
-}
-
-// ===================================================================
-// GERAR JSON FORMATADO
-// ===================================================================
-
-function gerarJSONFormatado(dados) {
-    const valores = dados.valores_estimados || dados.valores;
-    const stats = dados.analise_estatistica || dados.stats;
-    const precos = dados.precos_coletados || dados.precos;
-    const busca = dados.estrategia_busca || dados.busca;
-    const meta = dados.metadados || dados.meta;
-    
-    const valorMercado = valores.valor_mercado_estimado || valores.mercado;
-    const valorAtual = valores.valor_atual_estimado || valores.atual;
-    const fatorDep = valores.fator_depreciacao || valores.depreciacao;
-    const confianca = valores.score_confianca || valores.confianca;
-    const metodo = valores.fonte_preco || valores.metodo;
-    
-    const numPrecos = stats?.num_precos_coletados || stats?.num || 0;
-    const min = stats?.preco_minimo || stats?.min || 0;
-    const max = stats?.preco_maximo || stats?.max || 0;
-    const desvio = stats?.desvio_padrao || stats?.desvio || 0;
-    const coefVar = stats?.coeficiente_variacao || stats?.coef_var || 0;
-    
-    const termoBusca = busca?.termo_utilizado || busca?.termo || 'N/A';
-    const numBusca = busca?.num_precos_reais || busca?.num || 0;
-    
-    const dataBusca = meta?.data_busca || meta?.data;
-    const modeloIA = meta?.modelo_ia || meta?.modelo;
-    const versao = meta?.versao_sistema || meta?.versao;
-    const custoTotal = meta?.custo_total || meta?.custo;
-    
-    const tokensIn = meta?.tokens_input || meta?.tokens?.in || 0;
-    const tokensOut = meta?.tokens_output || meta?.tokens?.out || 0;
-    const tokensTotal = meta?.tokens_total || meta?.tokens?.total || 0;
-    
-    return `
-<div class="json-section">
-    <div class="json-header" onclick="toggleSection(this)">
-        <span class="json-toggle">▶</span>
-        <strong>📊 IDENTIFICAÇÃO</strong>
-    </div>
-    <div class="json-content" style="display: none;">
-        <table class="json-table">
-            <tr><td>Placa</td><td>${dados.numero_patrimonio}</td></tr>
-            <tr><td>Nome</td><td>${dados.nome_produto}</td></tr>
-            <tr><td>Marca</td><td>${dados.marca}</td></tr>
-            <tr><td>Modelo</td><td>${dados.modelo}</td></tr>
-            <tr><td>Especificações</td><td>${dados.especificacoes}</td></tr>
-            <tr><td>Estado</td><td>${dados.estado_conservacao}</td></tr>
-            <tr><td>Categoria</td><td>${dados.categoria_depreciacao}</td></tr>
-        </table>
-    </div>
-</div>
-
-<div class="json-section">
-    <div class="json-header" onclick="toggleSection(this)">
-        <span class="json-toggle">▶</span>
-        <strong>💰 VALORES</strong>
-    </div>
-    <div class="json-content" style="display: none;">
-        <table class="json-table">
-            <tr><td>Valor Mercado</td><td>R$ ${valorMercado.toFixed(2)}</td></tr>
-            <tr><td>Valor Atual</td><td>R$ ${valorAtual.toFixed(2)}</td></tr>
-            <tr><td>Depreciação</td><td>${(fatorDep * 100).toFixed(0)}%</td></tr>
-            <tr><td>Método</td><td>${metodo}</td></tr>
-            <tr><td>Confiança</td><td>${confianca.toFixed(1)}%</td></tr>
-        </table>
-    </div>
-</div>
-
-<div class="json-section">
-    <div class="json-header" onclick="toggleSection(this)">
-        <span class="json-toggle">▶</span>
-        <strong>📈 ESTATÍSTICAS (${numPrecos} preços)</strong>
-    </div>
-    <div class="json-content" style="display: none;">
-        <table class="json-table">
-            <tr><td>Preços Coletados</td><td>${numPrecos}</td></tr>
-            <tr><td>Mínimo</td><td>R$ ${min.toFixed(2)}</td></tr>
-            <tr><td>Máximo</td><td>R$ ${max.toFixed(2)}</td></tr>
-            <tr><td>Desvio Padrão</td><td>R$ ${desvio.toFixed(2)}</td></tr>
-            <tr><td>Coef. Variação</td><td>${coefVar.toFixed(2)}%</td></tr>
-            <tr><td>Confiança</td><td>${confianca.toFixed(1)}%</td></tr>
-        </table>
-    </div>
-</div>
-
-<div class="json-section">
-    <div class="json-header" onclick="toggleSection(this)">
-        <span class="json-toggle">▶</span>
-        <strong>🔍 BUSCA</strong>
-    </div>
-    <div class="json-content" style="display: none;">
-        <table class="json-table">
-            <tr><td>Termo Utilizado</td><td><code>${termoBusca}</code></td></tr>
-            <tr><td>Preços Encontrados</td><td>${numBusca}</td></tr>
-        </table>
-    </div>
-</div>
-
-<div class="json-section">
-    <div class="json-header" onclick="toggleSection(this)">
-        <span class="json-toggle">▶</span>
-        <strong>💵 PREÇOS COLETADOS (${precos?.length || 0})</strong>
-    </div>
-    <div class="json-content" style="display: none;">
-        <div style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
-            <table class="json-table" style="min-width: 600px;">
-                <thead>
-                    <tr>
-                        <th>Valor</th>
-                        <th>Fonte</th>
-                        <th>Match</th>
-                        <th>Produto</th>
-                        <th style="min-width: 100px;">Link</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${(precos || []).map(p => {
-                        const valor = p.valor || p.v;
-                        const fonte = p.fonte || p.f;
-                        const match = p.tipo_match || p.match || p.m;
-                        const produto = p.produto || p.p;
-                        const url = p.url || p.u;
-                        
-                        let corMatch = '#6c757d';
-                        if (match === 'Exato') corMatch = '#28a745';
-                        else if (match === 'Equivalente') corMatch = '#007bff';
-                        else if (match === 'Substituto') corMatch = '#ffc107';
-                        
-                        return `
-                        <tr>
-                            <td style="white-space: nowrap;">R$ ${valor.toFixed(2)}</td>
-                            <td style="white-space: nowrap;">${fonte}</td>
-                            <td><span style="color: ${corMatch}; font-weight: bold; white-space: nowrap;">${match}</span></td>
-                            <td><small>${produto}</small></td>
-                            <td style="text-align: center;">
-                                ${url ? 
-                                    `<button onclick="abrirModalAnuncio('${url}', '${produto.replace(/'/g, "\\'")}'); event.stopPropagation();" 
-                                        title="Ver anúncio original"
-                                        style="
-                                        background: #667eea;
-                                        color: white;
-                                        border: none;
-                                        padding: 6px 12px;
-                                        border-radius: 4px;
-                                        cursor: pointer;
-                                        font-size: 12px;
-                                        font-weight: 500;
-                                        display: inline-flex;
-                                        align-items: center;
-                                        gap: 4px;
-                                        transition: all 0.2s;
-                                        white-space: nowrap;
-                                    " onmouseover="this.style.background='#5a67d8'" onmouseout="this.style.background='#667eea'">
-                                        🔗 Ver
-                                    </button>` 
-                                    : `<span style="color: #a0aec0; font-size: 11px;" title="Link não disponível">-</span>`
-                                }
-                            </td>
-                        </tr>
-                        `;
-                    }).join('')}
-                </tbody>
-            </table>
-        </div>
-        ${(precos || []).filter(p => !(p.url || p.u)).length > 0 ? `
-            <div style="margin-top: 10px; padding: 10px; background: #fff3cd; border-radius: 6px; font-size: 12px; color: #856404;">
-                ℹ️ Alguns preços não têm link disponível. Isso pode ocorrer quando o produto foi encontrado mas o link expirou ou é de acesso restrito.
-            </div>
-        ` : ''}
-    </div>
-</div>
-
-<div class="json-section">
-    <div class="json-header" onclick="toggleSection(this)">
-        <span class="json-toggle">▶</span>
-        <strong>⚙️ METADADOS</strong>
-    </div>
-    <div class="json-content" style="display: none;">
-        <table class="json-table">
-            <tr><td>Data</td><td>${new Date(dataBusca).toLocaleString('pt-BR')}</td></tr>
-            <tr><td>Modelo IA</td><td>${modeloIA}</td></tr>
-            <tr><td>Versão Sistema</td><td>${versao}</td></tr>
-            <tr><td>Tokens Input</td><td>${tokensIn.toLocaleString()}</td></tr>
-            <tr><td>Tokens Output</td><td>${tokensOut.toLocaleString()}</td></tr>
-            <tr><td>Tokens Total</td><td>${tokensTotal.toLocaleString()}</td></tr>
-            <tr><td>Custo Total</td><td>R$ ${custoTotal.toFixed(4)}</td></tr>
-        </table>
-    </div>
-</div>
-
-<div class="json-section">
-    <div class="json-header" onclick="toggleSection(this)">
-        <span class="json-toggle">▶</span>
-        <strong>📄 JSON BRUTO</strong>
-    </div>
-    <div class="json-content" style="display: none;">
-        <pre>${JSON.stringify(dados, null, 2)}</pre>
-    </div>
-</div>
-    `.trim();
-}
-
-// ===================================================================
-// TOGGLE DE SEÇÕES
-// ===================================================================
-
-function toggleSection(header) {
-    const content = header.nextElementSibling;
-    const toggle = header.querySelector('.json-toggle');
-    
-    if (content.style.display === 'none') {
-        content.style.display = 'block';
-        toggle.textContent = '▼';
-    } else {
-        content.style.display = 'none';
-        toggle.textContent = '▶';
+function atualizarValores(dados) {
+    if (elementos.valorMercado && dados.valores) {
+        elementos.valorMercado.value = formatarMoeda(dados.valores.mercado);
     }
+    if (elementos.valorAtual && dados.valores) {
+        elementos.valorAtual.value = formatarMoeda(dados.valores.atual);
+    }
+    
+    console.log('✅ Valores atualizados');
 }
 
 // ===================================================================
-// MODAL DE ANÚNCIO COM FALLBACK
+// RESULTADO FINAL
 // ===================================================================
 
-function abrirModalAnuncio(url, produto) {
-    // Criar modal
-    const modal = document.createElement('div');
-    modal.id = 'modalAnuncio';
-    modal.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.8);
-        z-index: 10000;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 20px;
-    `;
+function mostrarResultadoFinal() {
+    if (!elementos.resultSection || !AppState.dadosEtapa2) return;
     
-    // Container do iframe
-    const container = document.createElement('div');
-    container.style.cssText = `
-        background: white;
-        border-radius: 12px;
-        width: 100%;
-        max-width: 1200px;
-        height: 90vh;
-        display: flex;
-        flex-direction: column;
-        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-    `;
+    const dados = AppState.dadosEtapa2;
     
-    // Header do modal
-    const header = document.createElement('div');
-    header.style.cssText = `
-        padding: 20px;
-        border-bottom: 1px solid #e2e8f0;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        background: #f7fafc;
-        border-radius: 12px 12px 0 0;
-    `;
-    
-    const title = document.createElement('div');
-    title.style.cssText = `
-        font-weight: 600;
-        color: #2d3748;
-        font-size: 16px;
-        flex: 1;
-    `;
-    title.textContent = produto || 'Anúncio';
-    
-    // Botão abrir em nova aba
-    const openBtn = document.createElement('button');
-    openBtn.innerHTML = '🔗 Abrir Nova Aba';
-    openBtn.style.cssText = `
-        background: #667eea;
-        color: white;
-        border: none;
-        padding: 8px 16px;
-        border-radius: 6px;
-        font-size: 13px;
-        cursor: pointer;
-        margin-right: 10px;
-        transition: all 0.2s;
-    `;
-    openBtn.onmouseover = () => openBtn.style.background = '#5a67d8';
-    openBtn.onmouseout = () => openBtn.style.background = '#667eea';
-    openBtn.onclick = () => {
-        window.open(url, '_blank', 'noopener,noreferrer');
-    };
-    
-    const closeBtn = document.createElement('button');
-    closeBtn.innerHTML = '✕';
-    closeBtn.style.cssText = `
-        background: none;
-        border: none;
-        font-size: 24px;
-        cursor: pointer;
-        color: #718096;
-        width: 32px;
-        height: 32px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 6px;
-        transition: all 0.2s;
-    `;
-    closeBtn.onmouseover = () => {
-        closeBtn.style.background = '#edf2f7';
-        closeBtn.style.color = '#2d3748';
-    };
-    closeBtn.onmouseout = () => {
-        closeBtn.style.background = 'none';
-        closeBtn.style.color = '#718096';
-    };
-    closeBtn.onclick = () => fecharModalAnuncio();
-    
-    header.appendChild(title);
-    header.appendChild(openBtn);
-    header.appendChild(closeBtn);
-    
-    // Container de conteúdo
-    const iframeContainer = document.createElement('div');
-    iframeContainer.style.cssText = `
-        flex: 1;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: #f7fafc;
-        border-radius: 0 0 12px 12px;
-        position: relative;
-    `;
-    
-    // Loading
-    const loading = document.createElement('div');
-    loading.innerHTML = '⏳ Carregando...';
-    loading.style.cssText = `
-        position: absolute;
-        color: #718096;
-        font-size: 14px;
-    `;
-    iframeContainer.appendChild(loading);
-    
-    // Iframe
-    const iframe = document.createElement('iframe');
-    iframe.src = url;
-    iframe.style.cssText = `
-        width: 100%;
-        height: 100%;
-        border: none;
-        border-radius: 0 0 12px 12px;
-        display: none;
-    `;
-    
-    // Detectar se iframe carregou ou foi bloqueado
-    let iframeBlocked = false;
-    let fallbackTimeout = setTimeout(() => {
-        if (!iframe.contentWindow || !iframe.contentDocument) {
-            iframeBlocked = true;
-            mostrarFallback();
-        }
-    }, 3000);
-    
-    iframe.onload = () => {
-        clearTimeout(fallbackTimeout);
-        try {
-            // Tenta acessar o iframe
-            const test = iframe.contentWindow.location.href;
-            loading.style.display = 'none';
-            iframe.style.display = 'block';
-        } catch (e) {
-            // Bloqueado por CSP
-            iframeBlocked = true;
-            mostrarFallback();
-        }
-    };
-    
-    iframe.onerror = () => {
-        clearTimeout(fallbackTimeout);
-        iframeBlocked = true;
-        mostrarFallback();
-    };
-    
-    function mostrarFallback() {
-        loading.innerHTML = `
-            <div style="text-align: center; padding: 40px;">
-                <div style="font-size: 48px; margin-bottom: 20px;">🔒</div>
-                <div style="font-size: 18px; font-weight: 600; color: #2d3748; margin-bottom: 10px;">
-                    Este site não permite visualização em modal
-                </div>
-                <div style="font-size: 14px; color: #718096; margin-bottom: 20px;">
-                    Clique no botão abaixo para abrir em uma nova aba
-                </div>
-                <button onclick="window.open('${url}', '_blank'); fecharModalAnuncio();" style="
-                    background: #667eea;
-                    color: white;
-                    border: none;
-                    padding: 12px 24px;
-                    border-radius: 6px;
-                    font-size: 14px;
-                    font-weight: 500;
-                    cursor: pointer;
-                ">
-                    🔗 Abrir em Nova Aba
-                </button>
-            </div>
+    // Identificação
+    if (elementos.resultIdentificacao) {
+        elementos.resultIdentificacao.innerHTML = `
+            <p><strong>Placa:</strong> ${dados.numero_patrimonio || 'N/A'}</p>
+            <p><strong>Nome:</strong> ${dados.nome_produto}</p>
+            <p><strong>Marca/Modelo:</strong> ${dados.marca} / ${dados.modelo}</p>
+            <p><strong>Especificações:</strong> ${dados.especificacoes}</p>
         `;
-        iframe.style.display = 'none';
     }
     
-    iframeContainer.appendChild(iframe);
-    
-    // Montar modal
-    container.appendChild(header);
-    container.appendChild(iframeContainer);
-    modal.appendChild(container);
-    document.body.appendChild(modal);
-    
-    // Fechar ao clicar fora
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
-            fecharModalAnuncio();
-        }
-    });
-    
-    // Fechar com ESC
-    document.addEventListener('keydown', function escHandler(e) {
-        if (e.key === 'Escape') {
-            fecharModalAnuncio();
-            document.removeEventListener('keydown', escHandler);
-        }
-    });
-}
-
-function fecharModalAnuncio() {
-    const modal = document.getElementById('modalAnuncio');
-    if (modal) {
-        modal.remove();
+    // Classificação
+    if (elementos.resultClassificacao) {
+        elementos.resultClassificacao.innerHTML = `
+            <p><strong>Estado:</strong> ${dados.estado_conservacao}</p>
+            <p><strong>Depreciação:</strong> ${dados.categoria_depreciacao}</p>
+            <p><strong>Descrição:</strong> ${dados.descricao}</p>
+        `;
     }
+    
+    // Valores
+    if (elementos.resultValores && dados.valores) {
+        elementos.resultValores.innerHTML = `
+            <p><strong>Mercado:</strong> ${formatarMoeda(dados.valores.mercado)}</p>
+            <p><strong>Atual:</strong> ${formatarMoeda(dados.valores.atual)}</p>
+            <p><strong>Depreciação:</strong> ${dados.valores.percentual_dep}</p>
+            <p><strong>Método:</strong> ${dados.valores.metodo}</p>
+            <p><strong>Confiança:</strong> ${dados.valores.confianca}%</p>
+        `;
+    }
+    
+    // Metadados
+    if (elementos.resultMetadados && dados.meta) {
+        elementos.resultMetadados.innerHTML = `
+            <p><strong>Data:</strong> ${new Date(dados.meta.data).toLocaleString('pt-BR')}</p>
+            <p><strong>Versão:</strong> ${dados.meta.versao}</p>
+            <p><strong>Custo LLM:</strong> R$ ${dados.meta.custo_llm?.toFixed(4) || '0.0000'}</p>
+        `;
+    }
+    
+    // Preços encontrados
+    if (dados.precos && dados.precos.length > 0) {
+        const precosHtml = dados.precos.map((p, i) => `
+            <div class="preco-item">
+                <strong>#${i + 1}</strong> - 
+                <span class="preco-valor">${formatarMoeda(p.v)}</span> - 
+                <span class="preco-fonte">${p.f}</span>
+                <button class="btn-link-mini" onclick="window.open('${p.u}', '_blank')">🔗 Ver</button>
+            </div>
+        `).join('');
+        
+        const secaoPrecos = document.createElement('div');
+        secaoPrecos.className = 'result-section';
+        secaoPrecos.innerHTML = `
+            <h4>Preços Encontrados (${dados.precos.length})</h4>
+            ${precosHtml}
+        `;
+        
+        if (elementos.resultValores) {
+            elementos.resultValores.parentElement.appendChild(secaoPrecos);
+        }
+    }
+    
+    // JSON Output
+    if (elementos.jsonOutput) {
+        elementos.jsonOutput.textContent = JSON.stringify(dados, null, 2);
+    }
+    
+    // Mostrar seção de resultado
+    elementos.resultSection.style.display = 'block';
+    
+    // Scroll suave
+    elementos.resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ===================================================================
