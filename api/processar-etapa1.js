@@ -306,12 +306,3 @@ module.exports = async (req, res) => {
         });
     }
 };
-```
-
----
-
-## ✅ **Resultado Esperado**
-
-Com o novo prompt, a descrição ficará:
-```
-"Armário de Gavetas industrial para ferramentas. Metal branco, 5 gavetas corrediças com identificadores, gaveta inferior com fechadura, rodízios industriais, tampo liso. Típico de oficinas e almoxarifado."
