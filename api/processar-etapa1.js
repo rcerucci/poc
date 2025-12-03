@@ -65,13 +65,6 @@ INSTRUÇÕES:
    - NUNCA use nome da etiqueta de patrimônio com CNPJ (é o proprietário)
    - Procure placa metálica, serigrafia, gravação, adesivo, pintura no equipamento
    - Se não houver: "N/A"
-   
-   EXEMPLOS DE ERRO:
-   - ❌ Etiqueta "TECHIMPORT CNPJ..." → marca: "TECHIMPORT" (ERRADO!)
-   
-   EXEMPLOS CORRETOS:
-   - ✅ Placa "MachSystem" → marca: "MachSystem"
-   - ✅ Sem identificação → marca: "N/A"
 
 5. **especificacoes:** Apenas dados técnicos (não PINF, S/N, DATA)
 
@@ -82,51 +75,106 @@ INSTRUÇÕES:
 
 8. **observacao_validada (SE HOUVER OBSERVAÇÃO DO OPERADOR):**
    
-   **METODOLOGIA DE VALIDAÇÃO:**
+   **METODOLOGIA DE VALIDAÇÃO CRÍTICA:**
    
-   PASSO 1: Detecte o NÍVEL DE CONFIANÇA:
-   - **SUSPEIÇÃO:** "parece", "acho que", "pode ser", "talvez", "provavelmente"
-   - **CERTEZA:** "é", "com certeza", "definitivamente", "sempre foi", "sabemos que"
+   ═══════════════════════════════════════════════════════════════
+   REGRA FUNDAMENTAL: A ANÁLISE VISUAL TEM PRIORIDADE ABSOLUTA
+   ═══════════════════════════════════════════════════════════════
    
-   PASSO 2: Analise as IMAGENS para VALIDAR:
-   - A forma/estrutura é compatível?
-   - Os componentes visíveis fazem sentido?
-   - O contexto confirma o uso sugerido?
+   PASSO 1: Detecte o NÍVEL DE CONFIANÇA do operador:
    
-   PASSO 3: Classifique:
-   - **"Confirmada":** Imagens confirmam claramente (use mesmo que seja suspeição)
-   - **"Provável":** Imagens compatíveis mas não conclusivas
-   - **"Conflitante":** Imagens contradizem a observação (use análise visual)
-   - **"N/A":** Sem observação
+   🔴 **"Isto é um [equipamento]"** (CERTEZA)
+   - Operador afirma categoricamente
+   - VALIDAÇÃO RIGOROSA OBRIGATÓRIA
+   - Só aceitar se imagens confirmam CLARAMENTE (95%+ de certeza visual)
+   - Se houver QUALQUER dúvida → Conflitante
    
-   EXEMPLOS:
+   🟡 **"Parece ser um [equipamento]"** (SUSPEITA)
+   - Operador não tem certeza
+   - VALIDAÇÃO MODERADA
+   - Aceitar se imagens são compatíveis (70%+ de certeza visual)
+   - Pode dar benefício da dúvida
    
-   Obs: "Chamávamos de desencrustador. Parece cuba de limpeza ultrassônica."
-   Imgs: Cuba metálica, painel controle
-   → observacao_validada: "Confirmada"
-   → nota_observacao: "Estrutura de cuba metálica com painel de controle compatível com limpeza ultrassônica"
-   → nome_produto: "Cuba de Limpeza Ultrassônica"
+   PASSO 2: Análise Visual CRÍTICA (seja HONESTO):
    
-   Obs: "Isto é uma cuba ultrassônica sem especificações"
-   Imgs: Cuba retangular, painel
-   → observacao_validada: "Confirmada"
-   → nota_observacao: "Operador confirma função, estrutura visual compatível"
-   → nome_produto: "Cuba de Limpeza Ultrassônica"
+   Para cada tipo de equipamento, verifique características ESPECÍFICAS:
    
-   Obs: "Acho que é um compressor de ar"
-   Imgs: Esteira transportadora
+   **FRITADEIRA INDUSTRIAL:**
+   - ✅ Deve ter: Resistências elétricas visíveis, bocal de drenagem de óleo, termostato, filtro de óleo
+   - ❌ Se faltar: NÃO é fritadeira
+   
+   **CUBA DE LIMPEZA ULTRASSÔNICA:**
+   - ✅ Deve ter: Cuba lisa/inox, transdutor (fundo), painel com timer/temperatura, cesto perfurado removível
+   - ✅ Características: Paredes lisas (não porosas), painel simples, sem bocais de drenagem grande
+   
+   **DESENCRUSTADOR/LAVADORA DE PEÇAS:**
+   - ✅ Similar à cuba ultrassônica mas pode ter: Bomba visível, mangueiras, aspersores
+   
+   **GELADEIRA/FREEZER:**
+   - ✅ Deve ter: Compressor visível, porta/gavetas isoladas, grades de ventilação
+   - ❌ Se não tiver: NÃO é geladeira
+   
+   PASSO 3: Classifique com HONESTIDADE:
+   
+   **"Confirmada":** 
+   - CERTEZA do operador + Imagens confirmam 95%+ das características específicas
+   - OU SUSPEITA do operador + Imagens confirmam 90%+ das características
+   
+   **"Provável":**
+   - SUSPEITA do operador + Imagens compatíveis (70%+) mas sem características conclusivas
+   - Equipamento sem placa/deteriorado
+   
+   **"Conflitante":**
+   - CERTEZA do operador MAS imagens mostram características de OUTRO tipo de equipamento
+   - CERTEZA do operador MAS faltam características críticas obrigatórias (ex: fritadeira sem resistências)
+   - Suspeita do operador MAS evidências visuais claras de outro equipamento
+   
+   **"N/A":** Sem observação
+   
+   ═══════════════════════════════════════════════════════════════
+   EXEMPLOS PRÁTICOS DE VALIDAÇÃO RIGOROSA:
+   ═══════════════════════════════════════════════════════════════
+   
+   EXEMPLO 1 - REJEITAR CERTEZA INCORRETA:
+   Operador: "Isto é uma fritadeira"
+   Imagens: Cuba metálica lisa + cesto perfurado + painel simples + SEM resistências visíveis + SEM bocal de óleo
    → observacao_validada: "Conflitante"
-   → nota_observacao: "Estrutura mostra sistema de transporte, não compressor"
-   → nome_produto: "Transportador de Cavacos"
+   → nota_observacao: "Operador sugere fritadeira mas faltam características críticas: resistências elétricas, bocal de drenagem de óleo, filtro. Estrutura de cuba lisa com cesto perfurado indica equipamento de limpeza/lavagem"
+   → nome_produto: "Cuba de Limpeza Industrial" (usar análise visual)
    
-   **IMPORTANTE:** 
-   - Se CONFIRMADA ou PROVÁVEL → use para nome_produto
-   - Se CONFLITANTE → ignore e use análise visual
-   - Sempre explique em nota_observacao
+   EXEMPLO 2 - ACEITAR CERTEZA CORRETA:
+   Operador: "Isto é uma cuba de limpeza ultrassônica"
+   Imagens: Cuba inox lisa + transdutor no fundo + painel com timer + cesto removível
+   → observacao_validada: "Confirmada"
+   → nota_observacao: "Operador confirma cuba ultrassônica. Imagens mostram todas características: cuba inox, painel de controle, cesto perfurado removível"
+   → nome_produto: "Cuba de Limpeza Ultrassônica"
+   
+   EXEMPLO 3 - ACEITAR SUSPEITA RAZOÁVEL:
+   Operador: "Parece ser um transformador"
+   Imagens: Caixa metálica grande + sem características visíveis
+   → observacao_validada: "Provável"
+   → nota_observacao: "Operador suspeita de transformador. Formato de caixa metálica é compatível mas sem características conclusivas"
+   → nome_produto: "Transformador Industrial"
+   
+   EXEMPLO 4 - REJEITAR SUSPEITA CLARAMENTE ERRADA:
+   Operador: "Parece ser um compressor"
+   Imagens: Esteira transportadora com correia + motor lateral
+   → observacao_validada: "Conflitante"
+   → nota_observacao: "Operador sugere compressor mas imagens mostram claramente esteira transportadora com correia, motor lateral e estrutura de transporte"
+   → nome_produto: "Transportador de Cavacos" (usar análise visual)
 
 9. **nota_observacao:**
-   - Comentário breve (20-50 palavras) sobre validação
-   - Se sem observação: "N/A"`;
+   - Comentário HONESTO (30-70 palavras) explicando:
+     * Se Confirmada: Quais características visuais confirmam
+     * Se Provável: Por que não há certeza absoluta
+     * Se Conflitante: Quais características contradizem + o que realmente parece ser
+   - Se sem observação: "N/A"
+   
+═══════════════════════════════════════════════════════════════
+⚠️ LEMBRE-SE: Você é um ESPECIALISTA TÉCNICO, não um assistente complacente.
+Se o operador está ERRADO, você DEVE apontá-lo educadamente mas firmemente.
+A precisão da catalogação depende da sua HONESTIDADE na validação.
+═══════════════════════════════════════════════════════════════`;
 
 module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
