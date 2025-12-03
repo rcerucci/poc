@@ -12,66 +12,60 @@ const CUSTO_INPUT_POR_TOKEN = (USD_INPUT_POR_MILHAO / 1_000_000) * TAXA_CAMBIO_U
 const CUSTO_OUTPUT_POR_TOKEN = (USD_OUTPUT_POR_MILHAO / 1_000_000) * TAXA_CAMBIO_USD_BRL;
 const TOKENS_POR_IMAGEM_512PX = 1610;
 
-const PROMPT_SISTEMA = `Analise as fotos e extraia dados do ativo em JSON puro (sem markdown):
+const PROMPT_SISTEMA = `Você é um especialista em identificação de ativos industriais. Analise CUIDADOSAMENTE as fotos e extraia dados em JSON puro (sem markdown):
 
 {
-  "numero_patrimonio": "número da plaqueta PATRIMÔNIO",
-  "nome_produto": "tipo específico do equipamento",
-  "termo_busca_comercial": "como buscar no Mercado Livre (max 6 palavras)",
+  "numero_patrimonio": "número da etiqueta PATRIMÔNIO",
+  "nome_produto": "tipo técnico específico do equipamento",
+  "termo_busca_comercial": "termo para Mercado Livre (max 6 palavras)",
   "marca": "fabricante",
   "modelo": "código do modelo",
-  "especificacoes": "tensão, potência, frequência, corrente, peso (dados técnicos puros)",
+  "especificacoes": "especificações técnicas",
   "estado_conservacao": "Excelente|Bom|Regular|Ruim",
   "motivo_conservacao": "motivo se Regular/Ruim ou N/A",
   "categoria_depreciacao": "Computadores e Informática|Ferramentas|Instalações|Máquinas e Equipamentos|Móveis e Utensílios|Veículos|Outros",
   "descricao": "descrição completa 180-200 caracteres"
 }
 
-REGRAS ESSENCIAIS:
+INSTRUÇÕES CRÍTICAS:
 
-1. numero_patrimonio: Extrair APENAS do campo "PATRIMÔNIO" (não PINF, S/N, etc)
+1. **numero_patrimonio:** 
+   - Extrair do campo "PATRIMÔNIO" na etiqueta
+   - Ignorar PINF, S/N, CNPJ
 
-2. nome_produto: IDENTIFICAR o tipo específico:
-   - Compressor de refrigeração → "Compressor de Fluido Refrigerante"
-   - Torno → "Torno Mecânico"
-   - Centro usinagem → "Centro de Usinagem CNC"
-   - Injetora → "Injetora de Plástico"
-   - Gerador → "Gerador Diesel"
-   - Se incerto: usar categoria + marca
+2. **nome_produto:**
+   - ANALISE A FUNÇÃO DO EQUIPAMENTO observando:
+     * Formato físico e construção
+     * Painéis de controle visíveis
+     * Conexões e tubulações
+     * Contexto do ambiente
+   - Use nomenclatura técnica precisa
+   - Exemplos de categorias: Coletor, Separador, Filtro, Compressor, Torno, Injetora, Gerador, Prensa, etc.
+   - Se incerto: "[Tipo Geral] [Marca]"
 
-3. especificacoes: APENAS dados técnicos (tensão, potência, etc). NÃO incluir PINF, S/N, DATA
+3. **termo_busca_comercial:**
+   - Como buscar o produto NOVO no marketplace
+   - Incluir: tipo + característica + marca
+   - Max 6 palavras
 
-4. descricao: Incluir nome, marca, modelo, resumo specs, S/N, PINF, data fabricação, aplicação. Usar 180-200 chars.
+4. **especificacoes:**
+   - APENAS: tensão, potência, frequência, corrente, peso, dimensões
+   - NÃO incluir: PINF, S/N, DATA, códigos administrativos
 
-Exemplos:
+5. **descricao:**
+   - Estrutura: "[nome] [marca] [modelo]. [Função/aplicação]. [Specs]. S/N: [num]. PINF: [cod]. Fab: [data]."
+   - 180-200 caracteres
+   - Incluir S/N, PINF e data de fabricação da placa
 
-Compressor MachSystem:
-{
-  "numero_patrimonio": "02023",
-  "nome_produto": "Compressor de Fluido Refrigerante",
-  "termo_busca_comercial": "Compressor Industrial MachSystem 9kW Trifásico",
-  "marca": "MachSystem",
-  "modelo": "SAP 14025TS L4",
-  "especificacoes": "380V trifásico, 60Hz, potência 9.0kW, corrente 20.7A, peso 260kg",
-  "estado_conservacao": "Excelente",
-  "motivo_conservacao": "N/A",
-  "categoria_depreciacao": "Máquinas e Equipamentos",
-  "descricao": "Compressor de Fluido Refrigerante MachSystem SAP 14025TS L4. Equipamento industrial trifásico 380V, 9.0kW, 20.7A, 260kg. S/N: 1368. PINF: 8396. Fabricação Agosto/2023. Para sistemas HVAC."
-}
+6. **categoria_depreciacao:**
+   - Computadores/impressoras → "Computadores e Informática"
+   - Ferramentas manuais/elétricas → "Ferramentas"
+   - Ar condicionado/elétrica → "Instalações"
+   - Equipamentos industriais pesados → "Máquinas e Equipamentos"
+   - Móveis → "Móveis e Utensílios"
+   - Veículos → "Veículos"
 
-Gaveteiro:
-{
-  "numero_patrimonio": "02149",
-  "nome_produto": "Armário de Gavetas",
-  "termo_busca_comercial": "Gaveteiro Industrial 5 Gavetas Metal",
-  "marca": "N/A",
-  "modelo": "N/A",
-  "especificacoes": "Metal pintado, 5 gavetas corrediças, rodízios, fechadura inferior",
-  "estado_conservacao": "Regular",
-  "motivo_conservacao": "desgaste visível",
-  "categoria_depreciacao": "Móveis e Utensílios",
-  "descricao": "Armário de Gavetas industrial. Metal, 5 gavetas corrediças, rodízios, fechadura. Para armazenamento de ferramentas em oficinas e almoxarifados."
-}`;
+IMPORTANTE: Analise REALMENTE as imagens. Não assuma que o equipamento é algo específico sem confirmar visualmente.`;
 
 module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -105,7 +99,7 @@ module.exports = async (req, res) => {
         const model = genAI.getGenerativeModel({
             model: MODEL,
             generationConfig: {
-                temperature: 0,
+                temperature: 0.1,
                 responseMimeType: 'application/json'
             }
         });
@@ -182,7 +176,7 @@ module.exports = async (req, res) => {
                 confianca_ia: 95,
                 total_imagens_processadas: imagens.length,
                 modelo_ia: MODEL,
-                versao_sistema: '3.0-Minimalista',
+                versao_sistema: '3.1-Sem-Vies',
                 tokens_input: tokensInput,
                 tokens_output: tokensOutput,
                 tokens_total: tokensTotal,
