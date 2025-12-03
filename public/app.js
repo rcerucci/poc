@@ -25,6 +25,7 @@ const elementos = {
     exportarJSON: document.getElementById('exportarJSON'),
     copiarJSON: document.getElementById('copiarJSON'),
     processarNovo: document.getElementById('processarNovo'),
+    observacaoSection: document.getElementById('observacaoSection'),
     formSection: document.getElementById('formSection'),
     resultSection: document.getElementById('resultSection'),
     helpTextForm: document.getElementById('helpTextForm'),
@@ -44,13 +45,15 @@ const elementos = {
     resultClassificacao: document.getElementById('resultClassificacao'),
     resultValores: document.getElementById('resultValores'),
     resultMetadados: document.getElementById('resultMetadados'),
-    jsonOutput: document.getElementById('jsonOutput')
+    jsonOutput: document.getElementById('jsonOutput'),
+    nomeEquipamento: document.getElementById('nomeEquipamento')
 };
 
 document.addEventListener('DOMContentLoaded', () => {
     console.log('🚀 Aplicação iniciada');
     inicializarEventListeners();
     inicializarUploadFotos();
+    inicializarObservacaoOperador();
 });
 
 function inicializarEventListeners() {
@@ -74,6 +77,30 @@ function inicializarEventListeners() {
     if (elementos.processarNovo) {
         elementos.processarNovo.addEventListener('click', () => location.reload());
     }
+}
+
+function inicializarObservacaoOperador() {
+    const radios = document.querySelectorAll('input[name="tipoObservacao"]');
+    const campoNome = elementos.nomeEquipamento;
+    const inputHint = document.querySelector('.input-hint');
+    
+    if (!radios.length || !campoNome) return;
+    
+    radios.forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            if (e.target.value === 'nao') {
+                campoNome.disabled = true;
+                campoNome.value = '';
+                if (inputHint) inputHint.style.display = 'none';
+            } else {
+                campoNome.disabled = false;
+                campoNome.focus();
+                if (inputHint) inputHint.style.display = 'block';
+            }
+        });
+    });
+    
+    console.log('✅ Observação do operador inicializada');
 }
 
 function limparTudo() {
@@ -279,9 +306,19 @@ function verificarFotosMinimas() {
         if (totalFotos >= CONFIG.minFotos) {
             elementos.processarEtapa1.disabled = false;
             elementos.processarEtapa1.classList.add('ready');
+            
+            // ✅ MOSTRAR SECTION DE OBSERVAÇÃO
+            if (elementos.observacaoSection) {
+                elementos.observacaoSection.style.display = 'block';
+            }
         } else {
             elementos.processarEtapa1.disabled = true;
             elementos.processarEtapa1.classList.remove('ready');
+            
+            // ✅ OCULTAR SECTION DE OBSERVAÇÃO
+            if (elementos.observacaoSection) {
+                elementos.observacaoSection.style.display = 'none';
+            }
         }
     }
     
@@ -306,12 +343,34 @@ async function processarEtapa1() {
             timestamp: foto.timestamp
         }));
         
+        // ✅ CONSTRUIR OBSERVAÇÃO PADRONIZADA
+        const tipoSelecionado = document.querySelector('input[name="tipoObservacao"]:checked')?.value;
+        const nomeEquipamento = elementos.nomeEquipamento?.value?.trim();
+        
+        let observacao = '';
+        
+        if (tipoSelecionado === 'certeza' && nomeEquipamento) {
+            observacao = `Isto é um ${nomeEquipamento}`;
+            console.log('✅ Operador tem CERTEZA:', nomeEquipamento);
+        } else if (tipoSelecionado === 'suspeita' && nomeEquipamento) {
+            observacao = `Parece ser um ${nomeEquipamento}`;
+            console.log('🤔 Operador SUSPEITA:', nomeEquipamento);
+        } else {
+            console.log('❓ Operador não sabe o equipamento');
+        }
+        
+        const payload = {
+            imagens: imagensParaIA,
+            observacao_operador: observacao
+        };
+        
         console.log('📤 Enviando ' + imagensParaIA.length + ' imagens (512px) para API...');
+        if (observacao) console.log('💡 Com observação:', observacao);
         
         const response = await fetch(CONFIG.apiUrl + '/api/processar-etapa1', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ imagens: imagensParaIA })
+            body: JSON.stringify(payload)
         });
         
         const resultado = await response.json();
@@ -321,7 +380,26 @@ async function processarEtapa1() {
         if (resultado.status === 'Sucesso') {
             AppState.dadosEtapa1 = resultado.dados;
             preencherFormulario(resultado.dados);
-            mostrarAlerta('✅ ' + resultado.mensagem, 'success');
+            
+            // ✅ MOSTRAR VALIDAÇÃO DA OBSERVAÇÃO
+            if (resultado.dados.observacao_validada && resultado.dados.observacao_validada !== 'N/A') {
+                const emoji = {
+                    'Confirmada': '✅',
+                    'Provável': '🟡',
+                    'Conflitante': '⚠️'
+                }[resultado.dados.observacao_validada] || '💡';
+                
+                console.log(emoji + ' Observação:', resultado.dados.observacao_validada);
+                console.log('📝 Nota:', resultado.dados.nota_observacao);
+                
+                mostrarAlerta(
+                    emoji + ' Observação ' + resultado.dados.observacao_validada.toLowerCase() + ': ' + resultado.dados.nota_observacao, 
+                    resultado.dados.observacao_validada === 'Conflitante' ? 'warning' : 'success',
+                    10000  // 10 segundos para ler
+                );
+            } else {
+                mostrarAlerta('✅ ' + resultado.mensagem, 'success');
+            }
             
             if (resultado.dados.metadados?.custo_total) {
                 console.log('💰 Custo Etapa 1: R$', resultado.dados.metadados.custo_total);
@@ -516,7 +594,7 @@ function formatarMoeda(valor) {
     return 'R$ ' + parseFloat(valor).toFixed(2).replace('.', ',');
 }
 
-function mostrarAlerta(mensagem, tipo = 'info') {
+function mostrarAlerta(mensagem, tipo = 'info', duracao = 7000) {
     if (!elementos.alertBox) return;
     
     elementos.alertBox.textContent = mensagem;
@@ -525,7 +603,7 @@ function mostrarAlerta(mensagem, tipo = 'info') {
     
     setTimeout(() => {
         elementos.alertBox.style.display = 'none';
-    }, 5000);
+    }, duracao);
 }
 
 function mostrarLoading(texto = 'Processando...') {

@@ -80,6 +80,62 @@
             </div>
         </section>
 
+        <!-- ============================================ -->
+        <!-- SECTION: Conhecimento do Operador (NOVA)    -->
+        <!-- Inserir ENTRE section de fotos e formulário -->
+        <!-- ============================================ -->
+        <section class="card" id="observacaoSection" style="display: none;">
+            <h3>💡 Você conhece este equipamento?</h3>
+            <p class="help-text">
+                Se souber o que é este equipamento, informe abaixo para melhorar a precisão da identificação.
+            </p>
+            
+            <div class="observacao-container">
+                <!-- Radio Buttons -->
+                <div class="radio-group">
+                    <label class="radio-option">
+                        <input type="radio" name="tipoObservacao" value="nao" checked>
+                        <span class="radio-label">
+                            <span class="radio-icon">❌</span>
+                            <span class="radio-text">Não sei</span>
+                        </span>
+                    </label>
+                    
+                    <label class="radio-option">
+                        <input type="radio" name="tipoObservacao" value="suspeita">
+                        <span class="radio-label">
+                            <span class="radio-icon">🤔</span>
+                            <span class="radio-text">Acho que é</span>
+                        </span>
+                    </label>
+                    
+                    <label class="radio-option">
+                        <input type="radio" name="tipoObservacao" value="certeza">
+                        <span class="radio-label">
+                            <span class="radio-icon">✅</span>
+                            <span class="radio-text">Tenho certeza</span>
+                        </span>
+                    </label>
+                </div>
+                
+                <!-- Campo de Nome do Equipamento -->
+                <div class="input-group">
+                    <label for="nomeEquipamento" class="input-label">Nome do Equipamento:</label>
+                    <input 
+                        type="text" 
+                        id="nomeEquipamento" 
+                        class="input-nome-equipamento"
+                        placeholder="Ex: Cuba de Limpeza Ultrassônica" 
+                        maxlength="100"
+                        disabled
+                    >
+                    <small class="input-hint" style="display: none;">
+                        Digite o nome técnico do equipamento
+                    </small>
+                </div>
+            </div>
+        </section>
+
         <!-- Formulário de Dados -->
         <section class="card" id="formSection" style="display: none;">
             <h3>📋 Dados do Patrimônio</h3>

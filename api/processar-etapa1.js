@@ -24,7 +24,9 @@ const PROMPT_SISTEMA = `Você é especialista em identificação de ativos indus
   "estado_conservacao": "Excelente|Bom|Regular|Ruim",
   "motivo_conservacao": "motivo se Regular/Ruim ou N/A",
   "categoria_depreciacao": "categoria de depreciação",
-  "descricao": "180-200 caracteres"
+  "descricao": "180-200 caracteres",
+  "observacao_validada": "Confirmada|Provável|Conflitante|N/A",
+  "nota_observacao": "comentário sobre validação ou N/A"
 }
 
 REGRA CRÍTICA DE PADRONIZAÇÃO:
@@ -48,73 +50,83 @@ Exemplos:
 - "Transformer" → "Transformador Industrial"
 - "CNC Lathe" → "Torno CNC"
 
-IMPORTANTE: Equipamentos com a MESMA função = MESMO nome em português.
-
 INSTRUÇÕES:
 
-1. **numero_patrimonio:** 
-   - Campo "PATRIMÔNIO" da etiqueta
-   - Ignorar PINF, S/N, CNPJ
+1. **numero_patrimonio:** Campo "PATRIMÔNIO" (ignorar PINF, S/N, CNPJ)
 
-2. **nome_produto:** 
-   - Termo técnico português
-   - Máximo 4 palavras
+2. **nome_produto:** Termo técnico português (máximo 4 palavras)
 
 3. **termo_busca_comercial (ESTRATÉGIA ADAPTATIVA):**
-   
-   **Para equipamentos INDUSTRIAIS ESPECIALIZADOS:**
-   - Categorias: "Máquinas e Equipamentos", "Instalações", "Ferramentas" industriais
-   - Use termos B2B técnicos
-   - Exemplos: "Transportador Cavacos Industrial CNC", "Transformador Industrial Trifásico 380V"
-   
-   **Para itens COMUNS com mercado B2C amplo:**
-   - Categorias: "Móveis e Utensílios", "Computadores e Informática" (itens comuns)
-   - Use termos B2C genéricos
-   - Exemplos: "Cadeira Presidente Giratória Preta", "Gaveteiro 5 Gavetas Metal"
-   
-   Max 6 palavras
+   - Equipamentos industriais → termos B2B técnicos
+   - Itens comuns (móveis, etc) → termos B2C genéricos
+   - Max 6 palavras
 
-4. **marca (CRÍTICO - NÃO CONFUNDIR PROPRIETÁRIO COM FABRICANTE):**
+4. **marca (NÃO CONFUNDIR PROPRIETÁRIO COM FABRICANTE):**
+   - NUNCA use nome da etiqueta de patrimônio com CNPJ (é o proprietário)
+   - Procure placa metálica, serigrafia, gravação, adesivo, pintura no equipamento
+   - Se não houver: "N/A"
    
-   **REGRA ABSOLUTA:**
-   - **NUNCA use o nome que aparece na etiqueta de patrimônio junto com CNPJ**
-   - Este é o nome do PROPRIETÁRIO do ativo, NÃO o fabricante
+   EXEMPLOS DE ERRO:
+   - ❌ Etiqueta "TECHIMPORT CNPJ..." → marca: "TECHIMPORT" (ERRADO!)
    
-   **Como identificar o FABRICANTE:**
-   - Procure placa METÁLICA fixada no EQUIPAMENTO (não a etiqueta de patrimônio) ou impressão visível, serigrafia, gravação, adesivo, pintura
-   - Geralmente está perto de especificações técnicas ou no corpo do equipamento
-   - Exemplos de fabricantes: MachSystem, Sun Korea, LNS, HP, Dell, Toyama, Makita
-      
-   **Se NÃO houver placa do fabricante visível:**
-   - marca: "N/A"
-   
-   **EXEMPLOS DE ERRO (NÃO FAZER):**
-   - ❌ Etiqueta diz "TECHIMPORT CNPJ 15.524.734/0001-47" → marca: "TECHIMPORT" (ERRADO!)
-   - ❌ Etiqueta diz "Empresa XYZ PATRIMÔNIO 12345" → marca: "Empresa XYZ" (ERRADO!)
-   
-   **EXEMPLOS CORRETOS:**
-   - ✅ Placa do equipamento diz "MachSystem" → marca: "MachSystem"
-   - ✅ Placa do equipamento diz "Sun Korea" → marca: "Sun Korea"
-   - ✅ Não há placa do fabricante visível → marca: "N/A"
+   EXEMPLOS CORRETOS:
+   - ✅ Placa "MachSystem" → marca: "MachSystem"
+   - ✅ Sem identificação → marca: "N/A"
 
-5. **especificacoes:**
-   - APENAS: tensão, potência, frequência, corrente, peso, capacidade
-   - NÃO: PINF, S/N, DATA, CNPJ, nome de empresa
+5. **especificacoes:** Apenas dados técnicos (não PINF, S/N, DATA)
 
-6. **descricao:**
-   - "[nome] [marca] [modelo]. [Função]. [Specs]. S/N: [n]. PINF: [p]. Fab: [data]."
-   - 180-200 caracteres
+6. **descricao:** "[nome] [marca] [modelo]. [Função]. [Specs]. S/N: [n]. PINF: [p]. Fab: [data]." (180-200 chars)
 
 7. **categoria_depreciacao:**
-   - Analise a natureza e função
-   - Classifique em UMA:
-     * "Computadores e Informática"
-     * "Ferramentas"
-     * "Instalações"
-     * "Máquinas e Equipamentos"
-     * "Móveis e Utensílios"
-     * "Veículos"
-     * "Outros"`;
+   - "Computadores e Informática" / "Ferramentas" / "Instalações" / "Máquinas e Equipamentos" / "Móveis e Utensílios" / "Veículos" / "Outros"
+
+8. **observacao_validada (SE HOUVER OBSERVAÇÃO DO OPERADOR):**
+   
+   **METODOLOGIA DE VALIDAÇÃO:**
+   
+   PASSO 1: Detecte o NÍVEL DE CONFIANÇA:
+   - **SUSPEIÇÃO:** "parece", "acho que", "pode ser", "talvez", "provavelmente"
+   - **CERTEZA:** "é", "com certeza", "definitivamente", "sempre foi", "sabemos que"
+   
+   PASSO 2: Analise as IMAGENS para VALIDAR:
+   - A forma/estrutura é compatível?
+   - Os componentes visíveis fazem sentido?
+   - O contexto confirma o uso sugerido?
+   
+   PASSO 3: Classifique:
+   - **"Confirmada":** Imagens confirmam claramente (use mesmo que seja suspeição)
+   - **"Provável":** Imagens compatíveis mas não conclusivas
+   - **"Conflitante":** Imagens contradizem a observação (use análise visual)
+   - **"N/A":** Sem observação
+   
+   EXEMPLOS:
+   
+   Obs: "Chamávamos de desencrustador. Parece cuba de limpeza ultrassônica."
+   Imgs: Cuba metálica, painel controle
+   → observacao_validada: "Confirmada"
+   → nota_observacao: "Estrutura de cuba metálica com painel de controle compatível com limpeza ultrassônica"
+   → nome_produto: "Cuba de Limpeza Ultrassônica"
+   
+   Obs: "Isto é uma cuba ultrassônica sem especificações"
+   Imgs: Cuba retangular, painel
+   → observacao_validada: "Confirmada"
+   → nota_observacao: "Operador confirma função, estrutura visual compatível"
+   → nome_produto: "Cuba de Limpeza Ultrassônica"
+   
+   Obs: "Acho que é um compressor de ar"
+   Imgs: Esteira transportadora
+   → observacao_validada: "Conflitante"
+   → nota_observacao: "Estrutura mostra sistema de transporte, não compressor"
+   → nome_produto: "Transportador de Cavacos"
+   
+   **IMPORTANTE:** 
+   - Se CONFIRMADA ou PROVÁVEL → use para nome_produto
+   - Se CONFLITANTE → ignore e use análise visual
+   - Sempre explique em nota_observacao
+
+9. **nota_observacao:**
+   - Comentário breve (20-50 palavras) sobre validação
+   - Se sem observação: "N/A"`;
 
 module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -127,7 +139,7 @@ module.exports = async (req, res) => {
     console.log('🔍 [ETAPA1] Iniciando extração...');
     
     try {
-        const { imagens } = req.body;
+        const { imagens, observacao_operador } = req.body;  // ✅ NOVO CAMPO
         
         if (!imagens || imagens.length < 2) {
             return res.status(400).json({
@@ -160,8 +172,28 @@ module.exports = async (req, res) => {
             }
         }));
         
+        // ✅ ADICIONAR OBSERVAÇÃO AO PROMPT SE FORNECIDA
+        let promptFinal = PROMPT_SISTEMA;
+        
+        if (observacao_operador && observacao_operador.length > 0) {
+            console.log('💡 [ETAPA1] Observação do operador recebida:', observacao_operador.substring(0, 50) + '...');
+            
+            promptFinal += `\n\n═══════════════════════════════════════════════════════
+📝 OBSERVAÇÃO DO OPERADOR (pessoa que conhece o histórico do equipamento):
+"${observacao_operador}"
+
+INSTRUÇÕES CRÍTICAS:
+1. DETECTE se é suspeição ou certeza
+2. VALIDE cruzando com as imagens
+3. CLASSIFIQUE em: Confirmada / Provável / Conflitante
+4. EXPLIQUE brevemente em nota_observacao
+5. Se CONFIRMADA ou PROVÁVEL: use para nome_produto
+6. Se CONFLITANTE: ignore e use apenas análise visual
+═══════════════════════════════════════════════════════`;
+        }
+        
         const result = await model.generateContent([
-            PROMPT_SISTEMA,
+            promptFinal,
             ...imageParts
         ]);
         
@@ -191,7 +223,8 @@ module.exports = async (req, res) => {
         const camposObrigatorios = [
             'numero_patrimonio', 'nome_produto', 'termo_busca_comercial',
             'marca', 'modelo', 'especificacoes', 'estado_conservacao',
-            'motivo_conservacao', 'categoria_depreciacao', 'descricao'
+            'motivo_conservacao', 'categoria_depreciacao', 'descricao',
+            'observacao_validada', 'nota_observacao'  // ✅ NOVOS CAMPOS
         ];
         
         camposObrigatorios.forEach(campo => {
@@ -230,7 +263,7 @@ module.exports = async (req, res) => {
                 confianca_ia: 95,
                 total_imagens_processadas: imagens.length,
                 modelo_ia: MODEL,
-                versao_sistema: '4.2-Proprietario-Fix',
+                versao_sistema: '5.0-Observacao-Validada',
                 tokens_input: tokensInput,
                 tokens_output: tokensOutput,
                 tokens_total: tokensTotal,
@@ -238,11 +271,17 @@ module.exports = async (req, res) => {
                 custo_input: parseFloat(custoInput.toFixed(4)),
                 custo_output: parseFloat(custoOutput.toFixed(4)),
                 custo_total: parseFloat(custoTotal.toFixed(4)),
-                taxa_cambio: TAXA_CAMBIO_USD_BRL
+                taxa_cambio: TAXA_CAMBIO_USD_BRL,
+                observacao_fornecida: observacao_operador ? true : false  // ✅ Flag
             }
         };
         
         console.log('✅ [ETAPA1]', dadosExtraidos.nome_produto);
+        
+        if (dadosExtraidos.observacao_validada !== 'N/A') {
+            console.log('💡 [ETAPA1] Validação:', dadosExtraidos.observacao_validada);
+            console.log('📝 [ETAPA1] Nota:', dadosExtraidos.nota_observacao);
+        }
         
         return res.status(200).json({
             status: 'Sucesso',
