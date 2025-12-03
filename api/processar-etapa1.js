@@ -12,60 +12,99 @@ const CUSTO_INPUT_POR_TOKEN = (USD_INPUT_POR_MILHAO / 1_000_000) * TAXA_CAMBIO_U
 const CUSTO_OUTPUT_POR_TOKEN = (USD_OUTPUT_POR_MILHAO / 1_000_000) * TAXA_CAMBIO_USD_BRL;
 const TOKENS_POR_IMAGEM_512PX = 1610;
 
-const PROMPT_SISTEMA = `Você é um especialista em identificação de ativos industriais. Analise CUIDADOSAMENTE as fotos e extraia dados em JSON puro (sem markdown):
+const PROMPT_SISTEMA = `Você é especialista em identificação de ativos industriais. Analise as fotos e extraia dados em JSON puro (sem markdown):
 
 {
   "numero_patrimonio": "número da etiqueta PATRIMÔNIO",
-  "nome_produto": "tipo técnico específico do equipamento",
-  "termo_busca_comercial": "termo para Mercado Livre (max 6 palavras)",
+  "nome_produto": "nome técnico padronizado em PORTUGUÊS",
+  "termo_busca_comercial": "termo otimizado para busca (max 6 palavras)",
   "marca": "fabricante",
-  "modelo": "código do modelo",
-  "especificacoes": "especificações técnicas",
+  "modelo": "código",
+  "especificacoes": "specs técnicas",
   "estado_conservacao": "Excelente|Bom|Regular|Ruim",
   "motivo_conservacao": "motivo se Regular/Ruim ou N/A",
-  "categoria_depreciacao": "Computadores e Informática|Ferramentas|Instalações|Máquinas e Equipamentos|Móveis e Utensílios|Veículos|Outros",
-  "descricao": "descrição completa 180-200 caracteres"
+  "categoria_depreciacao": "categoria de depreciação",
+  "descricao": "180-200 caracteres"
 }
 
-INSTRUÇÕES CRÍTICAS:
+REGRA CRÍTICA DE PADRONIZAÇÃO:
+
+**nome_produto deve SEMPRE:**
+1. Estar em PORTUGUÊS (nunca inglês/outros idiomas)
+2. Descrever a FUNÇÃO do equipamento, não a marca
+3. Usar nomenclatura técnica brasileira padrão
+
+**Metodologia de nomenclatura:**
+
+PASSO 1: Identifique a FUNÇÃO PRINCIPAL
+- O que ele FAZ? (transporta, filtra, comprime, transforma, resfria, etc)
+- O que ele PROCESSA? (cavacos, óleo, ar, fluido, dados, etc)
+
+PASSO 2: Monte o nome: "[AÇÃO] de [OBJETO]" ou "[TIPO] [APLICAÇÃO]"
+
+Exemplos:
+- "Chip Conveyor" → "Transportador de Cavacos"
+- "Oil Skimmer" → "Coletor de Óleo"
+- "Transformer" → "Transformador Industrial"
+- "CNC Lathe" → "Torno CNC"
+
+IMPORTANTE: Equipamentos com a MESMA função = MESMO nome em português.
+
+INSTRUÇÕES:
 
 1. **numero_patrimonio:** 
-   - Extrair do campo "PATRIMÔNIO" na etiqueta
+   - Campo "PATRIMÔNIO"
    - Ignorar PINF, S/N, CNPJ
 
-2. **nome_produto:**
-   - ANALISE A FUNÇÃO DO EQUIPAMENTO observando:
-     * Formato físico e construção
-     * Painéis de controle visíveis
-     * Conexões e tubulações
-     * Contexto do ambiente
-   - Use nomenclatura técnica precisa
-   - Exemplos de categorias: Coletor, Separador, Filtro, Compressor, Torno, Injetora, Gerador, Prensa, etc.
-   - Se incerto: "[Tipo Geral] [Marca]"
+2. **nome_produto:** 
+   - Termo técnico português
+   - Máximo 4 palavras
 
-3. **termo_busca_comercial:**
-   - Como buscar o produto NOVO no marketplace
-   - Incluir: tipo + característica + marca
-   - Max 6 palavras
+3. **termo_busca_comercial (ESTRATÉGIA ADAPTATIVA):**
+   
+   **REGRA CRÍTICA:** Adapte o termo baseado na categoria e disponibilidade de mercado
+   
+   **Para equipamentos INDUSTRIAIS ESPECIALIZADOS:**
+   - Categorias: "Máquinas e Equipamentos", "Instalações", "Ferramentas" industriais
+   - Use termos B2B técnicos (Google Shopping, Indústria Mix, distribuidores)
+   - Exemplos:
+     * "Transportador Cavacos Industrial CNC"
+     * "Transformador Industrial Trifásico 380V"
+     * "Resfriador Chiller Industrial 5HP"
+   
+   **Para itens COMUNS com mercado B2C amplo:**
+   - Categorias: "Móveis e Utensílios", "Computadores e Informática" (itens comuns)
+   - Use termos B2C genéricos (Mercado Livre, Magazine Luiza, varejo)
+   - Priorize características visíveis e linguagem de consumidor
+   - Exemplos:
+     * "Cadeira Presidente Giratória Preta" (não "Cadeira Comercial Ergonômica")
+     * "Gaveteiro 5 Gavetas Metal Branco" (não "Gaveteiro Industrial Oficina")
+     * "Mesa Escritório MDF 120cm" (não "Mesa Comercial Corporativa")
+     * "Impressora Multifuncional HP LaserJet" (não "Impressora Corporativa Rede")
+   
+   **DICA:** Se o item pode ser comprado em loja de varejo comum, use linguagem B2C
+   
+   Max 6 palavras sempre
 
 4. **especificacoes:**
-   - APENAS: tensão, potência, frequência, corrente, peso, dimensões
-   - NÃO incluir: PINF, S/N, DATA, códigos administrativos
+   - APENAS: tensão, potência, frequência, corrente, peso, capacidade
+   - NÃO: PINF, S/N, DATA
 
 5. **descricao:**
-   - Estrutura: "[nome] [marca] [modelo]. [Função/aplicação]. [Specs]. S/N: [num]. PINF: [cod]. Fab: [data]."
+   - "[nome] [marca] [modelo]. [Função]. [Specs]. S/N: [n]. PINF: [p]. Fab: [data]."
    - 180-200 caracteres
-   - Incluir S/N, PINF e data de fabricação da placa
 
 6. **categoria_depreciacao:**
-   - Computadores/impressoras → "Computadores e Informática"
-   - Ferramentas manuais/elétricas → "Ferramentas"
-   - Ar condicionado/elétrica → "Instalações"
-   - Equipamentos industriais pesados → "Máquinas e Equipamentos"
-   - Móveis → "Móveis e Utensílios"
-   - Veículos → "Veículos"
-
-IMPORTANTE: Analise REALMENTE as imagens. Não assuma que o equipamento é algo específico sem confirmar visualmente.`;
+   - Analise a natureza e função do equipamento
+   - Classifique em UMA categoria:
+     * "Computadores e Informática"
+     * "Ferramentas"
+     * "Instalações"
+     * "Máquinas e Equipamentos"
+     * "Móveis e Utensílios"
+     * "Veículos"
+     * "Outros"
+   - Use "Outros" apenas se não se encaixa claramente nas outras 6`;
 
 module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -161,8 +200,13 @@ module.exports = async (req, res) => {
         }
         
         const categoriasValidas = [
-            'Computadores e Informática', 'Ferramentas', 'Instalações',
-            'Máquinas e Equipamentos', 'Móveis e Utensílios', 'Veículos', 'Outros'
+            'Computadores e Informática',
+            'Ferramentas',
+            'Instalações',
+            'Máquinas e Equipamentos',
+            'Móveis e Utensílios',
+            'Veículos',
+            'Outros'
         ];
         
         if (!categoriasValidas.includes(dadosExtraidos.categoria_depreciacao)) {
@@ -176,7 +220,7 @@ module.exports = async (req, res) => {
                 confianca_ia: 95,
                 total_imagens_processadas: imagens.length,
                 modelo_ia: MODEL,
-                versao_sistema: '3.1-Sem-Vies',
+                versao_sistema: '4.1-Adaptativo',
                 tokens_input: tokensInput,
                 tokens_output: tokensOutput,
                 tokens_total: tokensTotal,
