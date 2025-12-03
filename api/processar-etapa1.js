@@ -53,7 +53,7 @@ IMPORTANTE: Equipamentos com a MESMA função = MESMO nome em português.
 INSTRUÇÕES:
 
 1. **numero_patrimonio:** 
-   - Campo "PATRIMÔNIO"
+   - Campo "PATRIMÔNIO" da etiqueta
    - Ignorar PINF, S/N, CNPJ
 
 2. **nome_produto:** 
@@ -62,49 +62,59 @@ INSTRUÇÕES:
 
 3. **termo_busca_comercial (ESTRATÉGIA ADAPTATIVA):**
    
-   **REGRA CRÍTICA:** Adapte o termo baseado na categoria e disponibilidade de mercado
-   
    **Para equipamentos INDUSTRIAIS ESPECIALIZADOS:**
    - Categorias: "Máquinas e Equipamentos", "Instalações", "Ferramentas" industriais
-   - Use termos B2B técnicos (Google Shopping, Indústria Mix, distribuidores)
-   - Exemplos:
-     * "Transportador Cavacos Industrial CNC"
-     * "Transformador Industrial Trifásico 380V"
-     * "Resfriador Chiller Industrial 5HP"
+   - Use termos B2B técnicos
+   - Exemplos: "Transportador Cavacos Industrial CNC", "Transformador Industrial Trifásico 380V"
    
    **Para itens COMUNS com mercado B2C amplo:**
    - Categorias: "Móveis e Utensílios", "Computadores e Informática" (itens comuns)
-   - Use termos B2C genéricos (Mercado Livre, Magazine Luiza, varejo)
-   - Priorize características visíveis e linguagem de consumidor
-   - Exemplos:
-     * "Cadeira Presidente Giratória Preta" (não "Cadeira Comercial Ergonômica")
-     * "Gaveteiro 5 Gavetas Metal Branco" (não "Gaveteiro Industrial Oficina")
-     * "Mesa Escritório MDF 120cm" (não "Mesa Comercial Corporativa")
-     * "Impressora Multifuncional HP LaserJet" (não "Impressora Corporativa Rede")
+   - Use termos B2C genéricos
+   - Exemplos: "Cadeira Presidente Giratória Preta", "Gaveteiro 5 Gavetas Metal"
    
-   **DICA:** Se o item pode ser comprado em loja de varejo comum, use linguagem B2C
-   
-   Max 6 palavras sempre
+   Max 6 palavras
 
-4. **especificacoes:**
+4. **marca (CRÍTICO - NÃO CONFUNDIR PROPRIETÁRIO COM FABRICANTE):**
+   
+   **REGRA ABSOLUTA:**
+   - **NUNCA use o nome que aparece na etiqueta de patrimônio junto com CNPJ**
+   - Este é o nome do PROPRIETÁRIO do ativo, NÃO o fabricante
+   
+   **Como identificar o FABRICANTE:**
+   - Procure placa METÁLICA fixada no EQUIPAMENTO (não a etiqueta de patrimônio) ou impressão visível, serigrafia, gravação, adesivo, pintura
+   - Geralmente está perto de especificações técnicas ou no corpo do equipamento
+   - Exemplos de fabricantes: MachSystem, Sun Korea, LNS, HP, Dell, Toyama, Makita
+      
+   **Se NÃO houver placa do fabricante visível:**
+   - marca: "N/A"
+   
+   **EXEMPLOS DE ERRO (NÃO FAZER):**
+   - ❌ Etiqueta diz "TECHIMPORT CNPJ 15.524.734/0001-47" → marca: "TECHIMPORT" (ERRADO!)
+   - ❌ Etiqueta diz "Empresa XYZ PATRIMÔNIO 12345" → marca: "Empresa XYZ" (ERRADO!)
+   
+   **EXEMPLOS CORRETOS:**
+   - ✅ Placa do equipamento diz "MachSystem" → marca: "MachSystem"
+   - ✅ Placa do equipamento diz "Sun Korea" → marca: "Sun Korea"
+   - ✅ Não há placa do fabricante visível → marca: "N/A"
+
+5. **especificacoes:**
    - APENAS: tensão, potência, frequência, corrente, peso, capacidade
-   - NÃO: PINF, S/N, DATA
+   - NÃO: PINF, S/N, DATA, CNPJ, nome de empresa
 
-5. **descricao:**
+6. **descricao:**
    - "[nome] [marca] [modelo]. [Função]. [Specs]. S/N: [n]. PINF: [p]. Fab: [data]."
    - 180-200 caracteres
 
-6. **categoria_depreciacao:**
-   - Analise a natureza e função do equipamento
-   - Classifique em UMA categoria:
+7. **categoria_depreciacao:**
+   - Analise a natureza e função
+   - Classifique em UMA:
      * "Computadores e Informática"
      * "Ferramentas"
      * "Instalações"
      * "Máquinas e Equipamentos"
      * "Móveis e Utensílios"
      * "Veículos"
-     * "Outros"
-   - Use "Outros" apenas se não se encaixa claramente nas outras 6`;
+     * "Outros"`;
 
 module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -220,7 +230,7 @@ module.exports = async (req, res) => {
                 confianca_ia: 95,
                 total_imagens_processadas: imagens.length,
                 modelo_ia: MODEL,
-                versao_sistema: '4.1-Adaptativo',
+                versao_sistema: '4.2-Proprietario-Fix',
                 tokens_input: tokensInput,
                 tokens_output: tokensOutput,
                 tokens_total: tokensTotal,
