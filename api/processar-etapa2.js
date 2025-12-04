@@ -412,7 +412,7 @@ async function extrairDadosEstruturados(textoMarkdown) {
             }
         });
         
-        const prompt = `Extraia produtos do seguinte texto em JSON estruturado.
+        const prompt = `Extraia produtos do texto em JSON.
 
 TEXTO:
 ${textoMarkdown}
@@ -423,9 +423,7 @@ Retorne:
   "produtos": [
     {
       "nome": "nome completo do produto",
-      "preco": 999.99,
-      "link": "extrair_se_houver",
-      "loja": "NOME_DO_SITE_OU_LOJA",
+      "preco": 9666.00,
       "classificacao": "match"
     }
   ],
@@ -441,11 +439,10 @@ Retorne:
 }
 
 REGRAS:
-- "loja": nome do site (ex: "vixevendas", "solares", "mercadolivre", "edeltec")
-- Preço: número decimal (9666.00) ou null
-- "match" = Minuzzi 25kVA | "similar" = diferente
-- Média: (match*2 + similar*1) / (count_match*2 + count_similar*1)
-- CADA produto deve ter sua loja correta identificada`;
+- Preço: número decimal ou null se não houver
+- "match" = Minuzzi 25kVA | "similar" = marca/spec diferente  
+- Média ponderada: (match*2 + similar) / (count_match*2 + count_similar)
+- Extraia NA ORDEM que aparecem no texto`;
         
         const result = await model.generateContent(prompt);
         const response = result.response;
@@ -461,6 +458,14 @@ REGRAS:
         console.log('📊 Tokens Extração - Input:', tokensExtracao.input, '| Output:', tokensExtracao.output, '| Total:', tokensExtracao.total);
         
         const dadosFinais = JSON.parse(jsonText);
+        
+        // Adicionar campos vazios para link e loja (serão preenchidos depois)
+        if (dadosFinais.produtos) {
+            dadosFinais.produtos.forEach(p => {
+                p.link = null;
+                p.loja = null;
+            });
+        }
         
         console.log('✅ [EXTRAÇÃO] Encontrados:', dadosFinais.produtos?.length || 0, 'produtos');
         console.log('💰 [EXTRAÇÃO] Média ponderada:', dadosFinais.avaliacao?.media_ponderada || 'N/A');
@@ -578,31 +583,20 @@ module.exports = async (req, res) => {
             resultado.texto
         );
         
-        // ETAPA 2: Extrair dados estruturados (JSON) - texto RAW com links
+        // ETAPA 2: Extrair dados estruturados (JSON) - texto RAW
         const dadosEstruturados = await extrairDadosEstruturados(
             resultado.texto
         );
         
-        // Mapear links resolvidos aos produtos pelo domínio da loja
+        // Mapear links aos produtos por ORDEM (grounding retorna na ordem do texto)
         if (dadosEstruturados.produtos && metadataProcessada.links_encontrados) {
-            dadosEstruturados.produtos.forEach(produto => {
-                // Tentar encontrar link pelo domínio da loja mencionada
-                const lojaLower = (produto.loja || '').toLowerCase();
-                
-                const linkEncontrado = metadataProcessada.links_encontrados.find(link => {
-                    const domain = link.domain.toLowerCase();
-                    const uri = link.uri.toLowerCase();
-                    
-                    // Verificar se domínio ou URI contém nome da loja
-                    return domain.includes(lojaLower) || 
-                           uri.includes(lojaLower) ||
-                           lojaLower.includes(domain.replace('www.', '').split('.')[0]);
-                });
-                
-                if (linkEncontrado) {
-                    produto.link = linkEncontrado.uri;
-                    produto.loja = linkEncontrado.domain.replace('www.', '');
-                    console.log(`🔗 [MAP] ${produto.nome.substring(0, 40)}... → ${produto.loja}`);
+            const links = metadataProcessada.links_encontrados;
+            
+            dadosEstruturados.produtos.forEach((produto, idx) => {
+                if (idx < links.length) {
+                    produto.link = links[idx].uri;
+                    produto.loja = links[idx].domain.replace('www.', '');
+                    console.log(`🔗 [MAP] Produto ${idx+1} → ${produto.loja}`);
                 }
             });
         }
