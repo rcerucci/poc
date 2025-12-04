@@ -46,6 +46,7 @@ async function buscarEEstruturar(termo, produtoOriginal) {
             model: MODEL,
             generationConfig: {
                 temperature: 0.1,
+                maxOutputTokens: 4096,
                 thinkingConfig: {
                     thinkingBudget: 0
                 }
@@ -79,9 +80,11 @@ REGRAS:
 - classificacao "similar" = produto equivalente/alternativo
 - preco = menor preço encontrado (à vista ou parcelado)
 - Se não encontrar preço, use null
-- Retorne até 15 produtos
+- Retorne MÁXIMO 10 produtos (para evitar resposta muito longa)
 - SEMPRE inclua o link completo do produto
-- NÃO adicione texto antes ou depois do JSON`;
+- NÃO adicione texto antes ou depois do JSON
+- Use aspas duplas em todos os valores string
+- Escape caracteres especiais corretamente`;
         
         const result = await model.generateContent({
             contents: [{ parts: [{ text: prompt }] }],
@@ -91,10 +94,22 @@ REGRAS:
         const response = result.response;
         let jsonText = response.text();
         
+        console.log('📝 [DEBUG] Tamanho da resposta:', jsonText.length, 'caracteres');
+        
         // Remover markdown se houver
         jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
         
-        const dados = JSON.parse(jsonText);
+        // Tentar parsear
+        let dados;
+        try {
+            dados = JSON.parse(jsonText);
+        } catch (parseError) {
+            console.error('❌ [PARSE] Erro ao parsear JSON:', parseError.message);
+            console.error('📄 [PARSE] Primeiros 500 chars:', jsonText.substring(0, 500));
+            console.error('📄 [PARSE] Últimos 500 chars:', jsonText.substring(jsonText.length - 500));
+            
+            throw new Error(`JSON inválido: ${parseError.message}`);
+        }
         
         // Extrair metadata
         const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
