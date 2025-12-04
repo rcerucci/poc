@@ -51,7 +51,7 @@ const FATORES_DEPRECIACAO = {
 // =============================================================================
 // BUSCAR COM GROUNDING
 // =============================================================================
-
+//
 async function buscarComGrounding(termo) {
     console.log('🔍 [GROUNDING] Termo:', termo);
     
