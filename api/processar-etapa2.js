@@ -144,6 +144,11 @@ async function resolverRedirect(url) {
 function extrairLinksDoMarkdown(textoMarkdown) {
     const links = [];
     
+    console.log('\n' + '='.repeat(50));
+    console.log('🔗 [FALLBACK MARKDOWN] INICIANDO');
+    console.log('='.repeat(50));
+    console.log('📝 Tamanho do texto:', textoMarkdown.length, 'caracteres');
+    
     // Regex para capturar links Markdown: [texto](url)
     const regexMarkdown = /\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g;
     let match;
@@ -151,6 +156,9 @@ function extrairLinksDoMarkdown(textoMarkdown) {
     while ((match = regexMarkdown.exec(textoMarkdown)) !== null) {
         const titulo = match[1];
         const url = match[2];
+        
+        console.log(`  ✅ Link encontrado: ${titulo.substring(0, 40)}...`);
+        console.log(`     URL: ${url.substring(0, 60)}...`);
         
         links.push({
             uri: url,
@@ -160,7 +168,9 @@ function extrairLinksDoMarkdown(textoMarkdown) {
         });
     }
     
-    console.log('🔗 [FALLBACK] Extraídos', links.length, 'links do Markdown');
+    console.log('📊 [FALLBACK] Total de links extraídos:', links.length);
+    console.log('='.repeat(50) + '\n');
+    
     return links;
 }
 
@@ -219,6 +229,13 @@ Use listas numeradas e SEMPRE inclua o link do produto.`;
         // Extrair metadata de grounding
         const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
         
+        // 🆕 DEBUG: Mostrar resposta completa da API
+        console.log('\n' + '='.repeat(70));
+        console.log('🔍 [DEBUG] RESPOSTA COMPLETA DA API');
+        console.log('='.repeat(70));
+        console.log('📦 response.candidates:', JSON.stringify(response.candidates, null, 2));
+        console.log('='.repeat(70) + '\n');
+        
         // Extrair usage metadata
         const usage = result.response.usageMetadata;
         const tokensInput = usage?.promptTokenCount || 0;
@@ -231,6 +248,8 @@ Use listas numeradas e SEMPRE inclua o link do produto.`;
         if (groundingMetadata) {
             console.log('🌐 Web searches:', groundingMetadata.webSearchQueries?.length || 0);
             console.log('📦 Grounding chunks:', groundingMetadata.groundingChunks?.length || 0);
+        } else {
+            console.warn('⚠️ [GROUNDING] groundingMetadata está NULL ou UNDEFINED!');
         }
         
         return {
@@ -258,33 +277,78 @@ Use listas numeradas e SEMPRE inclua o link do produto.`;
 // =============================================================================
 
 async function processarGroundingMetadata(metadata, textoMarkdown) {
+    // 🆕 DEBUG COMPLETO
+    console.log('\n' + '='.repeat(70));
+    console.log('🔍 [DEBUG] PROCESSANDO GROUNDING METADATA');
+    console.log('='.repeat(70));
+    console.log('📦 metadata recebido:', metadata ? 'SIM' : 'NULL/UNDEFINED');
+    
+    if (metadata) {
+        console.log('📦 metadata.webSearchQueries:', metadata.webSearchQueries?.length || 0);
+        console.log('📦 metadata.groundingChunks:', metadata.groundingChunks?.length || 0);
+        console.log('📦 metadata.groundingSupports:', metadata.groundingSupports?.length || 0);
+        console.log('\n📦 ESTRUTURA COMPLETA DO METADATA:');
+        console.log(JSON.stringify(metadata, null, 2));
+    }
+    console.log('='.repeat(70) + '\n');
+    
     const queries = metadata?.webSearchQueries || [];
     const chunks = metadata?.groundingChunks || [];
     const supports = metadata?.groundingSupports || [];
+    
+    console.log('📊 [METADATA] Queries:', queries.length);
+    console.log('📊 [METADATA] Chunks:', chunks.length);
+    console.log('📊 [METADATA] Supports:', supports.length);
     
     let linksParaResolver = [];
     
     // PRIORIDADE 1: Tentar extrair dos chunks do grounding
     if (chunks.length > 0) {
-        console.log('📦 [METADATA] Processando', chunks.length, 'chunks');
+        console.log('📦 [METADATA] Processando', chunks.length, 'chunks...\n');
+        
+        // 🆕 DEBUG: Mostrar estrutura de cada chunk
+        chunks.forEach((chunk, idx) => {
+            console.log(`\n🔍 [CHUNK ${idx + 1}/${chunks.length}]:`);
+            console.log(JSON.stringify(chunk, null, 2));
+            console.log(`  → Tem propriedade .web?`, !!chunk.web);
+            if (chunk.web) {
+                console.log(`  → chunk.web.uri:`, chunk.web.uri);
+                console.log(`  → chunk.web.title:`, chunk.web.title);
+            }
+        });
+        
         linksParaResolver = chunks
-            .filter(chunk => chunk.web)
+            .filter(chunk => {
+                const temWeb = !!chunk.web;
+                if (!temWeb) {
+                    console.log(`  ⚠️ Chunk sem propriedade .web, ignorando`);
+                }
+                return temWeb;
+            })
             .map(chunk => ({
                 uri: chunk.web.uri,
                 title: chunk.web.title || 'Sem título',
                 domain: chunk.web.domain || extrairDominio(chunk.web.uri),
                 origem: 'grounding-metadata'
             }));
+        
+        console.log('\n✅ [METADATA] Links extraídos dos chunks:', linksParaResolver.length);
+    } else {
+        console.log('⚠️ [METADATA] Nenhum chunk recebido da API');
     }
     
     // FALLBACK: Se não houver links nos chunks, extrair do Markdown
     if (linksParaResolver.length === 0) {
-        console.log('⚠️ [METADATA] Nenhum link nos chunks, usando fallback');
+        console.log('⚠️ [METADATA] Nenhum link nos chunks, ativando FALLBACK do Markdown');
         linksParaResolver = extrairLinksDoMarkdown(textoMarkdown);
     }
     
     if (linksParaResolver.length === 0) {
-        console.warn('❌ [METADATA] Nenhum link encontrado em nenhuma fonte');
+        console.warn('\n❌ [METADATA] NENHUM LINK ENCONTRADO EM NENHUMA FONTE!');
+        console.warn('  → Chunks: 0 links');
+        console.warn('  → Markdown: 0 links');
+        console.warn('='.repeat(70) + '\n');
+        
         return {
             tem_resultados: false,
             total_chunks: chunks.length,
@@ -296,15 +360,21 @@ async function processarGroundingMetadata(metadata, textoMarkdown) {
         };
     }
     
-    console.log('🔄 [REDIRECT] Resolvendo', linksParaResolver.length, 'links...');
+    console.log('\n🔄 [REDIRECT] Iniciando resolução de', linksParaResolver.length, 'links...\n');
     
     // Resolver todos os redirects em paralelo
     const linksResolvidos = await Promise.all(
-        linksParaResolver.map(async (link) => ({
-            ...link,
-            uri_original: link.uri,
-            uri: await resolverRedirect(link.uri)
-        }))
+        linksParaResolver.map(async (link, idx) => {
+            console.log(`  🔄 [${idx + 1}/${linksParaResolver.length}] Resolvendo:`, link.uri.substring(0, 60) + '...');
+            const uriResolvida = await resolverRedirect(link.uri);
+            console.log(`  ✅ [${idx + 1}/${linksParaResolver.length}] Resultado:`, uriResolvida.substring(0, 60) + '...');
+            
+            return {
+                ...link,
+                uri_original: link.uri,
+                uri: uriResolvida
+            };
+        })
     );
     
     // Processar supports (liga texto às fontes)
@@ -313,6 +383,11 @@ async function processarGroundingMetadata(metadata, textoMarkdown) {
         indices_chunks: support.groundingChunkIndices || [],
         confianca: support.confidenceScores || []
     }));
+    
+    console.log('\n✅ [METADATA] Processamento concluído');
+    console.log('📊 Links finais:', linksResolvidos.length);
+    console.log('📊 Suportes:', suportes.length);
+    console.log('='.repeat(70) + '\n');
     
     return {
         tem_resultados: linksResolvidos.length > 0,
@@ -476,7 +551,7 @@ module.exports = async (req, res) => {
     });
     
     console.log('\n' + '='.repeat(70));
-    console.log('🚀 [ETAPA2-V5.1] BUSCA COM GROUNDING');
+    console.log('🚀 [ETAPA2-V5.1-DEBUG] BUSCA COM GROUNDING');
     console.log('='.repeat(70) + '\n');
     
     try {
@@ -605,7 +680,7 @@ module.exports = async (req, res) => {
             
             metadados: {
                 data_processamento: new Date().toISOString(),
-                versao_sistema: '5.1-Redirect-Fixed-Fallback',
+                versao_sistema: '5.1-DEBUG-FULL',
                 modelo_llm: MODEL,
                 metodo_busca: 'Grounding + Redirect Resolution + Markdown Fallback',
                 thinking_mode: 'desabilitado',
@@ -614,7 +689,7 @@ module.exports = async (req, res) => {
             }
         };
         
-        console.log('\n✅ [ETAPA2-V5.1] CONCLUÍDO');
+        console.log('\n✅ [ETAPA2-V5.1-DEBUG] CONCLUÍDO');
         console.log('📊 Queries realizadas:', metadataProcessada.total_queries);
         console.log('📊 Links encontrados:', metadataProcessada.links_encontrados.length);
         console.log('📊 Redirects resolvidos:', metadataProcessada.links_encontrados.length);
@@ -638,7 +713,8 @@ module.exports = async (req, res) => {
         });
         
     } catch (error) {
-        console.error('❌ [ETAPA2-V5.1] ERRO:', error.message);
+        console.error('❌ [ETAPA2-V5.1-DEBUG] ERRO:', error.message);
+        console.error('Stack:', error.stack);
         return res.status(500).json({
             status: 'Erro',
             mensagem: error.message,
