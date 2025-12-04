@@ -287,11 +287,7 @@ module.exports = async (req, res) => {
             model: MODEL,
             generationConfig: {
                 temperature: 0.1,
-                responseMimeType: 'application/json',
-                // ⚠️ ADICIONE ISTO:
-                thinkingConfig: {
-                    thinkingBudget: 0  // Desliga thinking = economia de 5.8x!
-                }
+                responseMimeType: 'application/json'
             }
         });
         
@@ -302,7 +298,6 @@ module.exports = async (req, res) => {
             }
         }));
         
-        // Adicionar observação ao prompt se fornecida
         let promptFinal = PROMPT_SISTEMA;
         
         if (observacao_operador && observacao_operador.length > 0) {
@@ -327,14 +322,75 @@ INSTRUÇÕES CRÍTICAS:
             ...imageParts
         ]);
         
+        // ═══════════════════════════════════════════════════════════════
+        // 🔍 AUDITORIA COMPLETA DE TOKENS (LOG DETALHADO)
+        // ═══════════════════════════════════════════════════════════════
         const usage = result.response.usageMetadata;
+        
+        console.log('');
+        console.log('╔═══════════════════════════════════════════════════════════════╗');
+        console.log('║       🔍 AUDITORIA DE TOKENS - DADOS BRUTOS DA API           ║');
+        console.log('╚═══════════════════════════════════════════════════════════════╝');
+        console.log('');
+        console.log('📊 usageMetadata COMPLETO:');
+        console.log(JSON.stringify(usage, null, 2));
+        console.log('');
+        console.log('─────────────────────────────────────────');
+        console.log('📥 promptTokenCount:', usage?.promptTokenCount || 0);
+        console.log('📤 candidatesTokenCount:', usage?.candidatesTokenCount || 0);
+        console.log('🧠 thoughtsTokenCount:', usage?.thoughtsTokenCount || 0);
+        console.log('📊 totalTokenCount:', usage?.totalTokenCount || 0);
+        console.log('─────────────────────────────────────────');
+        
         const tokensInput = usage?.promptTokenCount || 0;
         const tokensOutput = usage?.candidatesTokenCount || 0;
-        const tokensTotal = tokensInput + tokensOutput;
+        const tokensThinking = usage?.thoughtsTokenCount || 0;
+        const tokensTotal = usage?.totalTokenCount || (tokensInput + tokensOutput + tokensThinking);
         
+        // Calcular custos
         const custoInput = tokensInput * CUSTO_INPUT_POR_TOKEN;
         const custoOutput = tokensOutput * CUSTO_OUTPUT_POR_TOKEN;
-        const custoTotal = custoInput + custoOutput;
+        const custoThinking = tokensThinking * CUSTO_OUTPUT_POR_TOKEN; // Thinking usa preço de output
+        const custoTotal = custoInput + custoOutput + custoThinking;
+        
+        console.log('');
+        console.log('╔═══════════════════════════════════════════════════════════════╗');
+        console.log('║         💰 CÁLCULO DE CUSTOS - PREÇOS ATUAIS FLASH           ║');
+        console.log('╚═══════════════════════════════════════════════════════════════╝');
+        console.log('');
+        console.log('📌 Modelo:', MODEL);
+        console.log('📌 Taxa câmbio: USD 1.00 = R$', TAXA_CAMBIO_USD_BRL.toFixed(2));
+        console.log('📌 Preço input: $' + USD_INPUT_POR_MILHAO + '/milhão = R$', (CUSTO_INPUT_POR_TOKEN * 1_000_000).toFixed(2) + '/milhão');
+        console.log('📌 Preço output: $' + USD_OUTPUT_POR_MILHAO + '/milhão = R$', (CUSTO_OUTPUT_POR_TOKEN * 1_000_000).toFixed(2) + '/milhão');
+        console.log('');
+        console.log('─────────────────────────────────────────');
+        console.log('📥 INPUT:');
+        console.log('   Tokens:', tokensInput);
+        console.log('   Custo unitário: R$', CUSTO_INPUT_POR_TOKEN.toFixed(10));
+        console.log('   Custo total: R$', custoInput.toFixed(6));
+        console.log('');
+        console.log('📤 OUTPUT (resposta JSON):');
+        console.log('   Tokens:', tokensOutput);
+        console.log('   Custo unitário: R$', CUSTO_OUTPUT_POR_TOKEN.toFixed(10));
+        console.log('   Custo total: R$', custoOutput.toFixed(6));
+        console.log('');
+        
+        if (tokensThinking > 0) {
+            console.log('🧠 THINKING (raciocínio interno):');
+            console.log('   Tokens:', tokensThinking);
+            console.log('   Custo unitário: R$', CUSTO_OUTPUT_POR_TOKEN.toFixed(10));
+            console.log('   Custo total: R$', custoThinking.toFixed(6));
+            console.log('');
+            console.log('⚠️  ATENÇÃO: THINKING MODE ESTÁ ATIVO!');
+            console.log('   Tokens thinking:', tokensThinking, '(' + ((tokensThinking / tokensTotal) * 100).toFixed(1) + '% do total)');
+            console.log('   Isso representa R$', custoThinking.toFixed(6), 'do custo total!');
+            console.log('');
+        }
+        
+        console.log('─────────────────────────────────────────');
+        console.log('💵 CUSTO TOTAL DA REQUISIÇÃO: R$', custoTotal.toFixed(6));
+        console.log('─────────────────────────────────────────');
+        console.log('');
         
         const text = result.response.text();
         
@@ -391,48 +447,26 @@ INSTRUÇÕES CRÍTICAS:
                 confianca_ia: 95,
                 total_imagens_processadas: imagens.length,
                 modelo_ia: MODEL,
-                versao_sistema: '5.2-Validacao-Rigorosa',
+                versao_sistema: '6.0-Auditoria-Completa',
                 tokens_input: tokensInput,
                 tokens_output: tokensOutput,
+                tokens_thinking: tokensThinking,  // ✅ NOVO
                 tokens_total: tokensTotal,
                 tokens_imagem_estimados: imagens.length * TOKENS_POR_IMAGEM_512PX,
-                custo_input: parseFloat(custoInput.toFixed(4)),
-                custo_output: parseFloat(custoOutput.toFixed(4)),
-                custo_total: parseFloat(custoTotal.toFixed(4)),
+                custo_input: parseFloat(custoInput.toFixed(6)),
+                custo_output: parseFloat(custoOutput.toFixed(6)),
+                custo_thinking: parseFloat(custoThinking.toFixed(6)),  // ✅ NOVO
+                custo_total: parseFloat(custoTotal.toFixed(6)),
                 taxa_cambio: TAXA_CAMBIO_USD_BRL,
+                thinking_mode_ativo: tokensThinking > 0,  // ✅ NOVO
                 observacao_fornecida: observacao_operador ? true : false
             }
         };
         
-        // ═══════════════════════════════════════════════════════════════
-        // LOGS DE CUSTO (CLARIFICADOS EM BRL)
-        // ═══════════════════════════════════════════════════════════════
+        console.log('╔═══════════════════════════════════════════════════════════════╗');
+        console.log('║                  ✅ ETAPA 1 CONCLUÍDA                         ║');
+        console.log('╚═══════════════════════════════════════════════════════════════╝');
         console.log('');
-        console.log('═══════════════════════════════════════');
-        console.log('💰 [CUSTO DETALHADO - TODOS EM BRL]');
-        console.log('═══════════════════════════════════════');
-        console.log('📌 Taxa de câmbio: USD 1.00 = R$', TAXA_CAMBIO_USD_BRL.toFixed(2));
-        console.log('');
-        console.log('📥 INPUT:');
-        console.log('   Tokens:', tokensInput);
-        console.log('   Preço/milhão: R$', (CUSTO_INPUT_POR_TOKEN * 1_000_000).toFixed(2));
-        console.log('   Custo: R$', custoInput.toFixed(4));
-        console.log('');
-        console.log('📤 OUTPUT:');
-        console.log('   Tokens:', tokensOutput);
-        console.log('   Preço/milhão: R$', (CUSTO_OUTPUT_POR_TOKEN * 1_000_000).toFixed(2));
-        console.log('   Custo: R$', custoOutput.toFixed(4));
-        console.log('');
-        console.log('💵 TOTAL: R$', custoTotal.toFixed(4));
-        console.log('═══════════════════════════════════════');
-        
-        // ═══════════════════════════════════════════════════════════════
-        // RESULTADO DA IDENTIFICAÇÃO
-        // ═══════════════════════════════════════════════════════════════
-        console.log('');
-        console.log('═══════════════════════════════════════');
-        console.log('✅ [ETAPA 1 CONCLUÍDA]');
-        console.log('═══════════════════════════════════════');
         console.log('🏷️  Nome:', dadosExtraidos.nome_produto);
         console.log('🏭 Marca:', dadosExtraidos.marca);
         console.log('📦 Modelo:', dadosExtraidos.modelo);
@@ -446,17 +480,8 @@ INSTRUÇÕES CRÍTICAS:
             console.log('   Status:', dadosExtraidos.observacao_validada);
             console.log('   Nota:', dadosExtraidos.nota_observacao);
         }
-        console.log('═══════════════════════════════════════');
-        
-        // ═══════════════════════════════════════════════════════════════
-        // JSON COMPLETO QUE SERÁ ENVIADO PARA ETAPA 2
-        // ═══════════════════════════════════════════════════════════════
         console.log('');
-        console.log('═══════════════════════════════════════');
-        console.log('📋 [JSON PARA ETAPA 2]');
-        console.log('═══════════════════════════════════════');
-        console.log(JSON.stringify(dadosCompletos, null, 2));
-        console.log('═══════════════════════════════════════');
+        console.log('═════════════════════════════════════════════════════════════════');
         console.log('');
         
         return res.status(200).json({
