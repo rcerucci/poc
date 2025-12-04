@@ -349,7 +349,7 @@ INSTRUÇÕES CRÍTICAS:
         
         // ⚠️ ALERTA SE THINKING ATIVO
         if (tokensThinking > 0) {
-            console.log(`⚠️  ALERTA: Thinking mode detectado! ${tokensThinking} tokens extras (R$ ${custoThinking.toFixed(6)})`);
+            console.log(`⚠️  ALERTA: Thinking mode detectado! ${tokensThinking} tokens extras (R$ ${custoThinkingEstimado.toFixed(6)})`);
         }
         
         const text = result.response.text();
@@ -414,7 +414,7 @@ INSTRUÇÕES CRÍTICAS:
                 tokens_total: tokensTotal,
                 custo_input: parseFloat(custoInput.toFixed(6)),
                 custo_output: parseFloat(custoOutput.toFixed(6)),
-                custo_thinking: parseFloat(custoThinking.toFixed(6)),
+                custo_thinking: parseFloat(custoThinkingEstimado.toFixed(6)),
                 custo_total: parseFloat(custoTotal.toFixed(6)),
                 taxa_cambio: TAXA_CAMBIO_USD_BRL,
                 thinking_mode_ativo: tokensThinking > 0,
