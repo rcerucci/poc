@@ -124,7 +124,8 @@ async function resolverRedirect(url) {
         // Node 18+ tem fetch nativo
         const response = await fetch(url, {
             method: 'HEAD',
-            redirect: 'follow'
+            redirect: 'follow',
+            timeout: 5000 // 5 segundos de timeout
         });
         
         const urlFinal = response.url;
@@ -138,14 +139,15 @@ async function resolverRedirect(url) {
 }
 
 // =============================================================================
-// EXTRAIR LINKS DO TEXTO MARKDOWN (FALLBACK)
+// EXTRAIR LINKS DO TEXTO MARKDOWN
 // =============================================================================
 
 function extrairLinksDoMarkdown(textoMarkdown) {
     const links = [];
+    const urlsEncontradas = new Set();
     
     console.log('\n' + '='.repeat(50));
-    console.log('🔗 [FALLBACK MARKDOWN] INICIANDO');
+    console.log('🔗 [MARKDOWN] EXTRAINDO LINKS');
     console.log('='.repeat(50));
     console.log('📝 Tamanho do texto:', textoMarkdown.length, 'caracteres');
     
@@ -157,18 +159,21 @@ function extrairLinksDoMarkdown(textoMarkdown) {
         const titulo = match[1];
         const url = match[2];
         
-        console.log(`  ✅ Link encontrado: ${titulo.substring(0, 40)}...`);
-        console.log(`     URL: ${url.substring(0, 60)}...`);
-        
-        links.push({
-            uri: url,
-            title: titulo,
-            domain: extrairDominio(url),
-            origem: 'markdown-fallback'
-        });
+        if (!urlsEncontradas.has(url)) {
+            urlsEncontradas.add(url);
+            console.log(`  ✅ Link ${urlsEncontradas.size}: ${titulo.substring(0, 40)}...`);
+            console.log(`     URL: ${url}`);
+            
+            links.push({
+                uri: url,
+                title: titulo,
+                domain: extrairDominio(url),
+                origem: 'markdown'
+            });
+        }
     }
     
-    console.log('📊 [FALLBACK] Total de links extraídos:', links.length);
+    console.log('📊 [MARKDOWN] Total de links extraídos:', links.length);
     console.log('='.repeat(50) + '\n');
     
     return links;
@@ -229,13 +234,6 @@ Use listas numeradas e SEMPRE inclua o link do produto.`;
         // Extrair metadata de grounding
         const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
         
-        // 🆕 DEBUG: Mostrar resposta completa da API
-        console.log('\n' + '='.repeat(70));
-        console.log('🔍 [DEBUG] RESPOSTA COMPLETA DA API');
-        console.log('='.repeat(70));
-        console.log('📦 response.candidates:', JSON.stringify(response.candidates, null, 2));
-        console.log('='.repeat(70) + '\n');
-        
         // Extrair usage metadata
         const usage = result.response.usageMetadata;
         const tokensInput = usage?.promptTokenCount || 0;
@@ -248,8 +246,6 @@ Use listas numeradas e SEMPRE inclua o link do produto.`;
         if (groundingMetadata) {
             console.log('🌐 Web searches:', groundingMetadata.webSearchQueries?.length || 0);
             console.log('📦 Grounding chunks:', groundingMetadata.groundingChunks?.length || 0);
-        } else {
-            console.warn('⚠️ [GROUNDING] groundingMetadata está NULL ou UNDEFINED!');
         }
         
         return {
@@ -273,80 +269,47 @@ Use listas numeradas e SEMPRE inclua o link do produto.`;
 }
 
 // =============================================================================
-// PROCESSAR GROUNDING METADATA COM RESOLUÇÃO DE REDIRECTS
+// PROCESSAR GROUNDING METADATA - USANDO MARKDOWN COMO FONTE PRIMÁRIA
 // =============================================================================
 
 async function processarGroundingMetadata(metadata, textoMarkdown) {
-    // 🆕 DEBUG COMPLETO
     console.log('\n' + '='.repeat(70));
-    console.log('🔍 [DEBUG] PROCESSANDO GROUNDING METADATA');
+    console.log('🔍 [PROCESSAMENTO] EXTRAÇÃO DE LINKS');
     console.log('='.repeat(70));
-    console.log('📦 metadata recebido:', metadata ? 'SIM' : 'NULL/UNDEFINED');
-    
-    if (metadata) {
-        console.log('📦 metadata.webSearchQueries:', metadata.webSearchQueries?.length || 0);
-        console.log('📦 metadata.groundingChunks:', metadata.groundingChunks?.length || 0);
-        console.log('📦 metadata.groundingSupports:', metadata.groundingSupports?.length || 0);
-        console.log('\n📦 ESTRUTURA COMPLETA DO METADATA:');
-        console.log(JSON.stringify(metadata, null, 2));
-    }
-    console.log('='.repeat(70) + '\n');
     
     const queries = metadata?.webSearchQueries || [];
     const chunks = metadata?.groundingChunks || [];
     const supports = metadata?.groundingSupports || [];
     
-    console.log('📊 [METADATA] Queries:', queries.length);
-    console.log('📊 [METADATA] Chunks:', chunks.length);
-    console.log('📊 [METADATA] Supports:', supports.length);
+    console.log('📊 Queries realizadas:', queries.length);
+    console.log('📊 Grounding chunks:', chunks.length);
+    console.log('📊 Grounding supports:', supports.length);
     
-    let linksParaResolver = [];
+    // 🆕 NOVA ESTRATÉGIA: SEMPRE usar Markdown como fonte primária
+    // porque a LLM gera links diretos dos produtos no texto
+    console.log('\n🎯 [ESTRATÉGIA] Extraindo links do MARKDOWN (fonte primária)');
+    const linksDoMarkdown = extrairLinksDoMarkdown(textoMarkdown);
     
-    // PRIORIDADE 1: Tentar extrair dos chunks do grounding
-    if (chunks.length > 0) {
-        console.log('📦 [METADATA] Processando', chunks.length, 'chunks...\n');
-        
-        // 🆕 DEBUG: Mostrar estrutura de cada chunk
-        chunks.forEach((chunk, idx) => {
-            console.log(`\n🔍 [CHUNK ${idx + 1}/${chunks.length}]:`);
-            console.log(JSON.stringify(chunk, null, 2));
-            console.log(`  → Tem propriedade .web?`, !!chunk.web);
-            if (chunk.web) {
-                console.log(`  → chunk.web.uri:`, chunk.web.uri);
-                console.log(`  → chunk.web.title:`, chunk.web.title);
-            }
-        });
+    // Se não encontrou nenhum link no Markdown, tentar dos chunks
+    let linksParaResolver = linksDoMarkdown;
+    
+    if (linksParaResolver.length === 0 && chunks.length > 0) {
+        console.log('⚠️ [FALLBACK] Nenhum link no Markdown, tentando chunks...');
         
         linksParaResolver = chunks
-            .filter(chunk => {
-                const temWeb = !!chunk.web;
-                if (!temWeb) {
-                    console.log(`  ⚠️ Chunk sem propriedade .web, ignorando`);
-                }
-                return temWeb;
-            })
+            .filter(chunk => chunk.web)
             .map(chunk => ({
                 uri: chunk.web.uri,
                 title: chunk.web.title || 'Sem título',
                 domain: chunk.web.domain || extrairDominio(chunk.web.uri),
-                origem: 'grounding-metadata'
+                origem: 'grounding-chunks'
             }));
         
-        console.log('\n✅ [METADATA] Links extraídos dos chunks:', linksParaResolver.length);
-    } else {
-        console.log('⚠️ [METADATA] Nenhum chunk recebido da API');
-    }
-    
-    // FALLBACK: Se não houver links nos chunks, extrair do Markdown
-    if (linksParaResolver.length === 0) {
-        console.log('⚠️ [METADATA] Nenhum link nos chunks, ativando FALLBACK do Markdown');
-        linksParaResolver = extrairLinksDoMarkdown(textoMarkdown);
+        console.log('📦 [CHUNKS] Links extraídos:', linksParaResolver.length);
     }
     
     if (linksParaResolver.length === 0) {
-        console.warn('\n❌ [METADATA] NENHUM LINK ENCONTRADO EM NENHUMA FONTE!');
-        console.warn('  → Chunks: 0 links');
-        console.warn('  → Markdown: 0 links');
+        console.warn('\n❌ [ERRO] NENHUM LINK ENCONTRADO!');
         console.warn('='.repeat(70) + '\n');
         
         return {
@@ -360,14 +323,13 @@ async function processarGroundingMetadata(metadata, textoMarkdown) {
         };
     }
     
-    console.log('\n🔄 [REDIRECT] Iniciando resolução de', linksParaResolver.length, 'links...\n');
+    console.log('\n🔄 [REDIRECT] Resolvendo', linksParaResolver.length, 'links...\n');
     
-    // Resolver todos os redirects em paralelo
+    // Resolver redirects apenas dos links que precisam
     const linksResolvidos = await Promise.all(
         linksParaResolver.map(async (link, idx) => {
-            console.log(`  🔄 [${idx + 1}/${linksParaResolver.length}] Resolvendo:`, link.uri.substring(0, 60) + '...');
+            console.log(`  🔄 [${idx + 1}/${linksParaResolver.length}]`, link.uri.substring(0, 60) + '...');
             const uriResolvida = await resolverRedirect(link.uri);
-            console.log(`  ✅ [${idx + 1}/${linksParaResolver.length}] Resultado:`, uriResolvida.substring(0, 60) + '...');
             
             return {
                 ...link,
@@ -384,7 +346,7 @@ async function processarGroundingMetadata(metadata, textoMarkdown) {
         confianca: support.confidenceScores || []
     }));
     
-    console.log('\n✅ [METADATA] Processamento concluído');
+    console.log('\n✅ [PROCESSAMENTO] Concluído');
     console.log('📊 Links finais:', linksResolvidos.length);
     console.log('📊 Suportes:', suportes.length);
     console.log('='.repeat(70) + '\n');
@@ -551,7 +513,7 @@ module.exports = async (req, res) => {
     });
     
     console.log('\n' + '='.repeat(70));
-    console.log('🚀 [ETAPA2-V5.1-DEBUG] BUSCA COM GROUNDING');
+    console.log('🚀 [ETAPA2-V5.2] BUSCA COM GROUNDING (MARKDOWN PRIORITY)');
     console.log('='.repeat(70) + '\n');
     
     try {
@@ -564,7 +526,7 @@ module.exports = async (req, res) => {
             especificacoes,
             estado_conservacao,
             categoria_depreciacao,
-            forcar_nova_busca // ← Nova flag opcional
+            forcar_nova_busca
         } = req.body;
         
         if (!termo_busca_comercial || termo_busca_comercial.trim() === '') {
@@ -601,7 +563,7 @@ module.exports = async (req, res) => {
             }
         }
         
-        // BUSCAR NOVA COTAÇÃO (cache não encontrado ou forçada nova busca)
+        // BUSCAR NOVA COTAÇÃO
         console.log('🔍 [BUSCA] Executando nova busca...');
         
         // ETAPA 1: Buscar com grounding (Markdown)
@@ -621,10 +583,10 @@ module.exports = async (req, res) => {
             });
         }
         
-        // Processar metadata e resolver redirects (COM FALLBACK PARA MARKDOWN)
+        // Processar metadata (MARKDOWN PRIORITY)
         const metadataProcessada = await processarGroundingMetadata(
             resultado.groundingMetadata,
-            resultado.texto  // 🆕 Passar o texto Markdown para fallback
+            resultado.texto
         );
         
         // Mascarar URLs no texto Markdown
@@ -656,43 +618,34 @@ module.exports = async (req, res) => {
             
             busca: {
                 termo_utilizado: termo,
-                metodo: 'Grounding + Redirect Resolution + JSON Extraction',
+                metodo: 'Grounding + Markdown Link Extraction + JSON',
                 queries_realizadas: metadataProcessada.queries_realizadas,
                 total_queries: metadataProcessada.total_queries,
                 total_links: metadataProcessada.links_encontrados.length
             },
             
-            // 🆕 Dados estruturados extraídos com URLs resolvidas
             produtos_encontrados: dadosEstruturados.produtos,
             total_produtos: dadosEstruturados.produtos.length,
             
-            // Resposta original da LLM (mantida para referência)
             resposta_llm_original: resultado.texto,
-            
-            // Links do grounding com redirects resolvidos
             links_grounding: metadataProcessada.links_encontrados,
-            
-            // Suportes (conexão texto -> fontes)
             suportes: metadataProcessada.suportes,
-            
-            // Tokens detalhados
             tokens: tokensTotal,
             
             metadados: {
                 data_processamento: new Date().toISOString(),
-                versao_sistema: '5.1-DEBUG-FULL',
+                versao_sistema: '5.2-Markdown-Priority',
                 modelo_llm: MODEL,
-                metodo_busca: 'Grounding + Redirect Resolution + Markdown Fallback',
+                metodo_busca: 'Grounding + Markdown Priority + Redirect Resolution',
                 thinking_mode: 'desabilitado',
                 extracao_json: dadosEstruturados.sucesso ? 'sucesso' : 'falha',
                 redirects_resolvidos: metadataProcessada.links_encontrados.length
             }
         };
         
-        console.log('\n✅ [ETAPA2-V5.1-DEBUG] CONCLUÍDO');
+        console.log('\n✅ [ETAPA2-V5.2] CONCLUÍDO');
         console.log('📊 Queries realizadas:', metadataProcessada.total_queries);
         console.log('📊 Links encontrados:', metadataProcessada.links_encontrados.length);
-        console.log('📊 Redirects resolvidos:', metadataProcessada.links_encontrados.length);
         console.log('📊 Produtos estruturados:', dadosEstruturados.produtos.length);
         console.log('📊 Tokens TOTAL:', tokensTotal.total);
         console.log('='.repeat(70) + '\n');
@@ -707,13 +660,13 @@ module.exports = async (req, res) => {
         
         return res.status(200).json({
             status: 'Sucesso',
-            mensagem: `${dadosEstruturados.produtos.length} produto(s) com links reais de ${metadataProcessada.links_encontrados.length} fonte(s)`,
+            mensagem: `${dadosEstruturados.produtos.length} produto(s) encontrado(s) de ${metadataProcessada.links_encontrados.length} fonte(s)`,
             em_cache: false,
             dados: dadosCompletos
         });
         
     } catch (error) {
-        console.error('❌ [ETAPA2-V5.1-DEBUG] ERRO:', error.message);
+        console.error('❌ [ETAPA2-V5.2] ERRO:', error.message);
         console.error('Stack:', error.stack);
         return res.status(500).json({
             status: 'Erro',
