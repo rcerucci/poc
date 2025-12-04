@@ -131,7 +131,7 @@ function extrairLinksDoMarkdown(textoMarkdown) {
     console.log('==================================================');
     console.log('🔗 [FALLBACK MARKDOWN] INICIANDO');
     console.log('==================================================');
-    console.log('📝 Tamanho do texto:', textoMarkdown.length, 'caracteres');
+    console.log('📏 Tamanho do texto:', textoMarkdown.length, 'caracteres');
     
     // Regex 1: Links em formato Markdown: [texto](url)
     const regexMarkdown = /\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g;
@@ -149,7 +149,7 @@ function extrairLinksDoMarkdown(textoMarkdown) {
                 domain: extrairDominio(url),
                 origem: 'markdown-pattern'
             });
-            console.log('📎 [MARKDOWN] Encontrado:', url.substring(0, 60) + '...');
+            console.log('🔎 [MARKDOWN] Encontrado:', url.substring(0, 60) + '...');
         }
     }
     
@@ -442,7 +442,9 @@ Retorne:
 REGRAS:
 - Preço: número decimal ou null se não houver
 - "match" = Minuzzi 25kVA | "similar" = marca/spec diferente  
-- Média ponderada: (match*2 + similar) / (count_match*2 + count_similar)
+- Média ponderada: (soma dos preços match × 2 + soma dos preços similar) / (quantidade match × 2 + quantidade similar)
+- Exemplo: 1 match de R$1000 → (1000×2)/(1×2) = 1000.00
+- Exemplo: 2 match de R$1000 e R$1200 → (1000×2 + 1200×2)/(2×2) = 1100.00
 - Extraia NA ORDEM que aparecem no texto`;
         
         const result = await model.generateContent(prompt);
@@ -466,6 +468,52 @@ REGRAS:
                 p.link = null;
                 p.loja = null;
             });
+        }
+        
+        // ✅ VALIDAR E RECALCULAR MÉDIA PONDERADA (garantir correção)
+        if (dadosFinais.produtos && dadosFinais.produtos.length > 0) {
+            let somaMatch = 0, countMatch = 0;
+            let somaSimilar = 0, countSimilar = 0;
+            let precoMin = null, precoMax = null;
+            let countComPreco = 0;
+            
+            dadosFinais.produtos.forEach(p => {
+                if (p.preco !== null && p.preco !== undefined) {
+                    countComPreco++;
+                    
+                    // Atualizar min/max
+                    if (precoMin === null || p.preco < precoMin) precoMin = p.preco;
+                    if (precoMax === null || p.preco > precoMax) precoMax = p.preco;
+                    
+                    // Somar por classificação
+                    if (p.classificacao === 'match') {
+                        somaMatch += p.preco;
+                        countMatch++;
+                    } else if (p.classificacao === 'similar') {
+                        somaSimilar += p.preco;
+                        countSimilar++;
+                    }
+                }
+            });
+            
+            // Calcular média ponderada corretamente
+            const denominador = (countMatch * 2) + countSimilar;
+            const numerador = (somaMatch * 2) + somaSimilar;
+            const mediaPonderada = denominador > 0 ? numerador / denominador : null;
+            
+            // Atualizar objeto de avaliação
+            dadosFinais.avaliacao = {
+                media_ponderada: mediaPonderada ? parseFloat(mediaPonderada.toFixed(2)) : null,
+                total_produtos: dadosFinais.produtos.length,
+                produtos_com_preco: countComPreco,
+                produtos_match: countMatch,
+                produtos_similar: countSimilar,
+                preco_minimo: precoMin,
+                preco_maximo: precoMax
+            };
+            
+            console.log('🔧 [VALIDAÇÃO] Média recalculada:', mediaPonderada?.toFixed(2) || 'N/A');
+            console.log('📊 [VALIDAÇÃO] Numerador:', numerador, '| Denominador:', denominador);
         }
         
         console.log('✅ [EXTRAÇÃO] Encontrados:', dadosFinais.produtos?.length || 0, 'produtos');
