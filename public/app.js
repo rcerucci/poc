@@ -46,6 +46,8 @@ const elementos = {
     unidade: document.getElementById('unidade'),
     descricao: document.getElementById('descricao'),
     nomeEquipamento: document.getElementById('nomeEquipamento'),
+    valorAtual: document.getElementById('valorAtual'),
+    valorMercado: document.getElementById('valorMercado'),    
     
     // Áreas de exibição
     alertBox: document.getElementById('alertBox'),
@@ -69,7 +71,58 @@ document.addEventListener('DOMContentLoaded', () => {
     inicializarEventListeners();
     inicializarUploadFotos();
     inicializarObservacaoOperador();
+    inicializarFormatacaoMoeda();
 });
+
+function formatarMoeda(input) {
+    let valor = input.value;
+    
+    // Remove tudo que não é número
+    valor = valor.replace(/\D/g, '');
+    
+    // Converte para número e formata
+    if (valor) {
+        valor = (parseInt(valor) / 100).toFixed(2);
+        valor = valor.replace('.', ',');
+        valor = valor.replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1.');
+    }
+    
+    input.value = valor;
+}
+
+function inicializarFormatacaoMoeda() {
+    if (elementos.valorAtual) {
+        elementos.valorAtual.addEventListener('input', function() {
+            formatarMoeda(this);
+        });
+        
+        elementos.valorAtual.addEventListener('blur', function() {
+            if (!this.value) {
+                this.value = '0,00';
+            }
+        });
+        
+        elementos.valorAtual.addEventListener('focus', function() {
+            if (this.value === '0,00') {
+                this.value = '';
+            }
+        });
+    }
+}
+
+// ===================================================================
+// PREENCHER VALOR DE MERCADO APÓS BUSCA
+// ===================================================================
+
+function preencherValorMercado(mediaPonderada) {
+    if (elementos.valorMercado && mediaPonderada) {
+        const valorFormatado = mediaPonderada.toLocaleString('pt-BR', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+        elementos.valorMercado.value = valorFormatado;
+    }
+}
 
 function inicializarEventListeners() {
     const btnLimparTudo = document.getElementById('btnLimparTudo');
@@ -501,6 +554,10 @@ function usarCotacaoCache() {
     
     AppState.dadosEtapa2 = AppState.cotacaoCache.dados;
     mostrarProdutos(AppState.cotacaoCache.dados, true);
+    const mediaPonderada = AppState.cotacaoCache.dados.avaliacao?.media_ponderada;
+    if (mediaPonderada) {
+        preencherValorMercado(mediaPonderada);
+    }    
     mostrarAlerta('⚡ Usando cotação salva', 'success');
 }
 
@@ -583,7 +640,12 @@ function mostrarProdutos(dados, doCache = false) {
             </div>
         `).join('');
     }
-    
+
+    const mediaPonderada = dados.avaliacao?.media_ponderada;
+    if (mediaPonderada) {
+        preencherValorMercado(mediaPonderada);
+    }
+
     elementos.produtosSection.style.display = 'block';
     
     // Scroll suave
@@ -768,6 +830,8 @@ function exportarJSON() {
         formulario: {
             numero_patrimonio: elementos.numeroPatrimonio.value,
             nome_produto: elementos.nomeProduto.value,
+            valor_atual: elementos.valorAtual?.value || '', // ✅ NOVO
+            valor_mercado: elementos.valorMercado?.value || '', // ✅ NOVO
             estado: elementos.estado.value,
             depreciacao: elementos.depreciacao.value,
             centro_custo: elementos.centroCusto.value,
@@ -816,6 +880,8 @@ function limparTudo() {
     // Limpar formulário
     if (elementos.numeroPatrimonio) elementos.numeroPatrimonio.value = '';
     if (elementos.nomeProduto) elementos.nomeProduto.value = '';
+    if (elementos.valorAtual) elementos.valorAtual.value = '';
+    if (elementos.valorMercado) elementos.valorMercado.value = '';    
     if (elementos.estado) elementos.estado.value = '';
     if (elementos.depreciacao) elementos.depreciacao.value = '';
     if (elementos.centroCusto) elementos.centroCusto.value = '';

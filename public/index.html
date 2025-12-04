@@ -148,6 +148,36 @@
                 </div>
             </div>
 
+            <!-- ✅ CAMPOS DE VALORES (NOVO) -->
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="valorAtual">Valor Atual</label>
+                    <div class="input-with-prefix">
+                        <span class="input-prefix">R$</span>
+                        <input 
+                            type="text" 
+                            id="valorAtual" 
+                            placeholder="325,00"
+                            class="input-currency"
+                        >
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="valorMercado">Valor de Mercado</label>
+                    <div class="input-with-prefix">
+                        <span class="input-prefix">R$</span>
+                        <input 
+                            type="text" 
+                            id="valorMercado" 
+                            placeholder="358,00"
+                            class="input-currency"
+                            readonly
+                        >
+                    </div>
+                </div>
+            </div>
+
             <div class="form-row">
                 <div class="form-group">
                     <label for="estado">Estado</label>
@@ -161,9 +191,21 @@
                 </div>
 
                 <div class="form-group">
+                    <label for="centroCusto">Centro de Custo</label>
+                    <select id="centroCusto">
+                        <option value="">Selecione o Centro de Custo</option>
+                        <option value="TI">TI</option>
+                        <option value="Administrativo">Administrativo</option>
+                        <option value="Operacional">Operacional</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
                     <label for="depreciacao">Depreciação</label>
                     <select id="depreciacao">
-                        <option value="">Selecione</option>
+                        <option value="">Selecione a Depreciação</option>
                         <option value="Computadores e Informática">Computadores e Informática</option>
                         <option value="Ferramentas">Ferramentas</option>
                         <option value="Instalações">Instalações</option>
@@ -173,23 +215,11 @@
                         <option value="Outros">Outros</option>
                     </select>
                 </div>
-            </div>
-
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="centroCusto">Centro de Custo</label>
-                    <select id="centroCusto">
-                        <option value="">Selecione</option>
-                        <option value="TI">TI</option>
-                        <option value="Administrativo">Administrativo</option>
-                        <option value="Operacional">Operacional</option>
-                    </select>
-                </div>
 
                 <div class="form-group">
                     <label for="unidade">Unidade</label>
                     <select id="unidade">
-                        <option value="">Selecione</option>
+                        <option value="">Selecione a Unidade</option>
                         <option value="Unidade 1">Unidade 1</option>
                         <option value="Unidade 2">Unidade 2</option>
                     </select>
