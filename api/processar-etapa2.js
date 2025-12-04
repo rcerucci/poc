@@ -288,7 +288,7 @@ async function processarGroundingMetadata(metadata, textoMarkdown) {
             .map(chunk => ({
                 uri: chunk.web.uri,
                 title: chunk.web.title || 'Sem título',
-                domain: chunk.web.domain || extrairDominio(chunk.web.uri),
+                domain: extrairDominio(chunk.web.uri), // Extrair do URI real
                 origem: 'grounding-metadata'
             }));
     }
@@ -316,11 +316,15 @@ async function processarGroundingMetadata(metadata, textoMarkdown) {
     
     // Resolver todos os redirects em paralelo
     const linksResolvidos = await Promise.all(
-        linksParaResolver.map(async (link) => ({
-            ...link,
-            uri_original: link.uri,
-            uri: await resolverRedirect(link.uri)
-        }))
+        linksParaResolver.map(async (link) => {
+            const uriResolvido = await resolverRedirect(link.uri);
+            return {
+                ...link,
+                uri_original: link.uri,
+                uri: uriResolvido,
+                domain: extrairDominio(uriResolvido) // Domínio do link FINAL
+            };
+        })
     );
     
     // Processar supports (liga texto às fontes)
@@ -393,7 +397,7 @@ function desmascararUrls(texto, mapaUrls) {
 // EXTRAIR DADOS ESTRUTURADOS (ETAPA 2 - JSON COM URLS PROTEGIDAS)
 // =============================================================================
 
-async function extrairDadosEstruturados(textoMarkdown, linksResolvidos) {
+async function extrairDadosEstruturados(textoMarkdown) {
     console.log('📊 [EXTRAÇÃO] Estruturando dados...');
     
     try {
@@ -408,20 +412,20 @@ async function extrairDadosEstruturados(textoMarkdown, linksResolvidos) {
             }
         });
         
-        const prompt = `Converta o seguinte texto em JSON estruturado.
+        const prompt = `Extraia produtos do seguinte texto em JSON estruturado.
 
 TEXTO:
 ${textoMarkdown}
 
-Retorne um JSON com esta estrutura EXATA:
+Retorne:
 
 {
   "produtos": [
     {
       "nome": "nome completo do produto",
       "preco": 999.99,
-      "link": "URL_completa",
-      "loja": "nome da loja",
+      "link": "extrair_se_houver",
+      "loja": "NOME_DO_SITE_OU_LOJA",
       "classificacao": "match"
     }
   ],
@@ -437,12 +441,11 @@ Retorne um JSON com esta estrutura EXATA:
 }
 
 REGRAS:
-- Extraia preços como números decimais (ex: "R$ 9.666,00" → 9666.00)
-- Se não houver preço, use null
-- "match" = mesma marca Minuzzi E especificação 25kVA
-- "similar" = marca diferente OU especificação diferente
-- Média ponderada: (soma_match*2 + soma_similar*1) / (count_match*2 + count_similar*1)
-- Se não houver preços, média = null`;
+- "loja": nome do site (ex: "vixevendas", "solares", "mercadolivre", "edeltec")
+- Preço: número decimal (9666.00) ou null
+- "match" = Minuzzi 25kVA | "similar" = diferente
+- Média: (match*2 + similar*1) / (count_match*2 + count_similar*1)
+- CADA produto deve ter sua loja correta identificada`;
         
         const result = await model.generateContent(prompt);
         const response = result.response;
@@ -458,18 +461,6 @@ REGRAS:
         console.log('📊 Tokens Extração - Input:', tokensExtracao.input, '| Output:', tokensExtracao.output, '| Total:', tokensExtracao.total);
         
         const dadosFinais = JSON.parse(jsonText);
-        
-        // Mapear links resolvidos para produtos (por ordem)
-        if (dadosFinais.produtos && linksResolvidos && linksResolvidos.length > 0) {
-            dadosFinais.produtos.forEach((produto, idx) => {
-                if (idx < linksResolvidos.length) {
-                    produto.link = linksResolvidos[idx].uri;
-                    if (!produto.loja || produto.loja === 'N/A') {
-                        produto.loja = linksResolvidos[idx].domain;
-                    }
-                }
-            });
-        }
         
         console.log('✅ [EXTRAÇÃO] Encontrados:', dadosFinais.produtos?.length || 0, 'produtos');
         console.log('💰 [EXTRAÇÃO] Média ponderada:', dadosFinais.avaliacao?.media_ponderada || 'N/A');
@@ -581,18 +572,40 @@ module.exports = async (req, res) => {
             });
         }
         
-        // Processar metadata e resolver redirects (COM FALLBACK PARA MARKDOWN)
+        // Processar metadata e resolver redirects
         const metadataProcessada = await processarGroundingMetadata(
             resultado.groundingMetadata,
             resultado.texto
         );
         
-        // NÃO mascarar - passar texto com URLs reais
-        // ETAPA 2: Extrair dados estruturados (JSON)
+        // ETAPA 2: Extrair dados estruturados (JSON) - texto RAW com links
         const dadosEstruturados = await extrairDadosEstruturados(
-            resultado.texto,
-            metadataProcessada.links_encontrados
+            resultado.texto
         );
+        
+        // Mapear links resolvidos aos produtos pelo domínio da loja
+        if (dadosEstruturados.produtos && metadataProcessada.links_encontrados) {
+            dadosEstruturados.produtos.forEach(produto => {
+                // Tentar encontrar link pelo domínio da loja mencionada
+                const lojaLower = (produto.loja || '').toLowerCase();
+                
+                const linkEncontrado = metadataProcessada.links_encontrados.find(link => {
+                    const domain = link.domain.toLowerCase();
+                    const uri = link.uri.toLowerCase();
+                    
+                    // Verificar se domínio ou URI contém nome da loja
+                    return domain.includes(lojaLower) || 
+                           uri.includes(lojaLower) ||
+                           lojaLower.includes(domain.replace('www.', '').split('.')[0]);
+                });
+                
+                if (linkEncontrado) {
+                    produto.link = linkEncontrado.uri;
+                    produto.loja = linkEncontrado.domain.replace('www.', '');
+                    console.log(`🔗 [MAP] ${produto.nome.substring(0, 40)}... → ${produto.loja}`);
+                }
+            });
+        }
         
         // Calcular tokens totais
         const tokensTotal = {
