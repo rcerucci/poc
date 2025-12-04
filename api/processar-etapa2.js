@@ -64,10 +64,19 @@ Especificações: ${produtoOriginal.especificacoes}
 Retorne em formato MARKDOWN os produtos encontrados.
 Para cada produto inclua:
 1. Nome completo do produto
-2. Classificação: "MATCH" (produto exato - mesma marca/modelo) ou "SIMILAR" (alternativo)
+2. Classificação: "MATCH" ou "SIMILAR"
 3. Preço (menor valor encontrado - à vista ou parcelado)
 4. Loja
 5. Link COMPLETO do produto
+
+CRITÉRIOS DE CLASSIFICAÇÃO (MUITO IMPORTANTE):
+- MATCH = Produto da MESMA MARCA e MESMA ESPECIFICAÇÃO PRINCIPAL
+  Exemplo: Se procura "Notebook Dell Inspiron i5 8GB", então "Notebook Dell Inspiron i5 8GB" = MATCH
+  (Mesmo que seja 15" ou 14", se for Dell Inspiron i5 8GB é MATCH)
+
+- SIMILAR = Produto de marca diferente OU especificação diferente OU tipo completamente diferente
+  Exemplo: "Notebook HP i5 8GB" = SIMILAR (marca diferente)
+  Exemplo: "Notebook Dell Inspiron i7 8GB" = SIMILAR (processador diferente)
 
 Retorne MÁXIMO 10 produtos.
 Use listas numeradas e SEMPRE inclua links clicáveis.`;
