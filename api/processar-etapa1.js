@@ -288,7 +288,7 @@ module.exports = async (req, res) => {
             generationConfig: {
                 temperature: 0.1,
                 responseMimeType: 'application/json',
-                thinkingConfig: { mode: 'DISABLED' }  // ✅ ADICIONAR ESTA LINHA
+                thinkingBudget: 0  // ✅ SINTAXE CORRETA!
             }
         });        
         const imageParts = imagens.map(img => ({
