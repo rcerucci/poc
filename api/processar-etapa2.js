@@ -54,7 +54,98 @@ const FATORES_DEPRECIACAO = {
 };
 
 // =============================================================================
-// BUSCAR COM CUSTOM SEARCH API
+// FILTROS E DETECÇÃO
+// =============================================================================
+
+const PALAVRAS_EXCLUIR = [
+    // Kits e combos
+    'kit', 'combo', 'conjunto', 'pack', 'pacote',
+    'par', 'pares', 'unidades', '2x', '3x', '4x', '5x',
+    
+    // Promoções
+    'promoção', 'promocao', 'oferta', 'desconto',
+    'queima', 'liquida', 'black friday', 'cyber monday',
+    
+    // Indicadores de preço promocional
+    'de:', 'de r$', 'era:', 'era r$', 'por:', 'por r$',
+    'agora:', 'agora r$', 'antes:', 'economize'
+];
+
+function contemPalavrasExcluir(texto) {
+    const textoLower = texto.toLowerCase();
+    return PALAVRAS_EXCLUIR.some(palavra => textoLower.includes(palavra));
+}
+
+function extrairPrecosDoTexto(texto) {
+    const padroes = [
+        /R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/g,
+        /(\d{1,3}(?:\.\d{3})*,\d{2})\s*reais?/gi,
+        /por\s*R?\$?\s*(\d{1,3}(?:\.\d{3})*,\d{2})/gi,
+        /preço:?\s*R?\$?\s*(\d{1,3}(?:\.\d{3})*,\d{2})/gi,
+        /valor:?\s*R?\$?\s*(\d{1,3}(?:\.\d{3})*,\d{2})/gi
+    ];
+    
+    const precosEncontrados = new Set();
+    
+    padroes.forEach(padrao => {
+        const matches = texto.matchAll(padrao);
+        for (const match of matches) {
+            const precoStr = match[1] || match[0];
+            const precoLimpo = precoStr.replace(/[^\d,]/g, '');
+            if (precoLimpo && precoLimpo.includes(',')) {
+                precosEncontrados.add(precoLimpo);
+            }
+        }
+    });
+    
+    const precos = Array.from(precosEncontrados)
+        .map(p => parseFloat(p.replace(/\./g, '').replace(',', '.')))
+        .filter(p => !isNaN(p) && p > 10 && p < 1000000)
+        .sort((a, b) => a - b);
+    
+    return precos;
+}
+
+function identificarFonte(url) {
+    const fontes = {
+        'mercadolivre.com': 'Mercado Livre',
+        'mercadolibre.com': 'Mercado Livre',
+        'americanas.com': 'Americanas',
+        'magazineluiza.com': 'Magazine Luiza',
+        'amazon.com': 'Amazon',
+        'leroymerlin.com': 'Leroy Merlin',
+        'madeiramadeira.com': 'Madeira Madeira',
+        'casasbahia.com': 'Casas Bahia',
+        'carrefour.com': 'Carrefour',
+        'shopee.com': 'Shopee',
+        'aliexpress.com': 'AliExpress',
+        'kabum.com': 'KaBuM',
+        'ponto.com': 'Ponto',
+        'fastshop.com': 'Fast Shop',
+        'extra.com': 'Extra',
+        'submarino.com': 'Submarino',
+        'mobly.com': 'Mobly'
+    };
+    
+    for (const [dominio, nome] of Object.entries(fontes)) {
+        if (url.includes(dominio)) return nome;
+    }
+    
+    try {
+        const match = url.match(/https?:\/\/(?:www\.)?([^\/]+)/);
+        if (match && match[1]) {
+            const dominio = match[1].split('.')[0];
+            return dominio.charAt(0).toUpperCase() + dominio.slice(1);
+        }
+    } catch (e) {
+        // Ignora
+    }
+    
+    return 'Site Desconhecido';
+}
+
+// =============================================================================
+// BUSCAR E PROCESSAR
 // =============================================================================
 
 async function buscarCustomSearch(termo, numResultados = 20) {
@@ -108,6 +199,55 @@ async function buscarCustomSearch(termo, numResultados = 20) {
         console.error('❌ Erro:', error.message);
         return { sucesso: false, resultados: [], erro: error.message };
     }
+}
+
+function processarResultados(resultadosBrutos) {
+    console.log('🔄 Processando resultados...\n');
+    
+    const processados = [];
+    const excluidos = [];
+    
+    resultadosBrutos.forEach((item, index) => {
+        const link = item.link;
+        const fonte = identificarFonte(link);
+        const titulo = item.title;
+        const snippet = item.snippet || '';
+        
+        // Verificar se contém palavras de exclusão
+        const textoCompleto = `${titulo} ${snippet}`.toLowerCase();
+        const deveExcluir = contemPalavrasExcluir(textoCompleto);
+        
+        // Extrair preços do snippet
+        const precosSnippet = extrairPrecosDoTexto(snippet);
+        
+        const resultado = {
+            posicao: index + 1,
+            link,
+            fonte,
+            titulo,
+            snippet,
+            preco_no_snippet: precosSnippet.length > 0,
+            precos_snippet: precosSnippet,
+            excluido: deveExcluir,
+            motivo_exclusao: deveExcluir ? 'Contém palavras de promoção/kit' : null
+        };
+        
+        if (deveExcluir) {
+            console.log(`❌ [${index + 1}] EXCLUÍDO - ${fonte}`);
+            console.log(`   Motivo: Promoção/Kit detectado`);
+            console.log(`   Título: ${titulo.substring(0, 60)}...`);
+            excluidos.push(resultado);
+        } else {
+            console.log(`✅ [${index + 1}] ${fonte}${precosSnippet.length > 0 ? ' 💰 ' + precosSnippet.length + ' preço(s)' : ''}`);
+            console.log(`   ${titulo.substring(0, 60)}...`);
+            processados.push(resultado);
+        }
+    });
+    
+    console.log(`\n📊 Processados: ${processados.length}`);
+    console.log(`📊 Excluídos: ${excluidos.length}\n`);
+    
+    return { processados, excluidos };
 }
 
 // =============================================================================
@@ -176,6 +316,9 @@ module.exports = async (req, res) => {
             });
         }
         
+        // Processar resultados (filtrar promoções/kits e extrair preços)
+        const { processados, excluidos } = processarResultados(resultado.resultados);
+        
         const dadosCompletos = {
             produto: {
                 numero_patrimonio: numero_patrimonio || 'N/A',
@@ -189,25 +332,37 @@ module.exports = async (req, res) => {
             
             busca: {
                 termo_utilizado: termo,
-                total_resultados: resultado.resultados.length
+                total_brutos: resultado.resultados.length,
+                total_processados: processados.length,
+                total_excluidos: excluidos.length,
+                com_preco_snippet: processados.filter(r => r.preco_no_snippet).length
             },
             
-            resultados_brutos: resultado.resultados,
+            resultados_validos: processados,
+            
+            resultados_excluidos: excluidos,
             
             metadados: {
                 data_processamento: new Date().toISOString(),
-                versao_sistema: '2.0-Dados-Brutos',
-                api_busca: 'Google Custom Search API'
+                versao_sistema: '2.1-Filtro-Promocoes',
+                api_busca: 'Google Custom Search API',
+                filtros_aplicados: [
+                    'Exclusão de kits/combos',
+                    'Exclusão de promoções',
+                    'Extração de preços do snippet'
+                ]
             }
         };
         
         console.log('✅ [ETAPA2] CONCLUÍDO');
-        console.log('📊 Resultados:', resultado.resultados.length);
+        console.log('📊 Válidos:', processados.length);
+        console.log('📊 Excluídos:', excluidos.length);
+        console.log('📊 Com preço no snippet:', dadosCompletos.busca.com_preco_snippet);
         console.log('='.repeat(70) + '\n');
         
         return res.status(200).json({
             status: 'Sucesso',
-            mensagem: `${resultado.resultados.length} resultado(s) encontrado(s)`,
+            mensagem: `${processados.length} resultado(s) válido(s) de ${resultado.resultados.length}`,
             dados: dadosCompletos
         });
         
