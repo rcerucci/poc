@@ -16,7 +16,7 @@ const redis = new Redis({
 });
 
 // =============================================================================
-// CACHE (REDIS) - ÚNICA ADIÇÃO À VERSÃO CONGELADA
+// CACHE (REDIS)
 // =============================================================================
 
 async function verificarCache(termo) {
@@ -52,7 +52,7 @@ async function verificarCache(termo) {
 }
 
 // =============================================================================
-// BUSCAR COM GROUNDING - CÓDIGO ORIGINAL CONGELADO
+// BUSCAR COM GROUNDING (ETAPA 1)
 // =============================================================================
 
 async function buscarComGrounding(termo) {
@@ -74,7 +74,7 @@ async function buscarComGrounding(termo) {
         });
         
         const prompt = `Busque informações sobre: ${termo}
-        
+
 Retorne produtos com preços em reais (R$).`;
         
         const result = await model.generateContent({
@@ -123,7 +123,7 @@ Retorne produtos com preços em reais (R$).`;
 }
 
 // =============================================================================
-// PROCESSAR GROUNDING METADATA - CÓDIGO ORIGINAL CONGELADO
+// PROCESSAR GROUNDING METADATA
 // =============================================================================
 
 function processarGroundingMetadata(metadata) {
@@ -176,7 +176,104 @@ function extrairDominio(url) {
 }
 
 // =============================================================================
-// ENDPOINT PRINCIPAL - VERSÃO CONGELADA + CACHE
+// EXTRAIR DADOS ESTRUTURADOS (ETAPA 2)
+// =============================================================================
+
+async function extrairDadosEstruturados(textoMarkdown) {
+    console.log('📊 [EXTRAÇÃO] Estruturando dados...');
+    
+    try {
+        const model = genAI.getGenerativeModel({
+            model: MODEL,
+            generationConfig: {
+                temperature: 0,
+                responseMimeType: 'application/json',
+                thinkingConfig: {
+                    thinkingBudget: 0
+                }
+            }
+        });
+        
+        const prompt = `Extraia produtos do texto em JSON.
+
+TEXTO:
+${textoMarkdown}
+
+Retorne:
+
+{
+  "produtos": [
+    {
+      "nome": "nome completo do produto",
+      "preco": 9666.00,
+      "classificacao": "match"
+    }
+  ],
+  "avaliacao": {
+    "media_ponderada": 0,
+    "total_produtos": 0,
+    "produtos_com_preco": 0,
+    "produtos_match": 0,
+    "produtos_similar": 0,
+    "preco_minimo": 0,
+    "preco_maximo": 0
+  }
+}
+
+REGRAS:
+- Preço: número decimal ou null se não houver
+- "match" = produto exato | "similar" = marca/spec diferente  
+- Média ponderada: (match*2 + similar) / (count_match*2 + count_similar)
+- Extraia NA ORDEM que aparecem no texto`;
+        
+        const result = await model.generateContent(prompt);
+        const response = result.response;
+        const jsonText = response.text();
+        
+        const usage = response.usageMetadata;
+        const tokensExtracao = {
+            input: usage?.promptTokenCount || 0,
+            output: usage?.candidatesTokenCount || 0,
+            total: usage?.totalTokenCount || 0
+        };
+        
+        console.log('📊 Tokens Extração - Input:', tokensExtracao.input, '| Output:', tokensExtracao.output, '| Total:', tokensExtracao.total);
+        
+        const dadosFinais = JSON.parse(jsonText);
+        
+        // Adicionar campos vazios para link e loja (serão preenchidos depois)
+        if (dadosFinais.produtos) {
+            dadosFinais.produtos.forEach(p => {
+                p.link = null;
+                p.loja = null;
+            });
+        }
+        
+        console.log('✅ [EXTRAÇÃO] Encontrados:', dadosFinais.produtos?.length || 0, 'produtos');
+        console.log('💰 [EXTRAÇÃO] Média ponderada:', dadosFinais.avaliacao?.media_ponderada || 'N/A');
+        console.log('📊 [EXTRAÇÃO] Match:', dadosFinais.avaliacao?.produtos_match || 0, '| Similar:', dadosFinais.avaliacao?.produtos_similar || 0);
+        
+        return {
+            sucesso: true,
+            produtos: dadosFinais.produtos || [],
+            avaliacao: dadosFinais.avaliacao || {},
+            tokens: tokensExtracao
+        };
+        
+    } catch (error) {
+        console.error('❌ [EXTRAÇÃO] Erro:', error.message);
+        return {
+            sucesso: false,
+            erro: error.message,
+            produtos: [],
+            avaliacao: {},
+            tokens: { input: 0, output: 0, total: 0 }
+        };
+    }
+}
+
+// =============================================================================
+// ENDPOINT PRINCIPAL
 // =============================================================================
 
 module.exports = async (req, res) => {
@@ -192,7 +289,7 @@ module.exports = async (req, res) => {
     });
     
     console.log('\n' + '='.repeat(70));
-    console.log('🚀 [ETAPA2-GROUNDING+CACHE] BUSCA DE PREÇOS');
+    console.log('🚀 [ETAPA2-V5.1-CACHE] BUSCA COM GROUNDING + EXTRAÇÃO');
     console.log('='.repeat(70) + '\n');
     
     try {
@@ -205,7 +302,7 @@ module.exports = async (req, res) => {
             especificacoes,
             estado_conservacao,
             categoria_depreciacao,
-            forcar_nova_busca // Flag para forçar nova busca
+            forcar_nova_busca
         } = req.body;
         
         if (!termo_busca_comercial || termo_busca_comercial.trim() === '') {
@@ -223,7 +320,7 @@ module.exports = async (req, res) => {
         console.log('🔍 Termo:', termo);
         console.log('🔄 Forçar nova busca:', forcar_nova_busca ? 'SIM' : 'NÃO');
         
-        // 🆕 VERIFICAR CACHE (se não forçar nova busca)
+        // VERIFICAR CACHE (se não forçar nova busca)
         if (!forcar_nova_busca) {
             const cache = await verificarCache(termo);
             
@@ -242,7 +339,10 @@ module.exports = async (req, res) => {
             }
         }
         
-        // Buscar com grounding (CÓDIGO ORIGINAL CONGELADO)
+        // BUSCAR NOVA COTAÇÃO
+        console.log('🔍 [BUSCA] Executando nova busca...');
+        
+        // ETAPA 1: Buscar com grounding (Markdown)
         const resultado = await buscarComGrounding(termo);
         
         if (!resultado.sucesso) {
@@ -259,8 +359,31 @@ module.exports = async (req, res) => {
             });
         }
         
-        // Processar metadata do grounding (CÓDIGO ORIGINAL CONGELADO)
+        // Processar metadata
         const metadataProcessada = processarGroundingMetadata(resultado.groundingMetadata);
+        
+        // ETAPA 2: Extrair dados estruturados (JSON)
+        const dadosEstruturados = await extrairDadosEstruturados(resultado.texto);
+        
+        // Mapear links aos produtos por ORDEM
+        if (dadosEstruturados.produtos && metadataProcessada.links_encontrados) {
+            const links = metadataProcessada.links_encontrados;
+            
+            dadosEstruturados.produtos.forEach((produto, idx) => {
+                if (idx < links.length) {
+                    produto.link = links[idx].uri;
+                    produto.loja = links[idx].domain.replace('www.', '');
+                    console.log(`🔗 [MAP] Produto ${idx+1} → ${produto.loja}`);
+                }
+            });
+        }
+        
+        // Calcular tokens totais
+        const tokensTotal = {
+            grounding: resultado.tokens,
+            extracao: dadosEstruturados.tokens,
+            total: resultado.tokens.total + dadosEstruturados.tokens.total
+        };
         
         const dadosCompletos = {
             produto: {
@@ -275,50 +398,73 @@ module.exports = async (req, res) => {
             
             busca: {
                 termo_utilizado: termo,
-                metodo: 'Grounding with Google Search',
+                metodo: 'Grounding + JSON Extraction',
                 queries_realizadas: metadataProcessada.queries_realizadas,
                 total_queries: metadataProcessada.total_queries,
-                total_links: metadataProcessada.total_chunks
+                total_links: metadataProcessada.links_encontrados.length
             },
             
-            // Resposta da LLM (TEXTO RAW - SEM EXTRAÇÃO JSON)
-            resposta_llm: resultado.texto,
+            // Dados estruturados extraídos
+            produtos_encontrados: dadosEstruturados.produtos || [],
+            total_produtos: (dadosEstruturados.produtos || []).length,
             
-            // Links encontrados pelo grounding
+            // Avaliação com média ponderada
+            avaliacao: dadosEstruturados.avaliacao || {
+                media_ponderada: null,
+                total_produtos: (dadosEstruturados.produtos || []).length,
+                produtos_com_preco: 0,
+                produtos_match: 0,
+                produtos_similar: 0,
+                preco_minimo: null,
+                preco_maximo: null
+            },
+            
+            // Links do grounding
             links_grounding: metadataProcessada.links_encontrados,
             
-            // Suportes (conexão texto -> fontes)
+            // Metadata de suporte (opcional)
             suportes: metadataProcessada.suportes,
             
-            // Metadata bruta completa (para análise)
-            grounding_metadata_completo: resultado.groundingMetadata,
-            
-            tokens: resultado.tokens,
-            
-            metadados: {
+            // Tokens detalhados
+            meta: {
                 data_processamento: new Date().toISOString(),
-                versao_sistema: '3.0-Grounding+Cache',
+                versao_sistema: '5.1-Cache+2Etapas',
                 modelo_llm: MODEL,
-                metodo_busca: 'Grounding with Google Search',
-                thinking_mode: 'desabilitado'
+                queries: metadataProcessada.total_queries,
+                tokens_grounding: resultado.tokens.total,
+                tokens_extracao: dadosEstruturados.tokens.total,
+                tokens_total: tokensTotal.total
             }
         };
         
-        console.log('\n✅ [ETAPA2-GROUNDING+CACHE] CONCLUÍDO');
+        console.log('\n✅ [ETAPA2-V5.1] CONCLUÍDO');
         console.log('📊 Queries realizadas:', metadataProcessada.total_queries);
-        console.log('📊 Links encontrados:', metadataProcessada.total_chunks);
-        console.log('📊 Tokens:', resultado.tokens.total);
+        console.log('📊 Links encontrados:', metadataProcessada.links_encontrados.length);
+        console.log('📊 Produtos estruturados:', (dadosEstruturados.produtos || []).length);
+        console.log('💰 Média ponderada:', dadosCompletos.avaliacao.media_ponderada || 'N/A');
+        console.log('📊 Match:', dadosCompletos.avaliacao.produtos_match, '| Similar:', dadosCompletos.avaliacao.produtos_similar);
+        console.log('📊 Tokens TOTAL:', tokensTotal.total);
         console.log('='.repeat(70) + '\n');
+        
+        // Incrementar estatísticas
+        try {
+            await redis.incr('stats:buscas_novas');
+            await redis.incrby('stats:tokens_gastos', tokensTotal.total);
+        } catch (error) {
+            console.warn('⚠️ Erro ao incrementar stats:', error.message);
+        }
         
         return res.status(200).json({
             status: 'Sucesso',
-            mensagem: `${metadataProcessada.total_chunks} link(s) encontrado(s) via grounding`,
+            mensagem: dadosCompletos.avaliacao.media_ponderada 
+                ? `Média ponderada: R$ ${dadosCompletos.avaliacao.media_ponderada.toFixed(2)}`
+                : `${(dadosEstruturados.produtos || []).length} produto(s) encontrado(s)`,
             em_cache: false,
             dados: dadosCompletos
         });
         
     } catch (error) {
-        console.error('❌ [ETAPA2-GROUNDING+CACHE] ERRO:', error.message);
+        console.error('❌ [ETAPA2-V5.1] ERRO:', error.message);
         return res.status(500).json({
             status: 'Erro',
             mensagem: error.message,
