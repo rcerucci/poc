@@ -219,22 +219,14 @@ async function buscarComGrounding(termo) {
             }
         });
         
-        // IMPORTANTE: Pedir em MARKDOWN para preservar grounding metadata
+        // Prompt SIMPLES que funciona melhor com grounding
         const prompt = `Busque informações sobre: ${termo}
 
-Retorne os produtos encontrados em formato MARKDOWN com preços em reais (R$).
-Para cada produto inclua:
-- Nome completo do produto
-- Preço à vista (se disponível)
-- Preço parcelado (se disponível)
-- Nome da loja
-- Link COMPLETO do produto (URL clicável)
-
-Use listas numeradas e SEMPRE inclua o link do produto.`;
+Retorne produtos com preços em reais (R$).`;
         
         const result = await model.generateContent({
             contents: [{ parts: [{ text: prompt }] }],
-            tools: ['google_search_retrieval']
+            tools: [{ googleSearch: {} }]
         });
         
         const response = result.response;
