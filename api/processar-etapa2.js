@@ -234,7 +234,7 @@ Use listas numeradas e SEMPRE inclua o link do produto.`;
         
         const result = await model.generateContent({
             contents: [{ parts: [{ text: prompt }] }],
-            tools: [{ googleSearch: {} }]
+            tools: ['google_search_retrieval']
         });
         
         const response = result.response;
