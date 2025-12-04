@@ -323,18 +323,27 @@ INSTRUÇÕES CRÍTICAS:
             promptFinal,
             ...imageParts
         ]);
-        
+
         const usage = result.response.usageMetadata;
+        
+        // Extração segura dos tokens
         const tokensInput = usage?.promptTokenCount || 0;
-        const tokensOutput = usage?.candidatesTokenCount || 0;
-        const tokensThinking = usage?.thoughtsTokenCount || 0;
-        const tokensTotal = usage?.totalTokenCount || (tokensInput + tokensOutput + tokensThinking);
+        const tokensOutput = usage?.candidatesTokenCount || 0; // O Google já inclui thinking aqui
+        const tokensThinking = usage?.thoughtsTokenCount || 0; // Apenas informativo
         
+        // CUIDADO AQUI: Se a API não der o total, some APENAS Input + Output
+        const tokensTotal = usage?.totalTokenCount || (tokensInput + tokensOutput);
+        
+        // Cálculos Financeiros
         const custoInput = tokensInput * CUSTO_INPUT_POR_TOKEN;
-        const custoOutput = tokensOutput * CUSTO_OUTPUT_POR_TOKEN;
-        const custoThinking = tokensThinking * CUSTO_OUTPUT_POR_TOKEN;
-        const custoTotal = custoInput + custoOutput + custoThinking;
+        const custoOutput = tokensOutput * CUSTO_OUTPUT_POR_TOKEN; 
         
+        // O custo total é a soma simples dos dois componentes principais
+        const custoTotal = custoInput + custoOutput; 
+
+        // Log informativo (sem somar no total a pagar)
+        const custoThinkingEstimado = tokensThinking * CUSTO_OUTPUT_POR_TOKEN;
+
         // ✅ LOG RESUMIDO EM 1 LINHA
         console.log(`💰 Custo: R$ ${custoTotal.toFixed(6)} | Input: ${tokensInput} | Output: ${tokensOutput} | Thinking: ${tokensThinking}`);
         
