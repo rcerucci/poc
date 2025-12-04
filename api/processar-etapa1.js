@@ -288,9 +288,13 @@ module.exports = async (req, res) => {
             generationConfig: {
                 temperature: 0.1,
                 responseMimeType: 'application/json',
-                thinkingBudget: 0  // ✅ SINTAXE CORRETA!
+                thinkingConfig: {
+                    thinkingBudget: 0  // ✅ SINTAXE CORRETA!
+                }
             }
-        });        
+        });
+        
+        
         const imageParts = imagens.map(img => ({
             inlineData: {
                 data: img.data,
