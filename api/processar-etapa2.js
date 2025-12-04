@@ -46,7 +46,6 @@ async function buscarEEstruturar(termo, produtoOriginal) {
             model: MODEL,
             generationConfig: {
                 temperature: 0.1,
-                responseMimeType: 'application/json',
                 thinkingConfig: {
                     thinkingBudget: 0
                 }
@@ -61,7 +60,7 @@ Marca: ${produtoOriginal.marca}
 Modelo: ${produtoOriginal.modelo}
 Especificações: ${produtoOriginal.especificacoes}
 
-RETORNE JSON com esta estrutura EXATA:
+RETORNE APENAS UM JSON (sem markdown, sem texto adicional) com esta estrutura:
 
 {
   "produtos": [
@@ -81,7 +80,8 @@ REGRAS:
 - preco = menor preço encontrado (à vista ou parcelado)
 - Se não encontrar preço, use null
 - Retorne até 15 produtos
-- SEMPRE inclua o link completo do produto`;
+- SEMPRE inclua o link completo do produto
+- NÃO adicione texto antes ou depois do JSON`;
         
         const result = await model.generateContent({
             contents: [{ parts: [{ text: prompt }] }],
@@ -89,7 +89,11 @@ REGRAS:
         });
         
         const response = result.response;
-        const jsonText = response.text();
+        let jsonText = response.text();
+        
+        // Remover markdown se houver
+        jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        
         const dados = JSON.parse(jsonText);
         
         // Extrair metadata
