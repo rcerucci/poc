@@ -78,7 +78,7 @@ async function buscarComGrounding(termo) {
 Retorne produtos com preços em reais (R$).`;
         
         const result = await model.generateContent({
-            contents: prompt,
+            contents: [{ parts: [{ text: prompt }] }],
             tools: [{ googleSearch: {} }]
         });
         
