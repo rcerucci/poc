@@ -393,7 +393,7 @@ function desmascararUrls(texto, mapaUrls) {
 // EXTRAIR DADOS ESTRUTURADOS (ETAPA 2 - JSON COM URLS PROTEGIDAS)
 // =============================================================================
 
-async function extrairDadosEstruturados(textoMarkdown, mapaUrls) {
+async function extrairDadosEstruturados(textoMarkdown, linksResolvidos) {
     console.log('📊 [EXTRAÇÃO] Estruturando dados...');
     
     try {
@@ -408,9 +408,9 @@ async function extrairDadosEstruturados(textoMarkdown, mapaUrls) {
             }
         });
         
-        const prompt = `Converta o seguinte texto Markdown em JSON estruturado.
+        const prompt = `Converta o seguinte texto em JSON estruturado.
 
-TEXTO MARKDOWN:
+TEXTO:
 ${textoMarkdown}
 
 Retorne um JSON com esta estrutura EXATA:
@@ -420,9 +420,9 @@ Retorne um JSON com esta estrutura EXATA:
     {
       "nome": "nome completo do produto",
       "preco": 999.99,
-      "link": "URL_placeholder_ou_URL_completa",
+      "link": "URL_completa",
       "loja": "nome da loja",
-      "classificacao": "match" ou "similar"
+      "classificacao": "match"
     }
   ],
   "avaliacao": {
@@ -436,33 +436,18 @@ Retorne um JSON com esta estrutura EXATA:
   }
 }
 
-REGRAS PARA PREÇOS:
-- Extraia TODOS os preços mencionados no texto
-- Converta "R$ 9.666,00" para 9666.00 (número decimal)
-- Se houver múltiplos preços (à vista/parcelado), use o MENOR (à vista)
+REGRAS:
+- Extraia preços como números decimais (ex: "R$ 9.666,00" → 9666.00)
 - Se não houver preço, use null
-
-REGRAS PARA CLASSIFICAÇÃO:
-- "match" = produto da MESMA marca E especificação (ex: Minuzzi 25kVA)
+- "match" = mesma marca Minuzzi E especificação 25kVA
 - "similar" = marca diferente OU especificação diferente
-- Se não puder determinar, use "similar"
-
-REGRAS PARA MÉDIA PONDERADA:
-- Calcule usando: (soma_match * 2 + soma_similar * 1) / (count_match * 2 + count_similar * 1)
-- Match tem peso 2, Similar tem peso 1
-- Se não houver preços, média = null
-- Arredonde para 2 casas decimais
-
-REGRAS PARA LINKS:
-- Se o link estiver em formato <<URL_N>>, preserve EXATAMENTE
-- Se for URL completa (https://...), preserve também
-- Não invente ou altere links`;
+- Média ponderada: (soma_match*2 + soma_similar*1) / (count_match*2 + count_similar*1)
+- Se não houver preços, média = null`;
         
         const result = await model.generateContent(prompt);
         const response = result.response;
         const jsonText = response.text();
         
-        // Extrair tokens desta chamada
         const usage = response.usageMetadata;
         const tokensExtracao = {
             input: usage?.promptTokenCount || 0,
@@ -472,13 +457,19 @@ REGRAS PARA LINKS:
         
         console.log('📊 Tokens Extração - Input:', tokensExtracao.input, '| Output:', tokensExtracao.output, '| Total:', tokensExtracao.total);
         
-        const dados = JSON.parse(jsonText);
+        const dadosFinais = JSON.parse(jsonText);
         
-        // Desmascarar URLs no JSON (se houver mapa)
-        const jsonComUrls = mapaUrls && Object.keys(mapaUrls).length > 0
-            ? desmascararUrls(JSON.stringify(dados), mapaUrls)
-            : JSON.stringify(dados);
-        const dadosFinais = JSON.parse(jsonComUrls);
+        // Mapear links resolvidos para produtos (por ordem)
+        if (dadosFinais.produtos && linksResolvidos && linksResolvidos.length > 0) {
+            dadosFinais.produtos.forEach((produto, idx) => {
+                if (idx < linksResolvidos.length) {
+                    produto.link = linksResolvidos[idx].uri;
+                    if (!produto.loja || produto.loja === 'N/A') {
+                        produto.loja = linksResolvidos[idx].domain;
+                    }
+                }
+            });
+        }
         
         console.log('✅ [EXTRAÇÃO] Encontrados:', dadosFinais.produtos?.length || 0, 'produtos');
         console.log('💰 [EXTRAÇÃO] Média ponderada:', dadosFinais.avaliacao?.media_ponderada || 'N/A');
@@ -593,17 +584,15 @@ module.exports = async (req, res) => {
         // Processar metadata e resolver redirects (COM FALLBACK PARA MARKDOWN)
         const metadataProcessada = await processarGroundingMetadata(
             resultado.groundingMetadata,
-            resultado.texto  // 🆕 Passar o texto Markdown para fallback
+            resultado.texto
         );
         
-        // Mascarar URLs no texto Markdown
-        const { textoMascarado, mapaUrls } = mascararUrls(
+        // NÃO mascarar - passar texto com URLs reais
+        // ETAPA 2: Extrair dados estruturados (JSON)
+        const dadosEstruturados = await extrairDadosEstruturados(
             resultado.texto,
             metadataProcessada.links_encontrados
         );
-        
-        // ETAPA 2: Extrair dados estruturados (JSON)
-        const dadosEstruturados = await extrairDadosEstruturados(textoMascarado, mapaUrls);
         
         // Calcular tokens totais
         const tokensTotal = {
