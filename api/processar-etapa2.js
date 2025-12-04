@@ -54,6 +54,25 @@ const FATORES_DEPRECIACAO = {
 };
 
 // =============================================================================
+// OPERADORES DO GOOGLE
+// =============================================================================
+
+function adicionarOperadoresGoogle(termoOriginal) {
+    // Operadores para melhorar qualidade dos resultados
+    const operadores = [
+        '-lista',        // Exclui páginas de listagem
+        '-busca',        // Exclui páginas de busca
+        '-categoria',    // Exclui categorias
+        '-categorias',   // Exclui categorias (plural)
+        '-search',       // Exclui /search
+        '-catalogo',     // Exclui catálogos
+        'intext:"R$"'    // Força presença de preço em reais
+    ];
+    
+    return `${termoOriginal} ${operadores.join(' ')}`;
+}
+
+// =============================================================================
 // FILTROS E DETECÇÃO
 // =============================================================================
 
@@ -365,13 +384,17 @@ module.exports = async (req, res) => {
             });
         }
         
-        const termo = termo_busca_comercial.trim();
+        const termoOriginal = termo_busca_comercial.trim();
         
         console.log('📦 Patrimônio:', numero_patrimonio);
         console.log('📦 Produto:', nome_produto);
-        console.log('🔍 Termo:', termo);
+        console.log('🔍 Termo original:', termoOriginal);
         
-        const resultado = await buscarCustomSearch(termo, 20);
+        // Adicionar operadores do Google para melhorar resultados
+        const termoComOperadores = adicionarOperadoresGoogle(termoOriginal);
+        console.log('⚙️  Termo com operadores:', termoComOperadores);
+        
+        const resultado = await buscarCustomSearch(termoComOperadores, 20);
         
         if (!resultado.sucesso || resultado.resultados.length === 0) {
             return res.status(200).json({
@@ -383,7 +406,7 @@ module.exports = async (req, res) => {
                         nome_produto: nome_produto || 'N/A'
                     },
                     busca: {
-                        termo_utilizado: termo,
+                        termo_utilizado: termoOriginal,
                         total_resultados: 0,
                         erro: resultado.erro || null
                     }
@@ -406,7 +429,8 @@ module.exports = async (req, res) => {
             },
             
             busca: {
-                termo_utilizado: termo,
+                termo_original: termoOriginal,
+                termo_com_operadores: termoComOperadores,
                 total_brutos: resultado.resultados.length,
                 total_processados: processados.length,
                 total_excluidos: excluidos.length,
@@ -419,8 +443,16 @@ module.exports = async (req, res) => {
             
             metadados: {
                 data_processamento: new Date().toISOString(),
-                versao_sistema: '2.2-Filtro-Categorias',
+                versao_sistema: '2.3-Operadores-Google',
                 api_busca: 'Google Custom Search API',
+                operadores_google: [
+                    '-lista (exclui listagens)',
+                    '-busca (exclui buscas)',
+                    '-categoria (exclui categorias)',
+                    '-search (exclui /search)',
+                    '-catalogo (exclui catálogos)',
+                    'intext:"R$" (força presença de preço)'
+                ],
                 filtros_aplicados: [
                     'Exclusão de páginas de categoria/listagem',
                     'Exclusão de kits/combos',
