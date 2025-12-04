@@ -427,24 +427,12 @@ Retorne:
       "preco": 9666.00,
       "classificacao": "match"
     }
-  ],
-  "avaliacao": {
-    "media_ponderada": 0,
-    "total_produtos": 0,
-    "produtos_com_preco": 0,
-    "produtos_match": 0,
-    "produtos_similar": 0,
-    "preco_minimo": 0,
-    "preco_maximo": 0
-  }
+  ]
 }
 
 REGRAS:
 - Preço: número decimal ou null se não houver
 - "match" = Minuzzi 25kVA | "similar" = marca/spec diferente  
-- Média ponderada: (soma dos preços match × 2 + soma dos preços similar) / (quantidade match × 2 + quantidade similar)
-- Exemplo: 1 match de R$1000 → (1000×2)/(1×2) = 1000.00
-- Exemplo: 2 match de R$1000 e R$1200 → (1000×2 + 1200×2)/(2×2) = 1100.00
 - Extraia NA ORDEM que aparecem no texto`;
         
         const result = await model.generateContent(prompt);
@@ -462,68 +450,68 @@ REGRAS:
         
         const dadosFinais = JSON.parse(jsonText);
         
+        // Inicializar array de produtos se não existir
+        if (!dadosFinais.produtos) {
+            dadosFinais.produtos = [];
+        }
+        
         // Adicionar campos vazios para link e loja (serão preenchidos depois)
-        if (dadosFinais.produtos) {
-            dadosFinais.produtos.forEach(p => {
-                p.link = null;
-                p.loja = null;
-            });
-        }
+        dadosFinais.produtos.forEach(p => {
+            p.link = null;
+            p.loja = null;
+        });
         
-        // ✅ VALIDAR E RECALCULAR MÉDIA PONDERADA (garantir correção)
-        if (dadosFinais.produtos && dadosFinais.produtos.length > 0) {
-            let somaMatch = 0, countMatch = 0;
-            let somaSimilar = 0, countSimilar = 0;
-            let precoMin = null, precoMax = null;
-            let countComPreco = 0;
-            
-            dadosFinais.produtos.forEach(p => {
-                if (p.preco !== null && p.preco !== undefined) {
-                    countComPreco++;
-                    
-                    // Atualizar min/max
-                    if (precoMin === null || p.preco < precoMin) precoMin = p.preco;
-                    if (precoMax === null || p.preco > precoMax) precoMax = p.preco;
-                    
-                    // Somar por classificação
-                    if (p.classificacao === 'match') {
-                        somaMatch += p.preco;
-                        countMatch++;
-                    } else if (p.classificacao === 'similar') {
-                        somaSimilar += p.preco;
-                        countSimilar++;
-                    }
+        // ✅ CALCULAR MÉDIA PONDERADA E ESTATÍSTICAS (apenas em JavaScript)
+        let somaMatch = 0, countMatch = 0;
+        let somaSimilar = 0, countSimilar = 0;
+        let precoMin = null, precoMax = null;
+        let countComPreco = 0;
+        
+        dadosFinais.produtos.forEach(p => {
+            if (p.preco !== null && p.preco !== undefined && !isNaN(p.preco)) {
+                const preco = parseFloat(p.preco);
+                countComPreco++;
+                
+                // Atualizar min/max
+                if (precoMin === null || preco < precoMin) precoMin = preco;
+                if (precoMax === null || preco > precoMax) precoMax = preco;
+                
+                // Somar por classificação
+                if (p.classificacao === 'match') {
+                    somaMatch += preco;
+                    countMatch++;
+                } else if (p.classificacao === 'similar') {
+                    somaSimilar += preco;
+                    countSimilar++;
                 }
-            });
-            
-            // Calcular média ponderada corretamente
-            const denominador = (countMatch * 2) + countSimilar;
-            const numerador = (somaMatch * 2) + somaSimilar;
-            const mediaPonderada = denominador > 0 ? numerador / denominador : null;
-            
-            // Atualizar objeto de avaliação
-            dadosFinais.avaliacao = {
-                media_ponderada: mediaPonderada ? parseFloat(mediaPonderada.toFixed(2)) : null,
-                total_produtos: dadosFinais.produtos.length,
-                produtos_com_preco: countComPreco,
-                produtos_match: countMatch,
-                produtos_similar: countSimilar,
-                preco_minimo: precoMin,
-                preco_maximo: precoMax
-            };
-            
-            console.log('🔧 [VALIDAÇÃO] Média recalculada:', mediaPonderada?.toFixed(2) || 'N/A');
-            console.log('📊 [VALIDAÇÃO] Numerador:', numerador, '| Denominador:', denominador);
-        }
+            }
+        });
         
-        console.log('✅ [EXTRAÇÃO] Encontrados:', dadosFinais.produtos?.length || 0, 'produtos');
-        console.log('💰 [EXTRAÇÃO] Média ponderada:', dadosFinais.avaliacao?.media_ponderada || 'N/A');
-        console.log('📊 [EXTRAÇÃO] Match:', dadosFinais.avaliacao?.produtos_match || 0, '| Similar:', dadosFinais.avaliacao?.produtos_similar || 0);
+        // Calcular média ponderada
+        const denominador = (countMatch * 2) + countSimilar;
+        const numerador = (somaMatch * 2) + somaSimilar;
+        const mediaPonderada = denominador > 0 ? numerador / denominador : null;
+        
+        // Criar objeto de avaliação
+        dadosFinais.avaliacao = {
+            media_ponderada: mediaPonderada ? parseFloat(mediaPonderada.toFixed(2)) : null,
+            total_produtos: dadosFinais.produtos.length,
+            produtos_com_preco: countComPreco,
+            produtos_match: countMatch,
+            produtos_similar: countSimilar,
+            preco_minimo: precoMin,
+            preco_maximo: precoMax
+        };
+        
+        console.log('✅ [EXTRAÇÃO] Encontrados:', dadosFinais.produtos.length, 'produtos');
+        console.log('💰 [CÁLCULO] Média ponderada:', mediaPonderada?.toFixed(2) || 'N/A');
+        console.log('📊 [CÁLCULO] Numerador:', numerador, '| Denominador:', denominador);
+        console.log('📊 [CÁLCULO] Match:', countMatch, '(R$', somaMatch.toFixed(2), ') | Similar:', countSimilar, '(R$', somaSimilar.toFixed(2), ')');
         
         return {
             sucesso: true,
-            produtos: dadosFinais.produtos || [],
-            avaliacao: dadosFinais.avaliacao || {},
+            produtos: dadosFinais.produtos,
+            avaliacao: dadosFinais.avaliacao,
             tokens: tokensExtracao
         };
         
