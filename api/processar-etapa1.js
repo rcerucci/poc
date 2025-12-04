@@ -1,17 +1,14 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const API_KEY = process.env.GOOGLE_API_KEY;
-//const MODEL = process.env.VERTEX_MODEL || 'gemini-2.5-flash';
-const MODEL = process.env.VERTEX_MODEL || 'gemini-2.5-flash-lite'; // ✅ Mudança
+const MODEL = process.env.VERTEX_MODEL || 'gemini-2.5-flash';
 
 const genAI = new GoogleGenerativeAI(API_KEY);
 
 const TAXA_CAMBIO_USD_BRL = 6.00;
-
-const USD_INPUT_POR_MILHAO = 0.10;  // ✅ Flash-Lite
-const USD_OUTPUT_POR_MILHAO = 0.40; // ✅ Flash-Liteconst USD_INPUT_POR_MILHAO = 0.30;
-//const USD_OUTPUT_POR_MILHAO = 2.50;
-//const CUSTO_INPUT_POR_TOKEN = (USD_INPUT_POR_MILHAO / 1_000_000) * TAXA_CAMBIO_USD_BRL;
+const USD_INPUT_POR_MILHAO = 0.30;
+const USD_OUTPUT_POR_MILHAO = 2.50;
+const CUSTO_INPUT_POR_TOKEN = (USD_INPUT_POR_MILHAO / 1_000_000) * TAXA_CAMBIO_USD_BRL;
 const CUSTO_OUTPUT_POR_TOKEN = (USD_OUTPUT_POR_MILHAO / 1_000_000) * TAXA_CAMBIO_USD_BRL;
 const TOKENS_POR_IMAGEM_512PX = 1610;
 
@@ -290,7 +287,11 @@ module.exports = async (req, res) => {
             model: MODEL,
             generationConfig: {
                 temperature: 0.1,
-                responseMimeType: 'application/json'
+                responseMimeType: 'application/json',
+                // ⚠️ ADICIONE ISTO:
+                thinkingConfig: {
+                    thinkingBudget: 0  // Desliga thinking = economia de 5.8x!
+                }
             }
         });
         
