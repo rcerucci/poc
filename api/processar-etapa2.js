@@ -31,10 +31,10 @@ async function resolverRedirect(url) {
 }
 
 // =============================================================================
-// BUSCAR E ESTRUTURAR (UMA ÚNICA CHAMADA)
+// BUSCAR COM GROUNDING (ETAPA 1 - MARKDOWN)
 // =============================================================================
 
-async function buscarEEstruturar(termo, produtoOriginal) {
+async function buscarComGrounding(termo, produtoOriginal) {
     console.log('🔍 [GROUNDING] Termo:', termo);
     
     if (!API_KEY) {
@@ -61,30 +61,16 @@ Marca: ${produtoOriginal.marca}
 Modelo: ${produtoOriginal.modelo}
 Especificações: ${produtoOriginal.especificacoes}
 
-RETORNE APENAS UM JSON (sem markdown, sem texto adicional) com esta estrutura:
+Retorne em formato MARKDOWN os produtos encontrados.
+Para cada produto inclua:
+1. Nome completo do produto
+2. Classificação: "MATCH" (produto exato - mesma marca/modelo) ou "SIMILAR" (alternativo)
+3. Preço (menor valor encontrado - à vista ou parcelado)
+4. Loja
+5. Link COMPLETO do produto
 
-{
-  "produtos": [
-    {
-      "nome": "nome completo do produto",
-      "preco": 999.99,
-      "link": "https://...",
-      "loja": "nome da loja",
-      "classificacao": "match" ou "similar"
-    }
-  ]
-}
-
-REGRAS:
-- classificacao "match" = produto exato (mesma marca/modelo)
-- classificacao "similar" = produto equivalente/alternativo
-- preco = menor preço encontrado (à vista ou parcelado)
-- Se não encontrar preço, use null
-- Retorne MÁXIMO 10 produtos (para evitar resposta muito longa)
-- SEMPRE inclua o link completo do produto
-- NÃO adicione texto antes ou depois do JSON
-- Use aspas duplas em todos os valores string
-- Escape caracteres especiais corretamente`;
+Retorne MÁXIMO 10 produtos.
+Use listas numeradas e SEMPRE inclua links clicáveis.`;
         
         const result = await model.generateContent({
             contents: [{ parts: [{ text: prompt }] }],
@@ -92,24 +78,7 @@ REGRAS:
         });
         
         const response = result.response;
-        let jsonText = response.text();
-        
-        console.log('📝 [DEBUG] Tamanho da resposta:', jsonText.length, 'caracteres');
-        
-        // Remover markdown se houver
-        jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-        
-        // Tentar parsear
-        let dados;
-        try {
-            dados = JSON.parse(jsonText);
-        } catch (parseError) {
-            console.error('❌ [PARSE] Erro ao parsear JSON:', parseError.message);
-            console.error('📄 [PARSE] Primeiros 500 chars:', jsonText.substring(0, 500));
-            console.error('📄 [PARSE] Últimos 500 chars:', jsonText.substring(jsonText.length - 500));
-            
-            throw new Error(`JSON inválido: ${parseError.message}`);
-        }
+        const textoMarkdown = response.text();
         
         // Extrair metadata
         const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
@@ -128,8 +97,8 @@ REGRAS:
         console.log('📊 Queries:', queries.length, '| Chunks:', chunks.length);
         console.log('📊 Tokens:', tokens.total);
         
-        // Extrair links dos chunks para auditoria
-        const linksAuditoria = chunks
+        // Extrair links dos chunks
+        const linksChunks = chunks
             .filter(chunk => chunk.web)
             .map(chunk => ({
                 uri: chunk.web.uri,
@@ -139,9 +108,9 @@ REGRAS:
         
         return {
             sucesso: true,
-            produtos: dados.produtos || [],
+            textoMarkdown,
             queries,
-            linksAuditoria,
+            linksChunks,
             tokens
         };
         
@@ -149,10 +118,84 @@ REGRAS:
         console.error('❌ [GROUNDING] Erro:', error.message);
         return {
             sucesso: false,
+            erro: error.message
+        };
+    }
+}
+
+// =============================================================================
+// EXTRAIR JSON DO MARKDOWN (ETAPA 2 - SEM GROUNDING)
+// =============================================================================
+
+async function extrairJsonDoMarkdown(textoMarkdown) {
+    console.log('📊 [EXTRAÇÃO] Estruturando dados...');
+    
+    try {
+        const model = genAI.getGenerativeModel({
+            model: MODEL,
+            generationConfig: {
+                temperature: 0,
+                responseMimeType: 'application/json',
+                maxOutputTokens: 4096,
+                thinkingConfig: {
+                    thinkingBudget: 0
+                }
+            }
+        });
+        
+        const prompt = `Converta o seguinte texto Markdown em JSON estruturado.
+
+TEXTO MARKDOWN:
+${textoMarkdown}
+
+Retorne um JSON com esta estrutura EXATA:
+
+{
+  "produtos": [
+    {
+      "nome": "nome completo do produto",
+      "preco": 999.99,
+      "link": "https://...",
+      "loja": "nome da loja",
+      "classificacao": "match" ou "similar"
+    }
+  ]
+}
+
+REGRAS:
+- Se não houver preço, use null
+- classificacao deve ser "match" ou "similar" (minúsculas)
+- Preserve os links EXATAMENTE como estão
+- Converta "R$ 866,98" para 866.98 (número)`;
+        
+        const result = await model.generateContent(prompt);
+        const response = result.response;
+        const jsonText = response.text();
+        const dados = JSON.parse(jsonText);
+        
+        // Extrair tokens
+        const usage = response.usageMetadata;
+        const tokens = {
+            input: usage?.promptTokenCount || 0,
+            output: usage?.candidatesTokenCount || 0,
+            total: usage?.totalTokenCount || 0
+        };
+        
+        console.log('✅ [EXTRAÇÃO] Produtos:', dados.produtos?.length || 0);
+        console.log('📊 Tokens:', tokens.total);
+        
+        return {
+            sucesso: true,
+            produtos: dados.produtos || [],
+            tokens
+        };
+        
+    } catch (error) {
+        console.error('❌ [EXTRAÇÃO] Erro:', error.message);
+        return {
+            sucesso: false,
             erro: error.message,
             produtos: [],
-            queries: [],
-            linksAuditoria: [],
             tokens: { input: 0, output: 0, total: 0 }
         };
     }
@@ -296,32 +339,49 @@ module.exports = async (req, res) => {
         console.log('📦 Produto:', nome_produto);
         console.log('🔍 Termo:', termo);
         
-        // Buscar e estruturar (UMA ÚNICA CHAMADA)
-        const resultado = await buscarEEstruturar(termo, produtoOriginal);
+        // ETAPA 1: Buscar com grounding (Markdown)
+        const resultadoGrounding = await buscarComGrounding(termo, produtoOriginal);
         
-        if (!resultado.sucesso) {
+        if (!resultadoGrounding.sucesso) {
             return res.status(200).json({
                 status: 'Erro',
                 mensagem: 'Falha na busca',
                 dados: {
-                    erro: resultado.erro
+                    erro: resultadoGrounding.erro
+                }
+            });
+        }
+        
+        // ETAPA 2: Extrair JSON do Markdown (sem grounding)
+        const resultadoExtracao = await extrairJsonDoMarkdown(resultadoGrounding.textoMarkdown);
+        
+        if (!resultadoExtracao.sucesso) {
+            return res.status(200).json({
+                status: 'Erro',
+                mensagem: 'Falha na extração de dados',
+                dados: {
+                    erro: resultadoExtracao.erro,
+                    texto_markdown: resultadoGrounding.textoMarkdown
                 }
             });
         }
         
         // Resolver redirects nos links dos produtos
-        const produtosResolvidos = await resolverRedirectsProdutos(resultado.produtos);
+        const produtosResolvidos = await resolverRedirectsProdutos(resultadoExtracao.produtos);
         
         // Calcular média ponderada
         const estatisticas = calcularMediaPonderada(produtosResolvidos);
         
         // Resolver redirects dos links de auditoria
         const linksAuditoriaResolvidos = await Promise.all(
-            resultado.linksAuditoria.map(async (link) => ({
+            resultadoGrounding.linksChunks.map(async (link) => ({
                 ...link,
                 uri: await resolverRedirect(link.uri)
             }))
         );
+        
+        // Calcular tokens totais
+        const tokensTotal = resultadoGrounding.tokens.total + resultadoExtracao.tokens.total;
         
         const dadosResposta = {
             produto: {
@@ -353,8 +413,10 @@ module.exports = async (req, res) => {
             
             // Metadados mínimos
             meta: {
-                queries: resultado.queries.length,
-                tokens: resultado.tokens.total,
+                queries: resultadoGrounding.queries.length,
+                tokens: tokensTotal,
+                tokens_grounding: resultadoGrounding.tokens.total,
+                tokens_extracao: resultadoExtracao.tokens.total,
                 data: new Date().toISOString()
             }
         };
@@ -363,7 +425,7 @@ module.exports = async (req, res) => {
         console.log('📊 Produtos:', estatisticas.total_produtos);
         console.log('📊 Com preço:', estatisticas.com_preco, '(match:', estatisticas.match, '| similar:', estatisticas.similar, ')');
         console.log('📊 Média ponderada: R$', estatisticas.media_ponderada?.toFixed(2) || 'N/A');
-        console.log('📊 Tokens:', resultado.tokens.total);
+        console.log('📊 Tokens TOTAL:', tokensTotal, '(grounding:', resultadoGrounding.tokens.total, '+ extração:', resultadoExtracao.tokens.total, ')');
         console.log('='.repeat(70) + '\n');
         
         return res.status(200).json({
