@@ -51,7 +51,7 @@ const FATORES_DEPRECIACAO = {
 // =============================================================================
 // BUSCAR COM GROUNDING
 // =============================================================================
-//
+
 async function buscarComGrounding(termo) {
     console.log('🔍 [GROUNDING] Termo:', termo);
     
@@ -71,12 +71,12 @@ async function buscarComGrounding(termo) {
         });
         
         const prompt = `Busque informações sobre: ${termo}
-        
+
 Retorne produtos com preços em reais (R$).`;
         
         const result = await model.generateContent({
-            contents: prompt,
-            tools: ['google_search_retrieval']
+            contents: [{ parts: [{ text: prompt }] }],
+            tools: [{ googleSearchRetrieval: {} }]
         });
         
         const response = result.response;
