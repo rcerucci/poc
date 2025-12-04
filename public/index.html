@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PoC PatriGestor - Sistema IA</title>
+    <title>PatriGestor - Cadastro de Ativos</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -12,7 +12,7 @@
         <header class="header">
             <h1>Cadastrar Novo Patrimônio</h1>
             <div class="header-actions">
-                <span class="badge">PoC v2.0 - Vercel</span>
+                <span class="badge">v2.0</span>
                 <button class="btn-clear-all" id="btnLimparTudo">
                     🗑️ Limpar Tudo
                 </button>
@@ -26,7 +26,7 @@
         <section class="card">
             <h3>📸 Fotos do Ativo</h3>
             <p class="help-text">
-                💡 <strong>Dica:</strong> Use <kbd>Ctrl+V</kbd> para colar imagens da área de transferência, 
+                💡 <strong>Dica:</strong> Use <kbd>Ctrl+V</kbd> para colar imagens, 
                 ou clique para selecionar arquivos. Mínimo 2 fotos.
             </p>
             
@@ -70,7 +70,7 @@
                     <button class="btn-remove" style="display: none;">✕</button>
                 </div>
                 
-                <!-- SLOT 4 - BOTÃO PROCESSAR -->
+                <!-- BOTÃO PROCESSAR -->
                 <div class="photo-slot photo-slot-button">
                     <button class="btn-process-photos" id="processarEtapa1" disabled>
                         <span class="icon">🤖</span>
@@ -80,16 +80,15 @@
             </div>
         </section>
 
+        <!-- Seção de Observação do Operador -->
         <section class="card" id="observacaoSection" style="display: none;">
             <h3>💡 Você conhece este equipamento?</h3>
             
-            <!-- ✅ Help-text agora será preenchido dinamicamente pela validação da LLM -->
             <p class="help-text" id="validacaoLLM">
-                <!-- Vazio por padrão, será preenchido após processamento -->
+                <!-- Preenchido após processamento -->
             </p>
             
             <div class="observacao-container">
-                <!-- Radio Buttons -->
                 <div class="radio-group">
                     <label class="radio-option">
                         <input type="radio" name="tipoObservacao" value="nao" checked>
@@ -116,7 +115,6 @@
                     </label>
                 </div>
                 
-                <!-- Campo de Nome do Equipamento -->
                 <div class="input-group">
                     <label for="nomeEquipamento" class="input-label">Nome do Equipamento:</label>
                     <input 
@@ -134,16 +132,14 @@
         <!-- Formulário de Dados -->
         <section class="card" id="formSection" style="display: none;">
             <h3>📋 Dados do Patrimônio</h3>
-            <p class="help-text" id="helpTextForm" style="display: none;">
-                🔒 <strong>Campos bloqueados:</strong> Extraídos pela IA. Clique em qualquer campo para copiar o conteúdo.
+            <p class="help-text">
+                📝 Revise os dados extraídos pela IA antes de continuar.
             </p>
             
-            <!-- ✅ PLACA E NOME LADO A LADO -->
             <div class="form-row">
                 <div class="form-group">
                     <label for="numeroPatrimonio">Placa *</label>
-                    <input type="text" id="numeroPatrimonio" placeholder="Digite números ou use o scanner">
-                    <small class="field-hint">💡 Digite números ou use o scanner</small>
+                    <input type="text" id="numeroPatrimonio" placeholder="Digite ou use scanner">
                 </div>
 
                 <div class="form-group">
@@ -152,25 +148,11 @@
                 </div>
             </div>
 
-            <!-- ✅ VALORES LADO A LADO -->
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="valorAtual">Valor Atual</label>
-                    <input type="text" id="valorAtual" placeholder="R$ 0,00" readonly>
-                </div>
-
-                <div class="form-group">
-                    <label for="valorMercado">Valor de Mercado</label>
-                    <input type="text" id="valorMercado" placeholder="R$ 0,00" readonly>
-                </div>
-            </div>
-
-            <!-- ✅ ESTADO E CENTRO DE CUSTO LADO A LADO -->
             <div class="form-row">
                 <div class="form-group">
                     <label for="estado">Estado</label>
                     <select id="estado">
-                        <option value="">Selecione o Estado</option>
+                        <option value="">Selecione</option>
                         <option value="Excelente">Excelente</option>
                         <option value="Bom">Bom</option>
                         <option value="Regular">Regular</option>
@@ -179,22 +161,9 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="centroCusto">Centro de Custo</label>
-                    <select id="centroCusto">
-                        <option value="">Selecione o Centro de Custo</option>
-                        <option value="TI">TI</option>
-                        <option value="Administrativo">Administrativo</option>
-                        <option value="Operacional">Operacional</option>
-                    </select>
-                </div>
-            </div>
-
-            <!-- ✅ DEPRECIAÇÃO E UNIDADE LADO A LADO -->
-            <div class="form-row">
-                <div class="form-group">
                     <label for="depreciacao">Depreciação</label>
                     <select id="depreciacao">
-                        <option value="">Selecione a Depreciação</option>
+                        <option value="">Selecione</option>
                         <option value="Computadores e Informática">Computadores e Informática</option>
                         <option value="Ferramentas">Ferramentas</option>
                         <option value="Instalações">Instalações</option>
@@ -204,31 +173,76 @@
                         <option value="Outros">Outros</option>
                     </select>
                 </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="centroCusto">Centro de Custo</label>
+                    <select id="centroCusto">
+                        <option value="">Selecione</option>
+                        <option value="TI">TI</option>
+                        <option value="Administrativo">Administrativo</option>
+                        <option value="Operacional">Operacional</option>
+                    </select>
+                </div>
 
                 <div class="form-group">
                     <label for="unidade">Unidade</label>
                     <select id="unidade">
-                        <option value="">Selecione a Unidade</option>
+                        <option value="">Selecione</option>
                         <option value="Unidade 1">Unidade 1</option>
                         <option value="Unidade 2">Unidade 2</option>
                     </select>
                 </div>
             </div>
 
-            <!-- ✅ DESCRIÇÃO FULL WIDTH -->
             <div class="form-group">
                 <label for="descricao">Descrição</label>
                 <textarea id="descricao" rows="4" placeholder="Descrição técnica do ativo"></textarea>
             </div>
 
             <button class="btn-primary btn-block" id="validarEBuscarPreco">
-                ✅ Validar e Buscar Preço (Etapa 2/2)
+                🔍 Buscar Preço de Mercado
             </button>
+        </section>
+
+        <!-- Aviso de Cache -->
+        <section class="card card-cache" id="cacheSection" style="display: none;">
+            <h3>⚡ Cotação em Cache</h3>
+            <p id="cacheInfo" class="cache-info">
+                <!-- Preenchido dinamicamente -->
+            </p>
+            <div class="cache-actions">
+                <button class="btn-secondary" id="usarCache">
+                    ✅ Usar Cotação Salva
+                </button>
+                <button class="btn-secondary" id="buscarNova">
+                    🔄 Buscar Nova Cotação
+                </button>
+            </div>
+        </section>
+
+        <!-- Produtos Encontrados -->
+        <section class="card" id="produtosSection" style="display: none;">
+            <h3>🛒 Produtos Encontrados</h3>
+            <p class="help-text" id="cotacaoInfo">
+                <!-- Preenchido dinamicamente -->
+            </p>
+            
+            <div id="produtosList" class="produtos-list">
+                <!-- Preenchido dinamicamente -->
+            </div>
+
+            <div class="cotacao-actions">
+                <button class="btn-primary btn-block" id="aceitarCotacao">
+                    ✅ Aceitar Cotação e Continuar
+                </button>
+            </div>
         </section>
 
         <!-- Resultado Final -->
         <section class="card" id="resultSection" style="display: none;">
-            <h3>✅ Ativo Processado com Sucesso!</h3>
+            <h3>✅ Ativo Cadastrado com Sucesso!</h3>
             
             <div class="result-grid">
                 <div class="result-section">
@@ -245,11 +259,6 @@
                     <h4>Valores</h4>
                     <div id="resultValores"></div>
                 </div>
-
-                <div class="result-section">
-                    <h4>Metadados</h4>
-                    <div id="resultMetadados"></div>
-                </div>
             </div>
 
             <details class="json-details">
@@ -259,7 +268,6 @@
 
             <div class="action-buttons">
                 <button class="btn-secondary" id="exportarJSON">💾 Exportar JSON</button>
-                <button class="btn-secondary" id="copiarJSON">📋 Copiar JSON</button>
                 <button class="btn-primary" id="processarNovo">➡️ Processar Novo Ativo</button>
             </div>
         </section>

@@ -16,19 +16,28 @@ const CONFIG = {
 const AppState = {
     fotos: [null, null, null],
     dadosEtapa1: null,
-    dadosEtapa2: null
+    dadosEtapa2: null,
+    cotacaoCache: null
 };
 
 const elementos = {
+    // Botões principais
     processarEtapa1: document.getElementById('processarEtapa1'),
     validarEBuscarPreco: document.getElementById('validarEBuscarPreco'),
+    aceitarCotacao: document.getElementById('aceitarCotacao'),
+    usarCache: document.getElementById('usarCache'),
+    buscarNova: document.getElementById('buscarNova'),
     exportarJSON: document.getElementById('exportarJSON'),
-    copiarJSON: document.getElementById('copiarJSON'),
     processarNovo: document.getElementById('processarNovo'),
+    
+    // Seções
     observacaoSection: document.getElementById('observacaoSection'),
     formSection: document.getElementById('formSection'),
+    cacheSection: document.getElementById('cacheSection'),
+    produtosSection: document.getElementById('produtosSection'),
     resultSection: document.getElementById('resultSection'),
-    helpTextForm: document.getElementById('helpTextForm'),
+    
+    // Campos do formulário
     numeroPatrimonio: document.getElementById('numeroPatrimonio'),
     nomeProduto: document.getElementById('nomeProduto'),
     estado: document.getElementById('estado'),
@@ -36,21 +45,27 @@ const elementos = {
     centroCusto: document.getElementById('centroCusto'),
     unidade: document.getElementById('unidade'),
     descricao: document.getElementById('descricao'),
-    valorAtual: document.getElementById('valorAtual'),
-    valorMercado: document.getElementById('valorMercado'),
+    nomeEquipamento: document.getElementById('nomeEquipamento'),
+    
+    // Áreas de exibição
     alertBox: document.getElementById('alertBox'),
     loadingOverlay: document.getElementById('loadingOverlay'),
     loadingText: document.getElementById('loadingText'),
+    cacheInfo: document.getElementById('cacheInfo'),
+    cotacaoInfo: document.getElementById('cotacaoInfo'),
+    produtosList: document.getElementById('produtosList'),
     resultIdentificacao: document.getElementById('resultIdentificacao'),
     resultClassificacao: document.getElementById('resultClassificacao'),
     resultValores: document.getElementById('resultValores'),
-    resultMetadados: document.getElementById('resultMetadados'),
-    jsonOutput: document.getElementById('jsonOutput'),
-    nomeEquipamento: document.getElementById('nomeEquipamento')
+    jsonOutput: document.getElementById('jsonOutput')
 };
 
+// ===================================================================
+// INICIALIZAÇÃO
+// ===================================================================
+
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('🚀 Aplicação iniciada');
+    console.log('🚀 PatriGestor iniciado');
     inicializarEventListeners();
     inicializarUploadFotos();
     inicializarObservacaoOperador();
@@ -58,21 +73,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function inicializarEventListeners() {
     const btnLimparTudo = document.getElementById('btnLimparTudo');
-    if (btnLimparTudo) {
-        btnLimparTudo.addEventListener('click', limparTudo);
-    }
-
+    if (btnLimparTudo) btnLimparTudo.addEventListener('click', limparTudo);
+    
     if (elementos.processarEtapa1) {
         elementos.processarEtapa1.addEventListener('click', processarEtapa1);
     }
     if (elementos.validarEBuscarPreco) {
-        elementos.validarEBuscarPreco.addEventListener('click', processarEtapa2);
+        elementos.validarEBuscarPreco.addEventListener('click', verificarCacheEBuscar);
+    }
+    if (elementos.aceitarCotacao) {
+        elementos.aceitarCotacao.addEventListener('click', aceitarCotacao);
+    }
+    if (elementos.usarCache) {
+        elementos.usarCache.addEventListener('click', usarCotacaoCache);
+    }
+    if (elementos.buscarNova) {
+        elementos.buscarNova.addEventListener('click', () => buscarPreco(true));
     }
     if (elementos.exportarJSON) {
         elementos.exportarJSON.addEventListener('click', exportarJSON);
-    }
-    if (elementos.copiarJSON) {
-        elementos.copiarJSON.addEventListener('click', copiarJSON);
     }
     if (elementos.processarNovo) {
         elementos.processarNovo.addEventListener('click', () => location.reload());
@@ -82,7 +101,6 @@ function inicializarEventListeners() {
 function inicializarObservacaoOperador() {
     const radios = document.querySelectorAll('input[name="tipoObservacao"]');
     const campoNome = elementos.nomeEquipamento;
-    const inputHint = document.querySelector('.input-hint');
     
     if (!radios.length || !campoNome) return;
     
@@ -91,295 +109,225 @@ function inicializarObservacaoOperador() {
             if (e.target.value === 'nao') {
                 campoNome.disabled = true;
                 campoNome.value = '';
-                if (inputHint) inputHint.style.display = 'none';
             } else {
                 campoNome.disabled = false;
                 campoNome.focus();
-                if (inputHint) inputHint.style.display = 'block';
             }
         });
     });
-    
-    console.log('✅ Observação do operador inicializada');
 }
 
-function limparTudo() {
-    if (confirm('⚠️ Deseja realmente limpar tudo? Esta ação não pode ser desfeita.')) {
-        location.reload();
-    }
-}
-
-async function comprimirImagem(base64, maxResolucao, qualidade) {
-    return new Promise((resolve) => {
-        const img = new Image();
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            let width = img.width;
-            let height = img.height;
-            
-            if (width > height) {
-                if (width > maxResolucao) {
-                    height = Math.round((height * maxResolucao) / width);
-                    width = maxResolucao;
-                }
-            } else {
-                if (height > maxResolucao) {
-                    width = Math.round((width * maxResolucao) / height);
-                    height = maxResolucao;
-                }
-            }
-            
-            canvas.width = width;
-            canvas.height = height;
-            
-            const ctx = canvas.getContext('2d');
-            ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = 'high';
-            ctx.drawImage(img, 0, 0, width, height);
-            
-            const comprimido = canvas.toDataURL('image/jpeg', qualidade);
-            
-            const tamanhoOriginal = base64.length;
-            const tamanhoComprimido = comprimido.length;
-            const reducao = ((tamanhoOriginal - tamanhoComprimido) / tamanhoOriginal) * 100;
-            
-            console.log('📦 Compressão ' + maxResolucao + 'px:', {
-                resolucao: width + 'x' + height,
-                qualidade: (qualidade * 100) + '%',
-                original: (tamanhoOriginal / 1024).toFixed(0) + ' KB',
-                comprimida: (tamanhoComprimido / 1024).toFixed(0) + ' KB',
-                reducao: reducao.toFixed(1) + '%'
-            });
-            
-            resolve(comprimido);
-        };
-        img.src = base64;
-    });
-}
-
-async function processarImagemDupla(base64Original) {
-    console.log('🖼️ Gerando 2 versões da imagem (65% qualidade)...');
-    
-    const [versaoIA, versaoStorage] = await Promise.all([
-        comprimirImagem(
-            base64Original, 
-            CONFIG.compressao.resolucaoIA, 
-            CONFIG.compressao.qualidade
-        ),
-        comprimirImagem(
-            base64Original, 
-            CONFIG.compressao.resolucaoStorage, 
-            CONFIG.compressao.qualidade
-        )
-    ]);
-    
-    return {
-        ia: versaoIA,
-        storage: versaoStorage,
-        timestamp: new Date().toISOString()
-    };
-}
+// ===================================================================
+// UPLOAD E MANIPULAÇÃO DE FOTOS
+// ===================================================================
 
 function inicializarUploadFotos() {
-    for (let i = 1; i <= 3; i++) {
-        const input = document.getElementById('photo' + i);
+    for (let i = 1; i <= CONFIG.maxFotos; i++) {
+        const input = document.getElementById(`photo${i}`);
         const slot = document.querySelector(`.photo-slot[data-index="${i}"]`);
         
         if (input && slot) {
-            input.addEventListener('change', (e) => handleFileSelect(e, i - 1));
+            input.addEventListener('change', (e) => handleFotoUpload(e, i - 1));
             
             const btnRemove = slot.querySelector('.btn-remove');
             if (btnRemove) {
-                btnRemove.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    removerFoto(i - 1);
-                });
+                btnRemove.addEventListener('click', () => removerFoto(i - 1));
             }
         }
     }
     
     document.addEventListener('paste', handlePaste);
-    console.log('✅ Upload de fotos inicializado (Ctrl+V ativo)');
+    validarBotaoProcessar();
+}
+
+async function handleFotoUpload(event, index) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    try {
+        const fotoComprimida = await comprimirImagem(file, CONFIG.compressao.resolucaoStorage);
+        AppState.fotos[index] = fotoComprimida;
+        
+        mostrarPreview(fotoComprimida, index);
+        validarBotaoProcessar();
+        
+        console.log(`✅ Foto ${index + 1} carregada`);
+    } catch (error) {
+        console.error('❌ Erro ao processar foto:', error);
+        mostrarAlerta('Erro ao processar foto: ' + error.message, 'error');
+    }
 }
 
 async function handlePaste(event) {
     const items = event.clipboardData?.items;
     if (!items) return;
     
-    for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        
-        if (item.type.indexOf('image') === -1) continue;
-        
-        const blob = item.getAsFile();
-        if (!blob) continue;
-        
-        const indexVazio = AppState.fotos.findIndex(f => f === null);
-        if (indexVazio === -1) {
-            mostrarAlerta('⚠️ Máximo de 3 fotos atingido!', 'warning');
-            return;
+    for (let item of items) {
+        if (item.type.indexOf('image') !== -1) {
+            event.preventDefault();
+            const file = item.getAsFile();
+            
+            const primeiroSlotVazio = AppState.fotos.findIndex(f => f === null);
+            if (primeiroSlotVazio === -1) {
+                mostrarAlerta('⚠️ Todas as posições de foto estão ocupadas', 'warning');
+                return;
+            }
+            
+            try {
+                const fotoComprimida = await comprimirImagem(file, CONFIG.compressao.resolucaoStorage);
+                AppState.fotos[primeiroSlotVazio] = fotoComprimida;
+                
+                mostrarPreview(fotoComprimida, primeiroSlotVazio);
+                validarBotaoProcessar();
+                
+                mostrarAlerta(`✅ Foto ${primeiroSlotVazio + 1} colada com sucesso`, 'success', 2000);
+            } catch (error) {
+                console.error('❌ Erro ao colar foto:', error);
+                mostrarAlerta('Erro ao colar foto: ' + error.message, 'error');
+            }
+            
+            break;
         }
-        
-        mostrarAlerta('📋 Imagem colada! Comprimindo...', 'info');
-        
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-            await adicionarFoto(e.target.result, indexVazio);
-        };
-        reader.readAsDataURL(blob);
-        
-        break;
     }
 }
 
-function handleFileSelect(event, index) {
-    const file = event.target.files[0];
-    if (!file) return;
-    
-    if (!file.type.startsWith('image/')) {
-        mostrarAlerta('⚠️ Por favor, selecione apenas imagens!', 'warning');
-        return;
-    }
-    
-    mostrarAlerta('🔄 Comprimindo imagem (2 versões)...', 'info');
-    
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-        await adicionarFoto(e.target.result, index);
-    };
-    reader.readAsDataURL(file);
-}
-
-async function adicionarFoto(base64, index) {
+function mostrarPreview(imagemBase64, index) {
     const slot = document.querySelector(`.photo-slot[data-index="${index + 1}"]`);
     if (!slot) return;
     
     const preview = slot.querySelector('.photo-preview');
     const placeholder = slot.querySelector('.photo-placeholder');
     const btnRemove = slot.querySelector('.btn-remove');
+    const label = slot.querySelector('label');
     
-    const versoes = await processarImagemDupla(base64);
-    
-    preview.src = versoes.storage;
-    preview.style.display = 'block';
-    placeholder.style.display = 'none';
-    btnRemove.style.display = 'flex';
-    
-    AppState.fotos[index] = {
-        ia: versoes.ia.split(',')[1],
-        storage: versoes.storage.split(',')[1],
-        thumbnail: versoes.storage,
-        timestamp: versoes.timestamp
-    };
-    
-    console.log('✅ Foto ' + (index + 1) + ' adicionada (2 versões)');
-    verificarFotosMinimas();
-    mostrarAlerta('✅ Foto processada com sucesso!', 'success');
+    if (preview && placeholder && btnRemove && label) {
+        preview.src = imagemBase64;
+        preview.style.display = 'block';
+        placeholder.style.display = 'none';
+        btnRemove.style.display = 'flex';
+        label.style.cursor = 'default';
+    }
 }
 
 function removerFoto(index) {
+    AppState.fotos[index] = null;
+    
     const slot = document.querySelector(`.photo-slot[data-index="${index + 1}"]`);
     if (!slot) return;
     
     const preview = slot.querySelector('.photo-preview');
     const placeholder = slot.querySelector('.photo-placeholder');
     const btnRemove = slot.querySelector('.btn-remove');
-    const input = document.getElementById('photo' + (index + 1));
+    const input = slot.querySelector('input[type="file"]');
+    const label = slot.querySelector('label');
     
-    preview.src = '';
-    preview.style.display = 'none';
-    placeholder.style.display = 'flex';
-    btnRemove.style.display = 'none';
-    if (input) input.value = '';
-    
-    AppState.fotos[index] = null;
-    
-    console.log('🗑️ Foto ' + (index + 1) + ' removida');
-    verificarFotosMinimas();
-    mostrarAlerta('🗑️ Foto removida', 'info');
-}
-
-function verificarFotosMinimas() {
-    const totalFotos = AppState.fotos.filter(f => f !== null).length;
-    
-    if (elementos.processarEtapa1) {
-        if (totalFotos >= CONFIG.minFotos) {
-            elementos.processarEtapa1.disabled = false;
-            elementos.processarEtapa1.classList.add('ready');
-            
-            // ✅ MOSTRAR SECTION DE OBSERVAÇÃO
-            if (elementos.observacaoSection) {
-                elementos.observacaoSection.style.display = 'block';
-            }
-        } else {
-            elementos.processarEtapa1.disabled = true;
-            elementos.processarEtapa1.classList.remove('ready');
-            
-            // ✅ OCULTAR SECTION DE OBSERVAÇÃO
-            if (elementos.observacaoSection) {
-                elementos.observacaoSection.style.display = 'none';
-            }
-        }
+    if (preview && placeholder && btnRemove && input && label) {
+        preview.style.display = 'none';
+        preview.src = '';
+        placeholder.style.display = 'flex';
+        btnRemove.style.display = 'none';
+        input.value = '';
+        label.style.cursor = 'pointer';
     }
     
-    console.log('📸 Fotos válidas:', totalFotos + '/' + CONFIG.minFotos);
+    validarBotaoProcessar();
+    console.log(`🗑️ Foto ${index + 1} removida`);
 }
 
-// ✅ ADICIONAR esta função nova
-function mostrarValidacaoLLM(dados) {
-    const validacaoBox = document.getElementById('validacaoLLM');
+function validarBotaoProcessar() {
+    const fotosValidas = AppState.fotos.filter(f => f !== null);
+    const btnProcessar = elementos.processarEtapa1;
     
-    if (!validacaoBox) return;
-    
-    if (dados.observacao_validada && dados.observacao_validada !== 'N/A') {
-        const emoji = {
-            'Confirmada': '✅',
-            'Provável': '🟡',
-            'Conflitante': '⚠️'
-        }[dados.observacao_validada] || '💡';
-        
-        validacaoBox.textContent = `${emoji} ${dados.nota_observacao}`;
-        validacaoBox.classList.add('validacao-ativa');
-        
-        console.log('📝 Validação LLM exibida');
-    } else {
-        validacaoBox.textContent = '';
-        validacaoBox.classList.remove('validacao-ativa');
+    if (btnProcessar) {
+        btnProcessar.disabled = fotosValidas.length < CONFIG.minFotos;
     }
 }
 
-// ✅ ATUALIZAR a função processarEtapa1 (adicionar chamada)
+// ===================================================================
+// COMPRESSÃO DE IMAGENS
+// ===================================================================
+
+async function comprimirImagem(file, resolucaoAlvo) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        
+        reader.onload = (e) => {
+            const img = new Image();
+            
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                let width = img.width;
+                let height = img.height;
+                
+                if (width > height) {
+                    if (width > resolucaoAlvo) {
+                        height = (height * resolucaoAlvo) / width;
+                        width = resolucaoAlvo;
+                    }
+                } else {
+                    if (height > resolucaoAlvo) {
+                        width = (width * resolucaoAlvo) / height;
+                        height = resolucaoAlvo;
+                    }
+                }
+                
+                canvas.width = width;
+                canvas.height = height;
+                
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                const imagemComprimida = canvas.toDataURL('image/jpeg', CONFIG.compressao.qualidade);
+                resolve(imagemComprimida);
+            };
+            
+            img.onerror = () => reject(new Error('Erro ao carregar imagem'));
+            img.src = e.target.result;
+        };
+        
+        reader.onerror = () => reject(new Error('Erro ao ler arquivo'));
+        reader.readAsDataURL(file);
+    });
+}
+
+// ===================================================================
+// PROCESSAMENTO - ETAPA 1 (EXTRAÇÃO DE DADOS)
+// ===================================================================
+
 async function processarEtapa1() {
-    console.log('🔍 Iniciando Etapa 1...');
+    console.log('📸 Iniciando Etapa 1...');
     
     const fotosValidas = AppState.fotos.filter(f => f !== null);
     
     if (fotosValidas.length < CONFIG.minFotos) {
-        mostrarAlerta('⚠️ Adicione pelo menos ' + CONFIG.minFotos + ' fotos!', 'warning');
+        mostrarAlerta(`⚠️ Mínimo ${CONFIG.minFotos} fotos necessárias`, 'warning');
         return;
     }
     
     mostrarLoading('🤖 Analisando imagens com IA...');
     
     try {
-        const imagensParaIA = fotosValidas.map(foto => ({
-            data: foto.ia,
-            timestamp: foto.timestamp
-        }));
+        // Comprimir fotos para IA (512px)
+        const imagensParaIA = [];
+        for (let foto of fotosValidas) {
+            const blob = await fetch(foto).then(r => r.blob());
+            const file = new File([blob], 'foto.jpg', { type: 'image/jpeg' });
+            const fotoComprimida = await comprimirImagem(file, CONFIG.compressao.resolucaoIA);
+            imagensParaIA.push({ data: fotoComprimida.split(',')[1] });
+        }
         
-        const tipoSelecionado = document.querySelector('input[name="tipoObservacao"]:checked')?.value;
-        const nomeEquipamento = elementos.nomeEquipamento?.value?.trim();
+        // Preparar observação do operador
+        const tipoObservacao = document.querySelector('input[name="tipoObservacao"]:checked')?.value;
+        const nomeEquipamento = elementos.nomeEquipamento?.value.trim();
         
         let observacao = '';
-        
-        if (tipoSelecionado === 'certeza' && nomeEquipamento) {
+        if (tipoObservacao === 'certeza' && nomeEquipamento) {
             observacao = `Isto é um ${nomeEquipamento}`;
-            console.log('✅ Operador tem CERTEZA:', nomeEquipamento);
-        } else if (tipoSelecionado === 'suspeita' && nomeEquipamento) {
+            console.log('✅ Operador TEM CERTEZA:', nomeEquipamento);
+        } else if (tipoObservacao === 'suspeita' && nomeEquipamento) {
             observacao = `Parece ser um ${nomeEquipamento}`;
             console.log('🤔 Operador SUSPEITA:', nomeEquipamento);
-        } else {
-            console.log('❓ Operador não sabe o equipamento');
         }
         
         const payload = {
@@ -387,7 +335,7 @@ async function processarEtapa1() {
             observacao_operador: observacao
         };
         
-        console.log('📤 Enviando ' + imagensParaIA.length + ' imagens (512px) para API...');
+        console.log(`📤 Enviando ${imagensParaIA.length} imagens...`);
         if (observacao) console.log('💡 Com observação:', observacao);
         
         const response = await fetch(CONFIG.apiUrl + '/api/processar-etapa1', {
@@ -397,39 +345,12 @@ async function processarEtapa1() {
         });
         
         const resultado = await response.json();
-        
         console.log('📥 Etapa 1 - Resposta:', resultado);
         
         if (resultado.status === 'Sucesso') {
             AppState.dadosEtapa1 = resultado.dados;
             preencherFormulario(resultado.dados);
-            
-            // ✅ MOSTRAR VALIDAÇÃO NA SECTION
-            mostrarValidacaoLLM(resultado.dados);
-            
-            // ✅ TAMBÉM MOSTRAR NO ALERTA (mantém compatibilidade)
-            if (resultado.dados.observacao_validada && resultado.dados.observacao_validada !== 'N/A') {
-                const emoji = {
-                    'Confirmada': '✅',
-                    'Provável': '🟡',
-                    'Conflitante': '⚠️'
-                }[resultado.dados.observacao_validada] || '💡';
-                
-                console.log(emoji + ' Observação:', resultado.dados.observacao_validada);
-                console.log('📝 Nota:', resultado.dados.nota_observacao);
-                
-                mostrarAlerta(
-                    emoji + ' Observação ' + resultado.dados.observacao_validada.toLowerCase(), 
-                    resultado.dados.observacao_validada === 'Conflitante' ? 'warning' : 'success',
-                    5000
-                );
-            } else {
-                mostrarAlerta('✅ ' + resultado.mensagem, 'success');
-            }
-            
-            if (resultado.dados.metadados?.custo_total) {
-                console.log('💰 Custo Etapa 1: R$', resultado.dados.metadados.custo_total);
-            }
+            mostrarAlerta('✅ ' + resultado.mensagem, 'success');
         } else {
             throw new Error(resultado.mensagem || 'Erro na Etapa 1');
         }
@@ -450,34 +371,39 @@ function preencherFormulario(dados) {
     if (elementos.descricao) elementos.descricao.value = dados.descricao || '';
     
     if (elementos.formSection) elementos.formSection.style.display = 'block';
-    if (elementos.helpTextForm) elementos.helpTextForm.style.display = 'block';
     
     console.log('✅ Formulário preenchido');
 }
 
-async function processarEtapa2() {
-    console.log('💰 Iniciando Etapa 2...');
+// [CONTINUA NA PARTE 2...]
+// [CONTINUAÇÃO DA PARTE 1...]
+
+// ===================================================================
+// PROCESSAMENTO - ETAPA 2 (BUSCA DE PREÇOS)
+// ===================================================================
+
+async function verificarCacheEBuscar() {
+    console.log('🔍 Verificando cache...');
     
     if (!AppState.dadosEtapa1) {
         mostrarAlerta('⚠️ Execute a Etapa 1 primeiro!', 'warning');
         return;
     }
     
-    const payload = {
-        nome_produto: elementos.nomeProduto.value || AppState.dadosEtapa1.nome_produto,
-        termo_busca_comercial: AppState.dadosEtapa1.termo_busca_comercial,
-        marca: AppState.dadosEtapa1.marca,
-        modelo: AppState.dadosEtapa1.modelo,
-        especificacoes: AppState.dadosEtapa1.especificacoes,
-        estado_conservacao: elementos.estado.value,
-        categoria_depreciacao: elementos.depreciacao.value,
-        numero_patrimonio: elementos.numeroPatrimonio.value
-    };
-    
-    mostrarLoading('🔍 Buscando preços de mercado...');
+    mostrarLoading('⏳ Verificando cotações salvas...');
     
     try {
-        console.log('📤 Enviando dados para busca de preço...');
+        const payload = {
+            termo_busca_comercial: AppState.dadosEtapa1.termo_busca_comercial,
+            numero_patrimonio: elementos.numeroPatrimonio.value,
+            nome_produto: elementos.nomeProduto.value || AppState.dadosEtapa1.nome_produto,
+            marca: AppState.dadosEtapa1.marca,
+            modelo: AppState.dadosEtapa1.modelo,
+            especificacoes: AppState.dadosEtapa1.especificacoes,
+            estado_conservacao: elementos.estado.value,
+            categoria_depreciacao: elementos.depreciacao.value,
+            forcar_nova_busca: false // Verificar cache primeiro
+        };
         
         const response = await fetch(CONFIG.apiUrl + '/api/processar-etapa2', {
             method: 'POST',
@@ -486,146 +412,309 @@ async function processarEtapa2() {
         });
         
         const resultado = await response.json();
-        
-        console.log('📥 Etapa 2 - Resposta:', resultado);
+        console.log('📥 Resposta:', resultado);
         
         if (resultado.status === 'Sucesso') {
-            AppState.dadosEtapa2 = resultado.dados;
-            atualizarValores(resultado.dados);
-            mostrarResultadoFinal();
-            mostrarAlerta('✅ ' + resultado.mensagem, 'success');
-            
-            if (resultado.dados.meta?.custo_total) {
-                console.log('💰 Custo Etapa 2: R$', resultado.dados.meta.custo_total);
+            if (resultado.em_cache) {
+                // Cotação veio do cache
+                console.log('⚡ Cotação em cache encontrada!');
+                AppState.cotacaoCache = resultado;
+                mostrarAvisoCache(resultado);
+            } else {
+                // Busca nova realizada
+                console.log('🔍 Busca nova realizada');
+                AppState.dadosEtapa2 = resultado.dados;
+                mostrarProdutos(resultado.dados, false);
             }
         } else {
-            throw new Error(resultado.mensagem || 'Erro na Etapa 2');
+            throw new Error(resultado.mensagem || 'Erro na busca');
         }
         
     } catch (error) {
-        console.error('❌ Erro na Etapa 2:', error);
+        console.error('❌ Erro:', error);
         mostrarAlerta('❌ Erro: ' + error.message, 'error');
     } finally {
         esconderLoading();
     }
 }
 
-function atualizarValores(dados) {
-    if (elementos.valorMercado && dados.valores) {
-        elementos.valorMercado.value = formatarMoeda(dados.valores.mercado);
-    }
-    if (elementos.valorAtual && dados.valores) {
-        elementos.valorAtual.value = formatarMoeda(dados.valores.atual);
+async function buscarPreco(forcarNova = false) {
+    console.log('💰 Buscando preços...', forcarNova ? '(Forçar nova busca)' : '');
+    
+    mostrarLoading('🔍 Buscando preços de mercado...');
+    
+    // Esconder seção de cache
+    if (elementos.cacheSection) {
+        elementos.cacheSection.style.display = 'none';
     }
     
-    console.log('✅ Valores atualizados');
+    try {
+        const payload = {
+            termo_busca_comercial: AppState.dadosEtapa1.termo_busca_comercial,
+            numero_patrimonio: elementos.numeroPatrimonio.value,
+            nome_produto: elementos.nomeProduto.value || AppState.dadosEtapa1.nome_produto,
+            marca: AppState.dadosEtapa1.marca,
+            modelo: AppState.dadosEtapa1.modelo,
+            especificacoes: AppState.dadosEtapa1.especificacoes,
+            estado_conservacao: elementos.estado.value,
+            categoria_depreciacao: elementos.depreciacao.value,
+            forcar_nova_busca: forcarNova
+        };
+        
+        const response = await fetch(CONFIG.apiUrl + '/api/processar-etapa2', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        
+        const resultado = await response.json();
+        console.log('📥 Resposta:', resultado);
+        
+        if (resultado.status === 'Sucesso') {
+            AppState.dadosEtapa2 = resultado.dados;
+            mostrarProdutos(resultado.dados, false);
+            mostrarAlerta('✅ Preços encontrados!', 'success');
+        } else {
+            throw new Error(resultado.mensagem || 'Erro na busca');
+        }
+        
+    } catch (error) {
+        console.error('❌ Erro:', error);
+        mostrarAlerta('❌ Erro: ' + error.message, 'error');
+    } finally {
+        esconderLoading();
+    }
 }
 
-function mostrarResultadoFinal() {
-    if (!elementos.resultSection || !AppState.dadosEtapa2) return;
+function usarCotacaoCache() {
+    console.log('⚡ Usando cotação do cache');
     
-    const dados = AppState.dadosEtapa2;
-    
-    if (elementos.resultIdentificacao) {
-        elementos.resultIdentificacao.innerHTML = `
-            <p><strong>Placa:</strong> ${dados.numero_patrimonio || 'N/A'}</p>
-            <p><strong>Nome:</strong> ${dados.nome_produto}</p>
-            <p><strong>Marca/Modelo:</strong> ${dados.marca} / ${dados.modelo}</p>
-            <p><strong>Especificações:</strong> ${dados.especificacoes}</p>
-        `;
+    if (!AppState.cotacaoCache) {
+        mostrarAlerta('❌ Erro: Cache não disponível', 'error');
+        return;
     }
     
-    if (elementos.resultClassificacao) {
-        elementos.resultClassificacao.innerHTML = `
-            <p><strong>Estado:</strong> ${dados.estado_conservacao}</p>
-            <p><strong>Depreciação:</strong> ${dados.categoria_depreciacao}</p>
-            <p><strong>Descrição:</strong> ${dados.descricao}</p>
-        `;
+    // Esconder seção de cache
+    if (elementos.cacheSection) {
+        elementos.cacheSection.style.display = 'none';
     }
     
-    if (elementos.resultValores && dados.valores) {
-        elementos.resultValores.innerHTML = `
-            <p><strong>Mercado:</strong> ${formatarMoeda(dados.valores.mercado)}</p>
-            <p><strong>Atual:</strong> ${formatarMoeda(dados.valores.atual)}</p>
-            <p><strong>Depreciação:</strong> ${dados.valores.percentual_dep}</p>
-            <p><strong>Método:</strong> ${dados.valores.metodo}</p>
-            <p><strong>Confiança:</strong> ${dados.valores.confianca}%</p>
-        `;
-    }
+    AppState.dadosEtapa2 = AppState.cotacaoCache.dados;
+    mostrarProdutos(AppState.cotacaoCache.dados, true);
+    mostrarAlerta('⚡ Usando cotação salva', 'success');
+}
+
+// ===================================================================
+// EXIBIÇÃO DE CACHE E PRODUTOS
+// ===================================================================
+
+function mostrarAvisoCache(resultado) {
+    if (!elementos.cacheSection || !elementos.cacheInfo) return;
     
-    if (elementos.resultMetadados && dados.meta) {
-        elementos.resultMetadados.innerHTML = `
-            <p><strong>Data:</strong> ${new Date(dados.meta.data).toLocaleString('pt-BR')}</p>
-            <p><strong>Versão:</strong> ${dados.meta.versao}</p>
-            <p><strong>Custo LLM:</strong> R$ ${dados.meta.custo_llm?.toFixed(4) || '0.0000'}</p>
-        `;
-    }
+    const dataCotacao = new Date(resultado.data_cotacao);
+    const dataFormatada = dataCotacao.toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
     
-    if (dados.precos && dados.precos.length > 0) {
-        const precosHtml = dados.precos.map((p, i) => `
-            <div class="preco-item">
-                <strong>#${i + 1}</strong> - 
-                <span class="preco-valor">${formatarMoeda(p.v)}</span> - 
-                <span class="preco-fonte">${p.f}</span>
-                <button class="btn-link-mini" onclick="window.open('${p.u}', '_blank')">🔗 Ver</button>
+    const idadeDias = resultado.idade_dias;
+    const tempoTexto = idadeDias < 1 
+        ? 'hoje' 
+        : idadeDias === 1 
+            ? 'há 1 dia' 
+            : `há ${Math.floor(idadeDias)} dias`;
+    
+    elementos.cacheInfo.innerHTML = `
+        📅 Esta cotação foi realizada em <strong>${dataFormatada}</strong> (${tempoTexto}).<br>
+        💰 Média ponderada: <strong>R$ ${formatarPreco(resultado.dados.avaliacao?.media_ponderada)}</strong><br>
+        📦 ${resultado.dados.avaliacao?.total_produtos || 0} produtos encontrados
+        (${resultado.dados.avaliacao?.produtos_match || 0} match, ${resultado.dados.avaliacao?.produtos_similar || 0} similar)
+    `;
+    
+    elementos.cacheSection.style.display = 'block';
+    
+    // Scroll suave
+    elementos.cacheSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function mostrarProdutos(dados, doCache = false) {
+    if (!elementos.produtosSection || !elementos.produtosList || !elementos.cotacaoInfo) return;
+    
+    const produtos = dados.produtos_encontrados || dados.produtos || [];
+    const avaliacao = dados.avaliacao || {};
+    
+    // Info da cotação
+    const fonte = doCache ? '⚡ Cotação do cache' : '🆕 Cotação nova';
+    elementos.cotacaoInfo.innerHTML = `
+        ${fonte} • 
+        Média ponderada: <strong>R$ ${formatarPreco(avaliacao.media_ponderada)}</strong> • 
+        ${avaliacao.produtos_match || 0} match • 
+        ${avaliacao.produtos_similar || 0} similar
+    `;
+    
+    // Lista de produtos
+    if (produtos.length === 0) {
+        elementos.produtosList.innerHTML = `
+            <div class="produto-item">
+                <p>⚠️ Nenhum produto encontrado com preço.</p>
+            </div>
+        `;
+    } else {
+        elementos.produtosList.innerHTML = produtos.map(produto => `
+            <div class="produto-item ${produto.classificacao || 'similar'}">
+                <div class="produto-header">
+                    <span class="produto-badge ${produto.classificacao || 'similar'}">
+                        ${produto.classificacao === 'match' ? '✅ MATCH' : '🔵 SIMILAR'}
+                    </span>
+                    ${produto.preco ? `
+                        <span class="produto-preco">R$ ${formatarPreco(produto.preco)}</span>
+                    ` : '<span class="produto-sem-preco">Preço não disponível</span>'}
+                </div>
+                <h4 class="produto-nome">${produto.nome || 'Produto sem nome'}</h4>
+                <p class="produto-loja">🏪 ${produto.loja || 'Loja não informada'}</p>
+                ${produto.link ? `
+                    <a href="${produto.link}" target="_blank" class="produto-link">
+                        🔗 Ver produto na loja
+                    </a>
+                ` : ''}
             </div>
         `).join('');
+    }
+    
+    elementos.produtosSection.style.display = 'block';
+    
+    // Scroll suave
+    elementos.produtosSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// ===================================================================
+// ACEITAR COTAÇÃO E SALVAR NO CACHE
+// ===================================================================
+
+async function aceitarCotacao() {
+    console.log('✅ Aceitando cotação...');
+    
+    if (!AppState.dadosEtapa2) {
+        mostrarAlerta('❌ Nenhuma cotação para aceitar', 'error');
+        return;
+    }
+    
+    mostrarLoading('💾 Salvando cotação...');
+    
+    try {
+        const payload = {
+            termo_busca_comercial: AppState.dadosEtapa1.termo_busca_comercial,
+            numero_patrimonio: elementos.numeroPatrimonio.value,
+            operador_id: 'operador_web', // TODO: Implementar login
+            dados_cotacao: AppState.dadosEtapa2
+        };
         
-        const secaoPrecos = document.createElement('div');
-        secaoPrecos.className = 'result-section';
-        secaoPrecos.innerHTML = `
-            <h4>Preços Encontrados (${dados.precos.length})</h4>
-            ${precosHtml}
-        `;
+        const response = await fetch(CONFIG.apiUrl + '/api/processar-etapa2-aceitar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
         
-        if (elementos.resultValores) {
-            elementos.resultValores.parentElement.appendChild(secaoPrecos);
+        const resultado = await response.json();
+        console.log('📥 Resposta:', resultado);
+        
+        if (resultado.status === 'Sucesso') {
+            console.log('✅ Cotação salva no cache!');
+            mostrarResultadoFinal();
+            mostrarAlerta('✅ Cotação aceita e salva!', 'success');
+        } else {
+            throw new Error(resultado.mensagem || 'Erro ao salvar cotação');
         }
+        
+    } catch (error) {
+        console.error('❌ Erro:', error);
+        mostrarAlerta('❌ Erro ao salvar: ' + error.message, 'error');
+    } finally {
+        esconderLoading();
+    }
+}
+
+// ===================================================================
+// RESULTADO FINAL
+// ===================================================================
+
+function mostrarResultadoFinal() {
+    if (!AppState.dadosEtapa1 || !AppState.dadosEtapa2) return;
+    
+    const dados1 = AppState.dadosEtapa1;
+    const dados2 = AppState.dadosEtapa2;
+    const avaliacao = dados2.avaliacao || {};
+    
+    // Identificação
+    if (elementos.resultIdentificacao) {
+        elementos.resultIdentificacao.innerHTML = `
+            <p><strong>Placa:</strong> ${elementos.numeroPatrimonio.value || 'N/A'}</p>
+            <p><strong>Nome:</strong> ${dados1.nome_produto || 'N/A'}</p>
+            <p><strong>Marca/Modelo:</strong> ${dados1.marca || 'N/A'} / ${dados1.modelo || 'N/A'}</p>
+            <p><strong>Especificações:</strong> ${dados1.especificacoes || 'N/A'}</p>
+        `;
     }
     
+    // Classificação
+    if (elementos.resultClassificacao) {
+        elementos.resultClassificacao.innerHTML = `
+            <p><strong>Estado:</strong> ${elementos.estado.value || 'N/A'}</p>
+            <p><strong>Depreciação:</strong> ${elementos.depreciacao.value || 'N/A'}</p>
+            <p><strong>Descrição:</strong> ${dados1.descricao || 'N/A'}</p>
+        `;
+    }
+    
+    // Valores
+    if (elementos.resultValores) {
+        elementos.resultValores.innerHTML = `
+            <p><strong>Média Ponderada:</strong> R$ ${formatarPreco(avaliacao.media_ponderada)}</p>
+            <p><strong>Produtos encontrados:</strong> ${avaliacao.total_produtos || 0}</p>
+            <p><strong>Com preço:</strong> ${avaliacao.produtos_com_preco || 0}</p>
+            <p><strong>Faixa:</strong> R$ ${formatarPreco(avaliacao.preco_minimo)} - R$ ${formatarPreco(avaliacao.preco_maximo)}</p>
+        `;
+    }
+    
+    // JSON completo
     if (elementos.jsonOutput) {
-        elementos.jsonOutput.textContent = JSON.stringify(dados, null, 2);
+        const dadosCompletos = {
+            etapa1: dados1,
+            etapa2: dados2,
+            formulario: {
+                numero_patrimonio: elementos.numeroPatrimonio.value,
+                centro_custo: elementos.centroCusto.value,
+                unidade: elementos.unidade.value
+            }
+        };
+        elementos.jsonOutput.textContent = JSON.stringify(dadosCompletos, null, 2);
     }
     
-    elementos.resultSection.style.display = 'block';
-    elementos.resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-function exportarJSON() {
-    const dados = {
-        etapa1: AppState.dadosEtapa1,
-        etapa2: AppState.dadosEtapa2,
-        fotos: AppState.fotos.filter(f => f !== null).map(f => f.thumbnail)
-    };
+    // Esconder seções anteriores
+    if (elementos.formSection) elementos.formSection.style.display = 'none';
+    if (elementos.produtosSection) elementos.produtosSection.style.display = 'none';
     
-    const blob = new Blob([JSON.stringify(dados, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'ativo_' + new Date().getTime() + '.json';
-    a.click();
-    URL.revokeObjectURL(url);
-    
-    mostrarAlerta('💾 JSON exportado!', 'success');
+    // Mostrar resultado
+    if (elementos.resultSection) {
+        elementos.resultSection.style.display = 'block';
+        elementos.resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
 }
 
-function copiarJSON() {
-    const json = AppState.dadosEtapa2 ? JSON.stringify(AppState.dadosEtapa2, null, 2) : '{}';
-    navigator.clipboard.writeText(json).then(() => {
-        mostrarAlerta('📋 JSON copiado!', 'success');
-    });
-}
+// [CONTINUA NA PARTE 3...]
+// [CONTINUAÇÃO DA PARTE 2...]
 
-function formatarMoeda(valor) {
-    return 'R$ ' + parseFloat(valor).toFixed(2).replace('.', ',');
-}
+// ===================================================================
+// UTILIDADES - ALERTAS E LOADING
+// ===================================================================
 
-function mostrarAlerta(mensagem, tipo = 'info', duracao = 7000) {
+function mostrarAlerta(mensagem, tipo = 'info', duracao = 4000) {
     if (!elementos.alertBox) return;
     
     elementos.alertBox.textContent = mensagem;
-    elementos.alertBox.className = 'alert ' + tipo;
-    elementos.alertBox.style.display = 'flex';
+    elementos.alertBox.className = `alert alert-${tipo}`;
+    elementos.alertBox.style.display = 'block';
     
     setTimeout(() => {
         elementos.alertBox.style.display = 'none';
@@ -633,12 +722,126 @@ function mostrarAlerta(mensagem, tipo = 'info', duracao = 7000) {
 }
 
 function mostrarLoading(texto = 'Processando...') {
-    if (elementos.loadingOverlay) elementos.loadingOverlay.style.display = 'flex';
-    if (elementos.loadingText) elementos.loadingText.textContent = texto;
+    if (elementos.loadingOverlay && elementos.loadingText) {
+        elementos.loadingText.textContent = texto;
+        elementos.loadingOverlay.style.display = 'flex';
+    }
 }
 
 function esconderLoading() {
-    if (elementos.loadingOverlay) elementos.loadingOverlay.style.display = 'none';
+    if (elementos.loadingOverlay) {
+        elementos.loadingOverlay.style.display = 'none';
+    }
 }
 
-console.log('✅ App.js carregado e pronto!');
+// ===================================================================
+// UTILIDADES - FORMATAÇÃO
+// ===================================================================
+
+function formatarPreco(valor) {
+    if (valor === null || valor === undefined || valor === 'N/A') {
+        return 'N/A';
+    }
+    
+    const numero = parseFloat(valor);
+    if (isNaN(numero)) return 'N/A';
+    
+    return numero.toLocaleString('pt-BR', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+}
+
+// ===================================================================
+// UTILIDADES - EXPORTAÇÃO
+// ===================================================================
+
+function exportarJSON() {
+    if (!AppState.dadosEtapa1) {
+        mostrarAlerta('⚠️ Nenhum dado para exportar', 'warning');
+        return;
+    }
+    
+    const dadosCompletos = {
+        etapa1: AppState.dadosEtapa1,
+        etapa2: AppState.dadosEtapa2,
+        formulario: {
+            numero_patrimonio: elementos.numeroPatrimonio.value,
+            nome_produto: elementos.nomeProduto.value,
+            estado: elementos.estado.value,
+            depreciacao: elementos.depreciacao.value,
+            centro_custo: elementos.centroCusto.value,
+            unidade: elementos.unidade.value,
+            descricao: elementos.descricao.value
+        },
+        timestamp: new Date().toISOString()
+    };
+    
+    const blob = new Blob([JSON.stringify(dadosCompletos, null, 2)], {
+        type: 'application/json'
+    });
+    
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `patrimonio-${elementos.numeroPatrimonio.value || 'sem-placa'}-${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    mostrarAlerta('✅ JSON exportado com sucesso!', 'success', 2000);
+}
+
+// ===================================================================
+// UTILIDADES - LIMPEZA
+// ===================================================================
+
+function limparTudo() {
+    if (!confirm('⚠️ Tem certeza que deseja limpar todos os dados?')) {
+        return;
+    }
+    
+    // Limpar fotos
+    AppState.fotos = [null, null, null];
+    AppState.dadosEtapa1 = null;
+    AppState.dadosEtapa2 = null;
+    AppState.cotacaoCache = null;
+    
+    // Limpar previews
+    for (let i = 0; i < CONFIG.maxFotos; i++) {
+        removerFoto(i);
+    }
+    
+    // Limpar formulário
+    if (elementos.numeroPatrimonio) elementos.numeroPatrimonio.value = '';
+    if (elementos.nomeProduto) elementos.nomeProduto.value = '';
+    if (elementos.estado) elementos.estado.value = '';
+    if (elementos.depreciacao) elementos.depreciacao.value = '';
+    if (elementos.centroCusto) elementos.centroCusto.value = '';
+    if (elementos.unidade) elementos.unidade.value = '';
+    if (elementos.descricao) elementos.descricao.value = '';
+    if (elementos.nomeEquipamento) elementos.nomeEquipamento.value = '';
+    
+    // Reset radios
+    const radioNao = document.querySelector('input[name="tipoObservacao"][value="nao"]');
+    if (radioNao) radioNao.checked = true;
+    if (elementos.nomeEquipamento) elementos.nomeEquipamento.disabled = true;
+    
+    // Esconder seções
+    if (elementos.observacaoSection) elementos.observacaoSection.style.display = 'none';
+    if (elementos.formSection) elementos.formSection.style.display = 'none';
+    if (elementos.cacheSection) elementos.cacheSection.style.display = 'none';
+    if (elementos.produtosSection) elementos.produtosSection.style.display = 'none';
+    if (elementos.resultSection) elementos.resultSection.style.display = 'none';
+    
+    mostrarAlerta('🗑️ Tudo limpo! Pronto para novo cadastro', 'success');
+    
+    console.log('🗑️ Sistema resetado');
+}
+
+// ===================================================================
+// FIM DO CÓDIGO
+// ===================================================================
+
+console.log('✅ app.js carregado com sucesso');
