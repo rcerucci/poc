@@ -1,20 +1,15 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-// ═══════════════════════════════════════════════════════════════
-// CONFIGURAÇÃO DO MODELO E PREÇOS
-// ═══════════════════════════════════════════════════════════════
-
 const API_KEY = process.env.GOOGLE_API_KEY;
-const MODEL = process.env.VERTEX_MODEL || 'gemini-2.5-flash-lite';  // ✅ LINHA 1
+const MODEL = process.env.VERTEX_MODEL || 'gemini-2.5-flash-lite';
 
 const genAI = new GoogleGenerativeAI(API_KEY);
 
 const TAXA_CAMBIO_USD_BRL = 6.00;
-const USD_INPUT_POR_MILHAO = 0.10;   // ✅ LINHA 2 (era 0.30)
-const USD_OUTPUT_POR_MILHAO = 0.40;  // ✅ LINHA 3 (era 2.50)
+const USD_INPUT_POR_MILHAO = 0.10;
+const USD_OUTPUT_POR_MILHAO = 0.40;
 const CUSTO_INPUT_POR_TOKEN = (USD_INPUT_POR_MILHAO / 1_000_000) * TAXA_CAMBIO_USD_BRL;
 const CUSTO_OUTPUT_POR_TOKEN = (USD_OUTPUT_POR_MILHAO / 1_000_000) * TAXA_CAMBIO_USD_BRL;
-const TOKENS_POR_IMAGEM_512PX = 1610;
 
 const PROMPT_SISTEMA = `Você é especialista em identificação de ativos industriais. Analise as fotos e extraia dados em JSON puro (sem markdown):
 
@@ -293,11 +288,10 @@ module.exports = async (req, res) => {
                 temperature: 0.1,
                 responseMimeType: 'application/json',
                 thinkingConfig: {
-                    thinkingBudget: 0  // ✅ SINTAXE CORRETA!
+                    thinkingBudget: 0
                 }
             }
         });
-        
         
         const imageParts = imagens.map(img => ({
             inlineData: {
@@ -309,7 +303,7 @@ module.exports = async (req, res) => {
         let promptFinal = PROMPT_SISTEMA;
         
         if (observacao_operador && observacao_operador.length > 0) {
-            console.log('💡 [ETAPA1] Observação do operador recebida:', observacao_operador.substring(0, 50) + '...');
+            console.log('💡 [ETAPA1] Observação do operador recebida');
             
             promptFinal += `\n\n═══════════════════════════════════════════════════════
 📝 OBSERVAÇÃO DO OPERADOR (pessoa que conhece o histórico do equipamento):
@@ -330,75 +324,24 @@ INSTRUÇÕES CRÍTICAS:
             ...imageParts
         ]);
         
-        // ═══════════════════════════════════════════════════════════════
-        // 🔍 AUDITORIA COMPLETA DE TOKENS (LOG DETALHADO)
-        // ═══════════════════════════════════════════════════════════════
         const usage = result.response.usageMetadata;
-        
-        console.log('');
-        console.log('╔═══════════════════════════════════════════════════════════════╗');
-        console.log('║       🔍 AUDITORIA DE TOKENS - DADOS BRUTOS DA API           ║');
-        console.log('╚═══════════════════════════════════════════════════════════════╝');
-        console.log('');
-        console.log('📊 usageMetadata COMPLETO:');
-        console.log(JSON.stringify(usage, null, 2));
-        console.log('');
-        console.log('─────────────────────────────────────────');
-        console.log('📥 promptTokenCount:', usage?.promptTokenCount || 0);
-        console.log('📤 candidatesTokenCount:', usage?.candidatesTokenCount || 0);
-        console.log('🧠 thoughtsTokenCount:', usage?.thoughtsTokenCount || 0);
-        console.log('📊 totalTokenCount:', usage?.totalTokenCount || 0);
-        console.log('─────────────────────────────────────────');
-        
         const tokensInput = usage?.promptTokenCount || 0;
         const tokensOutput = usage?.candidatesTokenCount || 0;
         const tokensThinking = usage?.thoughtsTokenCount || 0;
         const tokensTotal = usage?.totalTokenCount || (tokensInput + tokensOutput + tokensThinking);
         
-        // Calcular custos
         const custoInput = tokensInput * CUSTO_INPUT_POR_TOKEN;
         const custoOutput = tokensOutput * CUSTO_OUTPUT_POR_TOKEN;
-        const custoThinking = tokensThinking * CUSTO_OUTPUT_POR_TOKEN; // Thinking usa preço de output
+        const custoThinking = tokensThinking * CUSTO_OUTPUT_POR_TOKEN;
         const custoTotal = custoInput + custoOutput + custoThinking;
         
-        console.log('');
-        console.log('╔═══════════════════════════════════════════════════════════════╗');
-        console.log('║         💰 CÁLCULO DE CUSTOS - PREÇOS ATUAIS FLASH           ║');
-        console.log('╚═══════════════════════════════════════════════════════════════╝');
-        console.log('');
-        console.log('📌 Modelo:', MODEL);
-        console.log('📌 Taxa câmbio: USD 1.00 = R$', TAXA_CAMBIO_USD_BRL.toFixed(2));
-        console.log('📌 Preço input: $' + USD_INPUT_POR_MILHAO + '/milhão = R$', (CUSTO_INPUT_POR_TOKEN * 1_000_000).toFixed(2) + '/milhão');
-        console.log('📌 Preço output: $' + USD_OUTPUT_POR_MILHAO + '/milhão = R$', (CUSTO_OUTPUT_POR_TOKEN * 1_000_000).toFixed(2) + '/milhão');
-        console.log('');
-        console.log('─────────────────────────────────────────');
-        console.log('📥 INPUT:');
-        console.log('   Tokens:', tokensInput);
-        console.log('   Custo unitário: R$', CUSTO_INPUT_POR_TOKEN.toFixed(10));
-        console.log('   Custo total: R$', custoInput.toFixed(6));
-        console.log('');
-        console.log('📤 OUTPUT (resposta JSON):');
-        console.log('   Tokens:', tokensOutput);
-        console.log('   Custo unitário: R$', CUSTO_OUTPUT_POR_TOKEN.toFixed(10));
-        console.log('   Custo total: R$', custoOutput.toFixed(6));
-        console.log('');
+        // ✅ LOG RESUMIDO EM 1 LINHA
+        console.log(`💰 Custo: R$ ${custoTotal.toFixed(6)} | Input: ${tokensInput} | Output: ${tokensOutput} | Thinking: ${tokensThinking}`);
         
+        // ⚠️ ALERTA SE THINKING ATIVO
         if (tokensThinking > 0) {
-            console.log('🧠 THINKING (raciocínio interno):');
-            console.log('   Tokens:', tokensThinking);
-            console.log('   Custo unitário: R$', CUSTO_OUTPUT_POR_TOKEN.toFixed(10));
-            console.log('   Custo total: R$', custoThinking.toFixed(6));
-            console.log('');
-            console.log('⚠️  ATENÇÃO: THINKING MODE NÃO DEVE ESTÁR ATIVO!');
-            console.log('   Tokens thinking:', tokensThinking, '(' + ((tokensThinking / tokensTotal) * 100).toFixed(1) + '% do total)');
-            console.log('   Isso representa R$', custoThinking.toFixed(6), 'do custo total!');
-            console.log('');
+            console.log(`⚠️  ALERTA: Thinking mode detectado! ${tokensThinking} tokens extras (R$ ${custoThinking.toFixed(6)})`);
         }
-        
-        console.log('─────────────────────────────────────────');
-        console.log('💵 CUSTO TOTAL DA REQUISIÇÃO: R$', custoTotal.toFixed(6));
-        console.log('─────────────────────────────────────────');
-        console.log('');
         
         const text = result.response.text();
         
@@ -455,41 +398,25 @@ INSTRUÇÕES CRÍTICAS:
                 confianca_ia: 95,
                 total_imagens_processadas: imagens.length,
                 modelo_ia: MODEL,
-                versao_sistema: '6.0-Auditoria-Completa',
+                versao_sistema: '7.0-Producao-Flash-Lite',
                 tokens_input: tokensInput,
                 tokens_output: tokensOutput,
-                tokens_thinking: tokensThinking,  // ✅ NOVO
+                tokens_thinking: tokensThinking,
                 tokens_total: tokensTotal,
-                tokens_imagem_estimados: imagens.length * TOKENS_POR_IMAGEM_512PX,
                 custo_input: parseFloat(custoInput.toFixed(6)),
                 custo_output: parseFloat(custoOutput.toFixed(6)),
-                custo_thinking: parseFloat(custoThinking.toFixed(6)),  // ✅ NOVO
+                custo_thinking: parseFloat(custoThinking.toFixed(6)),
                 custo_total: parseFloat(custoTotal.toFixed(6)),
                 taxa_cambio: TAXA_CAMBIO_USD_BRL,
-                thinking_mode_ativo: tokensThinking > 0,  // ✅ NOVO
+                thinking_mode_ativo: tokensThinking > 0,
                 observacao_fornecida: observacao_operador ? true : false
             }
         };
         
-        console.log('╔═══════════════════════════════════════════════════════════════╗');
-        console.log('║                  ✅ ETAPA 1 CONCLUÍDA                         ║');
-        console.log('╚═══════════════════════════════════════════════════════════════╝');
+        // ✅ JSON COMPLETO FORMATADO
         console.log('');
-        console.log('🏷️  Nome:', dadosExtraidos.nome_produto);
-        console.log('🏭 Marca:', dadosExtraidos.marca);
-        console.log('📦 Modelo:', dadosExtraidos.modelo);
-        console.log('🔢 Patrimônio:', dadosExtraidos.numero_patrimonio);
-        console.log('📊 Estado:', dadosExtraidos.estado_conservacao);
-        console.log('📂 Categoria:', dadosExtraidos.categoria_depreciacao);
-        
-        if (dadosExtraidos.observacao_validada !== 'N/A') {
-            console.log('');
-            console.log('💡 VALIDAÇÃO DA OBSERVAÇÃO:');
-            console.log('   Status:', dadosExtraidos.observacao_validada);
-            console.log('   Nota:', dadosExtraidos.nota_observacao);
-        }
-        console.log('');
-        console.log('═════════════════════════════════════════════════════════════════');
+        console.log('📋 [JSON COMPLETO]');
+        console.log(JSON.stringify(dadosCompletos, null, 2));
         console.log('');
         
         return res.status(200).json({
