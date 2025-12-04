@@ -50,9 +50,35 @@ Exemplos:
 - "Transformer" → "Transformador Industrial"
 - "CNC Lathe" → "Torno CNC"
 
+═══════════════════════════════════════════════════════════════
+⚠️ REGRA CRÍTICA: HONESTIDADE COM DADOS AUSENTES/ILEGÍVEIS
+═══════════════════════════════════════════════════════════════
+
+**PRINCÍPIO FUNDAMENTAL: NUNCA INVENTE DADOS**
+
+Se um dado não está visível ou legível nas fotos:
+- ❌ NÃO tente adivinhar ou inferir
+- ❌ NÃO use informações genéricas como placeholders
+- ✅ Use "N/A" imediatamente
+
+**Campos que DEVEM ser N/A se não visíveis:**
+- marca (se sem placa ou ilegível)
+- modelo (se sem código ou ilegível)
+- especificacoes (se placa técnica ilegível → "Informações técnicas não visíveis")
+- numero_patrimonio (se etiqueta ausente/ilegível → "N/A")
+
+**Teste de honestidade:**
+"Eu conseguiria ler/confirmar esse dado olhando apenas para as fotos?"
+- Se NÃO → Use "N/A"
+- Se SIM mas com dúvida → Use "N/A" (melhor prevenir erro)
+- Se SIM com certeza → Extraia o dado
+
+═══════════════════════════════════════════════════════════════
+
 INSTRUÇÕES:
 
 1. **numero_patrimonio:** Campo "PATRIMÔNIO" (ignorar PINF, S/N, CNPJ)
+   - ⚠️ Se etiqueta ausente/ilegível: "N/A"
 
 2. **nome_produto:** Termo técnico português (máximo 4 palavras)
 
@@ -64,16 +90,66 @@ INSTRUÇÕES:
 4. **marca (NÃO CONFUNDIR PROPRIETÁRIO COM FABRICANTE):**
    - NUNCA use nome da etiqueta de patrimônio com CNPJ (é o proprietário)
    - Procure placa metálica, serigrafia, gravação, adesivo, pintura no equipamento
-   - Se não houver: "N/A"
+   - ⚠️ Se ilegível, deteriorado, ou ausente: "N/A" (NUNCA invente)
 
-5. **especificacoes:** Apenas dados técnicos (não PINF, S/N, DATA)
+5. **modelo:**
+   - Código/referência do fabricante
+   - ⚠️ Se ilegível ou ausente: "N/A" (NUNCA invente)
 
-6. **descricao:** "[nome] [marca] [modelo]. [Função]. [Specs]. S/N: [n]. PINF: [p]. Fab: [data]." (180-200 chars)
+6. **especificacoes:**
+   - Apenas dados técnicos VISÍVEIS (tensão, potência, capacidade, dimensões)
+   - ⚠️ Se placa ilegível: "Informações técnicas não visíveis" (NUNCA invente specs)
 
-7. **categoria_depreciacao:**
-   - "Computadores e Informática" / "Ferramentas" / "Instalações" / "Máquinas e Equipamentos" / "Móveis e Utensílios" / "Veículos" / "Outros"
+7. **estado_conservacao (LISTA FECHADA - ESCOLHA EXATA):**
+   
+   **OPÇÕES PERMITIDAS (escolha 1):**
+   - "Excelente" - Novo ou como novo, sem sinais de uso
+   - "Bom" - Funcional, marcas leves de uso normal
+   - "Regular" - Desgaste visível, ferrugem leve, pintura descascada
+   - "Ruim" - Deteriorado, partes quebradas, não funcional
+   
+   ⚠️ REGRA ABSOLUTA: Use EXATAMENTE um desses valores.
 
-8. **observacao_validada (SE HOUVER OBSERVAÇÃO DO OPERADOR):**
+8. **motivo_conservacao:**
+   - Se estado = "Regular" ou "Ruim": descreva o problema (ferrugem, quebra, etc)
+   - Se estado = "Excelente" ou "Bom": SEMPRE "N/A"
+
+9. **descricao (180-200 caracteres, REGRA RÍGIDA):**
+   
+   **ESTRUTURA OBRIGATÓRIA:**
+   \`\`\`
+   [nome_produto] [marca] [modelo]. [Breve função GENÉRICA]. [Specs principais]. [Campos técnicos disponíveis].
+   \`\`\`
+   
+   **REGRAS CRÍTICAS:**
+   - ❌ NUNCA adicione palavras como "industrial", "comercial", "profissional" na função
+   - ✅ Função deve ser NEUTRA e BREVE: "Limpeza de peças" ou "Usinagem de precisão"
+   - ✅ Evite frases longas: prefira "Limpeza de peças" a "Utilizada para limpeza de peças"
+   - ✅ Inclua APENAS dados VISÍVEIS: se S/N não está legível → omita completamente
+   - ✅ Ordem de prioridade: S/N > PINF > Data de Fabricação
+   - ✅ Se todos N/A → termine após specs: "[nome] [marca] [modelo]. [Função]. [Specs]."
+   
+   **EXEMPLOS CORRETOS:**
+   - ✅ "Cuba Ultrassônica N/A N/A. Limpeza de peças. Painel digital, cesto perfurado. S/N: 12345."
+   - ✅ "Torno CNC Romi Centur 30D. Usinagem de precisão. 3500rpm, castelo 400mm. PINF: 98765."
+   - ✅ "Cadeira Giratória Cavaletti N/A. Assento e encosto em tecido preto. Fab: 2018."
+   - ✅ "Transformador Weg 75kVA. Conversão de tensão. 220/380V, trifásico."
+   - ❌ "Cuba de Limpeza Ultrassônica utilizada para limpeza de peças industriais em processos de manufatura..."
+
+10. **categoria_depreciacao (LISTA FECHADA - ESCOLHA EXATA):**
+   
+   **OPÇÕES PERMITIDAS (escolha 1):**
+   - "Computadores e Informática"
+   - "Ferramentas"
+   - "Instalações"
+   - "Máquinas e Equipamentos"
+   - "Móveis e Utensílios"
+   - "Veículos"
+   - "Outros"
+   
+   ⚠️ REGRA ABSOLUTA: Use EXATAMENTE um desses valores. Nenhuma variação é permitida.
+
+11. **observacao_validada (SE HOUVER OBSERVAÇÃO DO OPERADOR):**
    
    **METODOLOGIA DE VALIDAÇÃO CRÍTICA:**
    
@@ -97,22 +173,24 @@ INSTRUÇÕES:
    
    PASSO 2: Análise Visual CRÍTICA (seja HONESTO):
    
-   Para cada tipo de equipamento, verifique características ESPECÍFICAS:
+   **METODOLOGIA DE VERIFICAÇÃO:**
    
-   **FRITADEIRA INDUSTRIAL:**
-   - ✅ Deve ter: Resistências elétricas visíveis, bocal de drenagem de óleo, termostato, filtro de óleo
-   - ❌ Se faltar: NÃO é fritadeira
+   1. Identifique o tipo de equipamento sugerido pelo operador
+   2. Pergunte-se: "Quais características OBRIGATÓRIAS definem esse tipo de equipamento?"
+   3. Verifique nas imagens se essas características estão presentes
+   4. Se faltarem características críticas → equipamento é de OUTRO tipo
    
-   **CUBA DE LIMPEZA ULTRASSÔNICA:**
-   - ✅ Deve ter: Cuba lisa/inox, transdutor (fundo), painel com timer/temperatura, cesto perfurado removível
-   - ✅ Características: Paredes lisas (não porosas), painel simples, sem bocais de drenagem grande
+   **EXEMPLOS DE CARACTERÍSTICAS CRÍTICAS POR CATEGORIA:**
    
-   **DESENCRUSTADOR/LAVADORA DE PEÇAS:**
-   - ✅ Similar à cuba ultrassônica mas pode ter: Bomba visível, mangueiras, aspersores
+   - **Fritadeira:** Resistências elétricas + bocal de drenagem de óleo + termostato
+   - **Cuba ultrassônica:** Cuba lisa/inox + transdutor no fundo + painel com timer
+   - **Lavadora de peças:** Bomba visível + mangueiras + aspersores
+   - **Geladeira/Freezer:** Compressor + porta isolada + grades de ventilação
+   - **Compressor de ar:** Tanque pressurizado + motor + manômetro
+   - **Transformador:** Carcaça metálica selada + isoladores + placas de identificação elétrica
    
-   **GELADEIRA/FREEZER:**
-   - ✅ Deve ter: Compressor visível, porta/gavetas isoladas, grades de ventilação
-   - ❌ Se não tiver: NÃO é geladeira
+   ⚠️ Esta NÃO é uma lista completa - use seu conhecimento técnico para identificar
+   características específicas de QUALQUER tipo de equipamento mencionado pelo operador.
    
    PASSO 3: Classifique com HONESTIDADE:
    
@@ -163,7 +241,7 @@ INSTRUÇÕES:
    → nota_observacao: "Operador sugere compressor mas imagens mostram claramente esteira transportadora com correia, motor lateral e estrutura de transporte"
    → nome_produto: "Transportador de Cavacos" (usar análise visual)
 
-9. **nota_observacao:**
+12. **nota_observacao:**
    - Comentário HONESTO (30-70 palavras) explicando:
      * Se Confirmada: Quais características visuais confirmam
      * Se Provável: Por que não há certeza absoluta
@@ -187,7 +265,7 @@ module.exports = async (req, res) => {
     console.log('🔍 [ETAPA1] Iniciando extração...');
     
     try {
-        const { imagens, observacao_operador } = req.body;  // ✅ NOVO CAMPO
+        const { imagens, observacao_operador } = req.body;
         
         if (!imagens || imagens.length < 2) {
             return res.status(400).json({
@@ -220,7 +298,7 @@ module.exports = async (req, res) => {
             }
         }));
         
-        // ✅ ADICIONAR OBSERVAÇÃO AO PROMPT SE FORNECIDA
+        // Adicionar observação ao prompt se fornecida
         let promptFinal = PROMPT_SISTEMA;
         
         if (observacao_operador && observacao_operador.length > 0) {
@@ -254,7 +332,10 @@ INSTRUÇÕES CRÍTICAS:
         const custoOutput = tokensOutput * CUSTO_OUTPUT_POR_TOKEN;
         const custoTotal = custoInput + custoOutput;
         
-        console.log('📊 [ETAPA1]', tokensInput, 'in +', tokensOutput, 'out = R$', custoTotal.toFixed(4));
+        console.log('💰 [CUSTO] Taxa câmbio: R$', TAXA_CAMBIO_USD_BRL);
+        console.log('💰 [CUSTO] Input:', tokensInput, 'tokens x R$', CUSTO_INPUT_POR_TOKEN.toFixed(8), '= R$', custoInput.toFixed(4));
+        console.log('💰 [CUSTO] Output:', tokensOutput, 'tokens x R$', CUSTO_OUTPUT_POR_TOKEN.toFixed(8), '= R$', custoOutput.toFixed(4));
+        console.log('📊 [ETAPA1] Total:', tokensInput, 'in +', tokensOutput, 'out = R$', custoTotal.toFixed(4));
         
         const text = result.response.text();
         
@@ -272,7 +353,7 @@ INSTRUÇÕES CRÍTICAS:
             'numero_patrimonio', 'nome_produto', 'termo_busca_comercial',
             'marca', 'modelo', 'especificacoes', 'estado_conservacao',
             'motivo_conservacao', 'categoria_depreciacao', 'descricao',
-            'observacao_validada', 'nota_observacao'  // ✅ NOVOS CAMPOS
+            'observacao_validada', 'nota_observacao'
         ];
         
         camposObrigatorios.forEach(campo => {
@@ -311,7 +392,7 @@ INSTRUÇÕES CRÍTICAS:
                 confianca_ia: 95,
                 total_imagens_processadas: imagens.length,
                 modelo_ia: MODEL,
-                versao_sistema: '5.0-Observacao-Validada',
+                versao_sistema: '5.1-Melhorado-Descricao-e-NA',
                 tokens_input: tokensInput,
                 tokens_output: tokensOutput,
                 tokens_total: tokensTotal,
@@ -320,7 +401,7 @@ INSTRUÇÕES CRÍTICAS:
                 custo_output: parseFloat(custoOutput.toFixed(4)),
                 custo_total: parseFloat(custoTotal.toFixed(4)),
                 taxa_cambio: TAXA_CAMBIO_USD_BRL,
-                observacao_fornecida: observacao_operador ? true : false  // ✅ Flag
+                observacao_fornecida: observacao_operador ? true : false
             }
         };
         
