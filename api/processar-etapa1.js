@@ -287,10 +287,10 @@ module.exports = async (req, res) => {
             model: MODEL,
             generationConfig: {
                 temperature: 0.1,
-                responseMimeType: 'application/json'
+                responseMimeType: 'application/json',
+                thinkingConfig: { mode: 'DISABLED' }  // ✅ ADICIONAR ESTA LINHA
             }
-        });
-        
+        });        
         const imageParts = imagens.map(img => ({
             inlineData: {
                 data: img.data,
@@ -381,7 +381,7 @@ INSTRUÇÕES CRÍTICAS:
             console.log('   Custo unitário: R$', CUSTO_OUTPUT_POR_TOKEN.toFixed(10));
             console.log('   Custo total: R$', custoThinking.toFixed(6));
             console.log('');
-            console.log('⚠️  ATENÇÃO: THINKING MODE ESTÁ ATIVO!');
+            console.log('⚠️  ATENÇÃO: THINKING MODE NÃO DEVE ESTÁR ATIVO!');
             console.log('   Tokens thinking:', tokensThinking, '(' + ((tokensThinking / tokensTotal) * 100).toFixed(1) + '% do total)');
             console.log('   Isso representa R$', custoThinking.toFixed(6), 'do custo total!');
             console.log('');
