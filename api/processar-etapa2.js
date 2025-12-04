@@ -1,6 +1,4 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const axios = require('axios');
-const cheerio = require('cheerio');
 
 // =============================================================================
 // CONFIGURAÇÃO
@@ -9,9 +7,6 @@ const cheerio = require('cheerio');
 const API_KEY = process.env.GOOGLE_API_KEY;
 const MODEL = process.env.VERTEX_MODEL || 'gemini-2.5-flash-lite';
 const genAI = new GoogleGenerativeAI(API_KEY);
-
-// Custom Search API
-const CUSTOM_SEARCH_CX_ID = process.env.CUSTOM_SEARCH_CX_ID;
 
 // --- Fatores de Depreciação ---
 const FATORES_DEPRECIACAO = {
@@ -54,294 +49,127 @@ const FATORES_DEPRECIACAO = {
 };
 
 // =============================================================================
-// OPERADORES DO GOOGLE
+// BUSCAR COM GROUNDING
 // =============================================================================
 
-function adicionarOperadoresGoogle(termoOriginal) {
-    // Operadores para melhorar qualidade dos resultados
-    const operadores = [
-        '-lista',        // Exclui páginas de listagem
-        '-busca',        // Exclui páginas de busca
-        '-categoria',    // Exclui categorias
-        '-categorias',   // Exclui categorias (plural)
-        '-search',       // Exclui /search
-        '-catalogo',     // Exclui catálogos
-        'intext:"R$"'    // Força presença de preço em reais
-    ];
+async function buscarComGrounding(termo) {
+    console.log('🔍 [GROUNDING] Termo:', termo);
     
-    return `${termoOriginal} ${operadores.join(' ')}`;
-}
-
-// =============================================================================
-// FILTROS E DETECÇÃO
-// =============================================================================
-
-const PALAVRAS_EXCLUIR = [
-    // Kits e combos
-    'kit', 'combo', 'conjunto', 'pack', 'pacote',
-    'par', 'pares', 'unidades', '2x', '3x', '4x', '5x',
-    
-    // Promoções
-    'promoção', 'promocao', 'oferta', 'desconto',
-    'queima', 'liquida', 'black friday', 'cyber monday',
-    
-    // Indicadores de preço promocional
-    'de:', 'de r$', 'era:', 'era r$', 'por:', 'por r$',
-    'agora:', 'agora r$', 'antes:', 'economize'
-];
-
-// Padrões que indicam página de CATEGORIA (não produto específico)
-const PADROES_CATEGORIA = [
-    '/s?k=',           // Busca Amazon
-    '/lista',          // Listagem Mercado Livre
-    '/busca',          // Busca genérica
-    '/search',         // Search
-    '/categoria',      // Categoria
-    '/categorias',     // Categorias
-    '/colecao',        // Coleção
-    '/colecoes',       // Coleções
-    '/produtos',       // Listagem de produtos (plural)
-    '/catalogo',       // Catálogo
-    '?q=',            // Query parameter
-    '?search=',       // Query parameter
-    '/filtro',        // Página de filtros
-];
-
-// Padrões que indicam produto ESPECÍFICO
-const PADROES_PRODUTO = [
-    '/p/mlb',         // Mercado Livre produto
-    '/dp/',           // Amazon produto
-    '-sku-',          // SKU
-    '-cod-',          // Código
-    '-ref-',          // Referência
-    '/produto/',      // Produto específico
-    '/item/',         // Item específico
-];
-
-function contemPalavrasExcluir(texto) {
-    const textoLower = texto.toLowerCase();
-    return PALAVRAS_EXCLUIR.some(palavra => textoLower.includes(palavra));
-}
-
-function ehPaginaCategoria(url) {
-    const urlLower = url.toLowerCase();
-    
-    // Verificar padrões de produto ESPECÍFICO (tem prioridade)
-    const ehProdutoEspecifico = PADROES_PRODUTO.some(padrao => urlLower.includes(padrao));
-    if (ehProdutoEspecifico) {
-        return false; // É produto específico, não é categoria
-    }
-    
-    // Verificar padrões de categoria
-    const ehCategoria = PADROES_CATEGORIA.some(padrao => urlLower.includes(padrao));
-    if (ehCategoria) {
-        return true; // É categoria
-    }
-    
-    // Verificar se URL é muito curta/genérica (provável categoria)
-    // Ex: site.com.br/cadeiras (apenas 1 nível após domínio)
-    try {
-        const urlObj = new URL(url);
-        const pathParts = urlObj.pathname.split('/').filter(p => p.length > 0);
-        
-        // Se tiver apenas 1 parte no path e não tiver números, provavelmente é categoria
-        if (pathParts.length === 1 && !/\d/.test(pathParts[0])) {
-            return true;
-        }
-    } catch (e) {
-        // Erro ao parsear URL, considera suspeito
-    }
-    
-    return false; // Não detectou como categoria
-}
-
-function extrairPrecosDoTexto(texto) {
-    const padroes = [
-        /R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/g,
-        /(\d{1,3}(?:\.\d{3})*,\d{2})\s*reais?/gi,
-        /por\s*R?\$?\s*(\d{1,3}(?:\.\d{3})*,\d{2})/gi,
-        /preço:?\s*R?\$?\s*(\d{1,3}(?:\.\d{3})*,\d{2})/gi,
-        /valor:?\s*R?\$?\s*(\d{1,3}(?:\.\d{3})*,\d{2})/gi
-    ];
-    
-    const precosEncontrados = new Set();
-    
-    padroes.forEach(padrao => {
-        const matches = texto.matchAll(padrao);
-        for (const match of matches) {
-            const precoStr = match[1] || match[0];
-            const precoLimpo = precoStr.replace(/[^\d,]/g, '');
-            if (precoLimpo && precoLimpo.includes(',')) {
-                precosEncontrados.add(precoLimpo);
-            }
-        }
-    });
-    
-    const precos = Array.from(precosEncontrados)
-        .map(p => parseFloat(p.replace(/\./g, '').replace(',', '.')))
-        .filter(p => !isNaN(p) && p > 10 && p < 1000000)
-        .sort((a, b) => a - b);
-    
-    return precos;
-}
-
-function identificarFonte(url) {
-    const fontes = {
-        'mercadolivre.com': 'Mercado Livre',
-        'mercadolibre.com': 'Mercado Livre',
-        'americanas.com': 'Americanas',
-        'magazineluiza.com': 'Magazine Luiza',
-        'amazon.com': 'Amazon',
-        'leroymerlin.com': 'Leroy Merlin',
-        'madeiramadeira.com': 'Madeira Madeira',
-        'casasbahia.com': 'Casas Bahia',
-        'carrefour.com': 'Carrefour',
-        'shopee.com': 'Shopee',
-        'aliexpress.com': 'AliExpress',
-        'kabum.com': 'KaBuM',
-        'ponto.com': 'Ponto',
-        'fastshop.com': 'Fast Shop',
-        'extra.com': 'Extra',
-        'submarino.com': 'Submarino',
-        'mobly.com': 'Mobly'
-    };
-    
-    for (const [dominio, nome] of Object.entries(fontes)) {
-        if (url.includes(dominio)) return nome;
+    if (!API_KEY) {
+        throw new Error('API Key não configurada');
     }
     
     try {
-        const match = url.match(/https?:\/\/(?:www\.)?([^\/]+)/);
-        if (match && match[1]) {
-            const dominio = match[1].split('.')[0];
-            return dominio.charAt(0).toUpperCase() + dominio.slice(1);
-        }
-    } catch (e) {
-        // Ignora
-    }
-    
-    return 'Site Desconhecido';
-}
-
-// =============================================================================
-// BUSCAR E PROCESSAR
-// =============================================================================
-
-async function buscarCustomSearch(termo, numResultados = 20) {
-    console.log('🔍 Termo:', termo);
-    console.log('🔍 Resultados solicitados:', numResultados);
-    
-    if (!API_KEY || !CUSTOM_SEARCH_CX_ID) {
-        throw new Error('Custom Search não configurado');
-    }
-    
-    const resultados = [];
-    const maxPorChamada = 10;
-    const chamadas = Math.ceil(numResultados / maxPorChamada);
-    
-    try {
-        for (let i = 0; i < chamadas; i++) {
-            const startIndex = (i * maxPorChamada) + 1;
-            
-            console.log(`📡 Chamada ${i + 1}/${chamadas} - startIndex: ${startIndex}`);
-            
-            const response = await axios.get('https://www.googleapis.com/customsearch/v1', {
-                params: {
-                    key: API_KEY,
-                    cx: CUSTOM_SEARCH_CX_ID,
-                    q: termo,
-                    num: maxPorChamada,
-                    start: startIndex,
-                    gl: 'br',
-                    lr: 'lang_pt'
-                },
-                timeout: 15000
-            });
-            
-            if (response.data.items && response.data.items.length > 0) {
-                resultados.push(...response.data.items);
-                console.log(`✅ ${response.data.items.length} resultados obtidos`);
-            } else {
-                console.log(`⚠️ Nenhum resultado na chamada ${i + 1}`);
-                break;
+        const model = genAI.getGenerativeModel({
+            model: MODEL,
+            generationConfig: {
+                temperature: 0.1,
+                thinkingConfig: {
+                    thinkingBudget: 0
+                }
             }
-            
-            if (i < chamadas - 1) {
-                await new Promise(resolve => setTimeout(resolve, 300));
+        });
+        
+        const prompt = `Busque informações sobre: ${termo}
+        
+Retorne produtos com preços em reais (R$).`;
+        
+        const result = await model.generateContent({
+            contents: prompt,
+            tools: ['google_search_retrieval']
+        });
+        
+        const response = result.response;
+        const texto = response.text();
+        
+        // Extrair metadata de grounding
+        const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
+        
+        // Extrair usage metadata
+        const usage = result.response.usageMetadata;
+        const tokensInput = usage?.promptTokenCount || 0;
+        const tokensOutput = usage?.candidatesTokenCount || 0;
+        const tokensTotal = usage?.totalTokenCount || 0;
+        
+        console.log('✅ [GROUNDING] Sucesso');
+        console.log('📊 Tokens - Input:', tokensInput, '| Output:', tokensOutput, '| Total:', tokensTotal);
+        
+        if (groundingMetadata) {
+            console.log('🌐 Web searches:', groundingMetadata.webSearchQueries?.length || 0);
+            console.log('📦 Grounding chunks:', groundingMetadata.groundingChunks?.length || 0);
+        }
+        
+        return {
+            sucesso: true,
+            texto,
+            groundingMetadata,
+            tokens: {
+                input: tokensInput,
+                output: tokensOutput,
+                total: tokensTotal
             }
-        }
-        
-        console.log(`✅ Total: ${resultados.length} resultados\n`);
-        return { sucesso: true, resultados };
-        
-    } catch (error) {
-        console.error('❌ Erro:', error.message);
-        return { sucesso: false, resultados: [], erro: error.message };
-    }
-}
-
-function processarResultados(resultadosBrutos) {
-    console.log('🔄 Processando resultados...\n');
-    
-    const processados = [];
-    const excluidos = [];
-    
-    resultadosBrutos.forEach((item, index) => {
-        const link = item.link;
-        const fonte = identificarFonte(link);
-        const titulo = item.title;
-        const snippet = item.snippet || '';
-        
-        // Verificar se é página de categoria
-        const isPaginaCategoria = ehPaginaCategoria(link);
-        
-        // Verificar se contém palavras de exclusão
-        const textoCompleto = `${titulo} ${snippet}`.toLowerCase();
-        const temPalavrasExcluir = contemPalavrasExcluir(textoCompleto);
-        
-        // Extrair preços do snippet
-        const precosSnippet = extrairPrecosDoTexto(snippet);
-        
-        let deveExcluir = false;
-        let motivoExclusao = null;
-        
-        if (isPaginaCategoria) {
-            deveExcluir = true;
-            motivoExclusao = 'Página de categoria/listagem (não é produto específico)';
-        } else if (temPalavrasExcluir) {
-            deveExcluir = true;
-            motivoExclusao = 'Contém palavras de promoção/kit';
-        }
-        
-        const resultado = {
-            posicao: index + 1,
-            link,
-            fonte,
-            titulo,
-            snippet,
-            preco_no_snippet: precosSnippet.length > 0,
-            precos_snippet: precosSnippet,
-            excluido: deveExcluir,
-            motivo_exclusao: motivoExclusao
         };
         
-        if (deveExcluir) {
-            console.log(`❌ [${index + 1}] EXCLUÍDO - ${fonte}`);
-            console.log(`   Motivo: ${motivoExclusao}`);
-            console.log(`   URL: ${link.substring(0, 70)}...`);
-            excluidos.push(resultado);
-        } else {
-            console.log(`✅ [${index + 1}] ${fonte}${precosSnippet.length > 0 ? ' 💰 ' + precosSnippet.length + ' preço(s)' : ''}`);
-            console.log(`   ${titulo.substring(0, 60)}...`);
-            console.log(`   URL: ${link.substring(0, 70)}...`);
-            processados.push(resultado);
-        }
-    });
+    } catch (error) {
+        console.error('❌ [GROUNDING] Erro:', error.message);
+        return {
+            sucesso: false,
+            erro: error.message
+        };
+    }
+}
+
+// =============================================================================
+// PROCESSAR GROUNDING METADATA
+// =============================================================================
+
+function processarGroundingMetadata(metadata) {
+    if (!metadata) {
+        return {
+            tem_resultados: false,
+            total_chunks: 0,
+            total_queries: 0
+        };
+    }
     
-    console.log(`\n📊 Processados: ${processados.length}`);
-    console.log(`📊 Excluídos: ${excluidos.length}\n`);
+    const chunks = metadata.groundingChunks || [];
+    const queries = metadata.webSearchQueries || [];
+    const supports = metadata.groundingSupports || [];
     
-    return { processados, excluidos };
+    // Extrair links únicos dos chunks
+    const links = chunks
+        .filter(chunk => chunk.web)
+        .map(chunk => ({
+            uri: chunk.web.uri,
+            title: chunk.web.title,
+            domain: chunk.web.domain || extrairDominio(chunk.web.uri)
+        }));
+    
+    // Processar supports (liga texto às fontes)
+    const suportes = supports.map(support => ({
+        texto: support.segment?.text || '',
+        indices_chunks: support.groundingChunkIndices || [],
+        confianca: support.confidenceScores || []
+    }));
+    
+    return {
+        tem_resultados: chunks.length > 0,
+        total_chunks: chunks.length,
+        total_queries: queries.length,
+        queries_realizadas: queries,
+        links_encontrados: links,
+        suportes,
+        search_entry_point: metadata.searchEntryPoint || null
+    };
+}
+
+function extrairDominio(url) {
+    try {
+        const match = url.match(/https?:\/\/(?:www\.)?([^\/]+)/);
+        return match ? match[1] : 'desconhecido';
+    } catch (e) {
+        return 'desconhecido';
+    }
 }
 
 // =============================================================================
@@ -354,14 +182,14 @@ module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     
     if (req.method === 'OPTIONS') return res.status(200).end();
-    if (req.method !== 'POST') return res.status(405).json({ 
+    if (req.method !== 'POST') return res.status(405).json({
         status: 'Erro',
         mensagem: 'Método não permitido',
-        dados: {} 
+        dados: {}
     });
     
     console.log('\n' + '='.repeat(70));
-    console.log('🚀 [ETAPA2] BUSCA DE PREÇOS');
+    console.log('🚀 [ETAPA2-GROUNDING] BUSCA DE PREÇOS');
     console.log('='.repeat(70) + '\n');
     
     try {
@@ -384,48 +212,31 @@ module.exports = async (req, res) => {
             });
         }
         
-        const termoOriginal = termo_busca_comercial.trim();
+        const termo = termo_busca_comercial.trim();
         
         console.log('📦 Patrimônio:', numero_patrimonio);
         console.log('📦 Produto:', nome_produto);
-        console.log('🔍 Termo original:', termoOriginal);
+        console.log('🔍 Termo:', termo);
         
-        // Adicionar operadores do Google para melhorar resultados
-        const termoComOperadores = adicionarOperadoresGoogle(termoOriginal);
-        console.log('⚙️  Termo com operadores:', termoComOperadores);
+        // Buscar com grounding
+        const resultado = await buscarComGrounding(termo);
         
-        const resultado = await buscarCustomSearch(termoComOperadores, 20);
-        
-        if (!resultado.sucesso || resultado.resultados.length === 0) {
+        if (!resultado.sucesso) {
             return res.status(200).json({
-                status: 'Sem Resultados',
-                mensagem: 'Nenhum resultado encontrado',
+                status: 'Erro',
+                mensagem: 'Falha na busca com grounding',
                 dados: {
                     produto: {
                         numero_patrimonio: numero_patrimonio || 'N/A',
                         nome_produto: nome_produto || 'N/A'
                     },
-                    busca: {
-                        termo_utilizado: termoOriginal,
-                        total_resultados: 0,
-                        erro: resultado.erro || null
-                    }
+                    erro: resultado.erro
                 }
             });
         }
         
-        // Processar resultados (filtrar promoções/kits e extrair preços)
-        const { processados, excluidos } = processarResultados(resultado.resultados);
-        
-        // Preparar dados brutos do Google (simplificados)
-        const resultadosBrutosSimplificados = resultado.resultados.map((item, index) => ({
-            posicao: index + 1,
-            link: item.link,
-            fonte: identificarFonte(item.link),
-            titulo: item.title,
-            snippet: item.snippet || '',
-            displayLink: item.displayLink
-        }));
+        // Processar metadata do grounding
+        const metadataProcessada = processarGroundingMetadata(resultado.groundingMetadata);
         
         const dadosCompletos = {
             produto: {
@@ -439,56 +250,50 @@ module.exports = async (req, res) => {
             },
             
             busca: {
-                termo_original: termoOriginal,
-                termo_com_operadores: termoComOperadores,
-                total_brutos: resultado.resultados.length,
-                total_processados: processados.length,
-                total_excluidos: excluidos.length,
-                com_preco_snippet: processados.filter(r => r.preco_no_snippet).length
+                termo_utilizado: termo,
+                metodo: 'Grounding with Google Search',
+                queries_realizadas: metadataProcessada.queries_realizadas,
+                total_queries: metadataProcessada.total_queries,
+                total_links: metadataProcessada.total_chunks
             },
             
-            // DADOS BRUTOS DO GOOGLE (para análise)
-            resultados_brutos_google: resultadosBrutosSimplificados,
+            // Resposta da LLM
+            resposta_llm: resultado.texto,
             
-            resultados_validos: processados,
+            // Links encontrados pelo grounding
+            links_grounding: metadataProcessada.links_encontrados,
             
-            resultados_excluidos: excluidos,
+            // Suportes (conexão texto -> fontes)
+            suportes: metadataProcessada.suportes,
+            
+            // Metadata bruta completa (para análise)
+            grounding_metadata_completo: resultado.groundingMetadata,
+            
+            tokens: resultado.tokens,
             
             metadados: {
                 data_processamento: new Date().toISOString(),
-                versao_sistema: '2.3-Operadores-Google',
-                api_busca: 'Google Custom Search API',
-                operadores_google: [
-                    '-lista (exclui listagens)',
-                    '-busca (exclui buscas)',
-                    '-categoria (exclui categorias)',
-                    '-search (exclui /search)',
-                    '-catalogo (exclui catálogos)',
-                    'intext:"R$" (força presença de preço)'
-                ],
-                filtros_aplicados: [
-                    'Exclusão de páginas de categoria/listagem',
-                    'Exclusão de kits/combos',
-                    'Exclusão de promoções',
-                    'Extração de preços do snippet'
-                ]
+                versao_sistema: '3.0-Grounding-Bruto',
+                modelo_llm: MODEL,
+                metodo_busca: 'Grounding with Google Search',
+                thinking_mode: 'desabilitado'
             }
         };
         
-        console.log('✅ [ETAPA2] CONCLUÍDO');
-        console.log('📊 Válidos:', processados.length);
-        console.log('📊 Excluídos:', excluidos.length);
-        console.log('📊 Com preço no snippet:', dadosCompletos.busca.com_preco_snippet);
+        console.log('\n✅ [ETAPA2-GROUNDING] CONCLUÍDO');
+        console.log('📊 Queries realizadas:', metadataProcessada.total_queries);
+        console.log('📊 Links encontrados:', metadataProcessada.total_chunks);
+        console.log('📊 Tokens:', resultado.tokens.total);
         console.log('='.repeat(70) + '\n');
         
         return res.status(200).json({
             status: 'Sucesso',
-            mensagem: `${processados.length} resultado(s) válido(s) de ${resultado.resultados.length}`,
+            mensagem: `${metadataProcessada.total_chunks} link(s) encontrado(s) via grounding`,
             dados: dadosCompletos
         });
         
     } catch (error) {
-        console.error('❌ [ETAPA2] ERRO:', error.message);
+        console.error('❌ [ETAPA2-GROUNDING] ERRO:', error.message);
         return res.status(500).json({
             status: 'Erro',
             mensagem: error.message,
