@@ -6,8 +6,8 @@ const MODEL = process.env.VERTEX_MODEL || 'gemini-2.5-flash';
 const genAI = new GoogleGenerativeAI(API_KEY);
 
 const TAXA_CAMBIO_USD_BRL = 6.00;
-const USD_INPUT_POR_MILHAO = 0.15;
-const USD_OUTPUT_POR_MILHAO = 0.60;
+const USD_INPUT_POR_MILHAO = 0.30;
+const USD_OUTPUT_POR_MILHAO = 2.50;
 const CUSTO_INPUT_POR_TOKEN = (USD_INPUT_POR_MILHAO / 1_000_000) * TAXA_CAMBIO_USD_BRL;
 const CUSTO_OUTPUT_POR_TOKEN = (USD_OUTPUT_POR_MILHAO / 1_000_000) * TAXA_CAMBIO_USD_BRL;
 const TOKENS_POR_IMAGEM_512PX = 1610;
@@ -309,10 +309,10 @@ module.exports = async (req, res) => {
 "${observacao_operador}"
 
 INSTRUÇÕES CRÍTICAS:
-1. DETECTE se é suspeição ou certeza
-2. VALIDE cruzando com as imagens
+1. DETECTE se é suspeição ("Parece ser") ou certeza ("Isto é")
+2. VALIDE cruzando com as imagens usando características técnicas específicas
 3. CLASSIFIQUE em: Confirmada / Provável / Conflitante
-4. EXPLIQUE brevemente em nota_observacao
+4. EXPLIQUE brevemente em nota_observacao por que validou assim
 5. Se CONFIRMADA ou PROVÁVEL: use para nome_produto
 6. Se CONFLITANTE: ignore e use apenas análise visual
 ═══════════════════════════════════════════════════════`;
@@ -331,11 +331,6 @@ INSTRUÇÕES CRÍTICAS:
         const custoInput = tokensInput * CUSTO_INPUT_POR_TOKEN;
         const custoOutput = tokensOutput * CUSTO_OUTPUT_POR_TOKEN;
         const custoTotal = custoInput + custoOutput;
-        
-        console.log('💰 [CUSTO] Taxa câmbio: R$', TAXA_CAMBIO_USD_BRL);
-        console.log('💰 [CUSTO] Input:', tokensInput, 'tokens x R$', CUSTO_INPUT_POR_TOKEN.toFixed(8), '= R$', custoInput.toFixed(4));
-        console.log('💰 [CUSTO] Output:', tokensOutput, 'tokens x R$', CUSTO_OUTPUT_POR_TOKEN.toFixed(8), '= R$', custoOutput.toFixed(4));
-        console.log('📊 [ETAPA1] Total:', tokensInput, 'in +', tokensOutput, 'out = R$', custoTotal.toFixed(4));
         
         const text = result.response.text();
         
@@ -392,7 +387,7 @@ INSTRUÇÕES CRÍTICAS:
                 confianca_ia: 95,
                 total_imagens_processadas: imagens.length,
                 modelo_ia: MODEL,
-                versao_sistema: '5.1-Melhorado-Descricao-e-NA',
+                versao_sistema: '5.2-Validacao-Rigorosa',
                 tokens_input: tokensInput,
                 tokens_output: tokensOutput,
                 tokens_total: tokensTotal,
@@ -405,12 +400,60 @@ INSTRUÇÕES CRÍTICAS:
             }
         };
         
-        console.log('✅ [ETAPA1]', dadosExtraidos.nome_produto);
+        // ═══════════════════════════════════════════════════════════════
+        // LOGS DE CUSTO (CLARIFICADOS EM BRL)
+        // ═══════════════════════════════════════════════════════════════
+        console.log('');
+        console.log('═══════════════════════════════════════');
+        console.log('💰 [CUSTO DETALHADO - TODOS EM BRL]');
+        console.log('═══════════════════════════════════════');
+        console.log('📌 Taxa de câmbio: USD 1.00 = R$', TAXA_CAMBIO_USD_BRL.toFixed(2));
+        console.log('');
+        console.log('📥 INPUT:');
+        console.log('   Tokens:', tokensInput);
+        console.log('   Preço/milhão: R$', (CUSTO_INPUT_POR_TOKEN * 1_000_000).toFixed(2));
+        console.log('   Custo: R$', custoInput.toFixed(4));
+        console.log('');
+        console.log('📤 OUTPUT:');
+        console.log('   Tokens:', tokensOutput);
+        console.log('   Preço/milhão: R$', (CUSTO_OUTPUT_POR_TOKEN * 1_000_000).toFixed(2));
+        console.log('   Custo: R$', custoOutput.toFixed(4));
+        console.log('');
+        console.log('💵 TOTAL: R$', custoTotal.toFixed(4));
+        console.log('═══════════════════════════════════════');
+        
+        // ═══════════════════════════════════════════════════════════════
+        // RESULTADO DA IDENTIFICAÇÃO
+        // ═══════════════════════════════════════════════════════════════
+        console.log('');
+        console.log('═══════════════════════════════════════');
+        console.log('✅ [ETAPA 1 CONCLUÍDA]');
+        console.log('═══════════════════════════════════════');
+        console.log('🏷️  Nome:', dadosExtraidos.nome_produto);
+        console.log('🏭 Marca:', dadosExtraidos.marca);
+        console.log('📦 Modelo:', dadosExtraidos.modelo);
+        console.log('🔢 Patrimônio:', dadosExtraidos.numero_patrimonio);
+        console.log('📊 Estado:', dadosExtraidos.estado_conservacao);
+        console.log('📂 Categoria:', dadosExtraidos.categoria_depreciacao);
         
         if (dadosExtraidos.observacao_validada !== 'N/A') {
-            console.log('💡 [ETAPA1] Validação:', dadosExtraidos.observacao_validada);
-            console.log('📝 [ETAPA1] Nota:', dadosExtraidos.nota_observacao);
+            console.log('');
+            console.log('💡 VALIDAÇÃO DA OBSERVAÇÃO:');
+            console.log('   Status:', dadosExtraidos.observacao_validada);
+            console.log('   Nota:', dadosExtraidos.nota_observacao);
         }
+        console.log('═══════════════════════════════════════');
+        
+        // ═══════════════════════════════════════════════════════════════
+        // JSON COMPLETO QUE SERÁ ENVIADO PARA ETAPA 2
+        // ═══════════════════════════════════════════════════════════════
+        console.log('');
+        console.log('═══════════════════════════════════════');
+        console.log('📋 [JSON PARA ETAPA 2]');
+        console.log('═══════════════════════════════════════');
+        console.log(JSON.stringify(dadosCompletos, null, 2));
+        console.log('═══════════════════════════════════════');
+        console.log('');
         
         return res.status(200).json({
             status: 'Sucesso',
