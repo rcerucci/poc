@@ -46,7 +46,7 @@ async function buscarComGrounding(termo, produtoOriginal) {
             model: MODEL,
             generationConfig: {
                 temperature: 0.1,
-                maxOutputTokens: 4096,
+                maxOutputTokens: 8192,
                 thinkingConfig: {
                     thinkingBudget: 0
                 }
@@ -61,25 +61,34 @@ Marca: ${produtoOriginal.marca}
 Modelo: ${produtoOriginal.modelo}
 Especificações: ${produtoOriginal.especificacoes}
 
+OBJETIVO: Encontre produtos COM PREÇOS em Reais (R$).
+
 Retorne em formato MARKDOWN os produtos encontrados.
 Para cada produto inclua:
 1. Nome completo do produto
 2. Classificação: "MATCH" ou "SIMILAR"
-3. Preço (menor valor encontrado - à vista ou parcelado)
+3. **PREÇO** (OBRIGATÓRIO - busque em snippets, títulos, descrições)
+   - Se tiver preço à vista, use esse
+   - Se tiver apenas parcelado, calcule o total
+   - Se tiver "De R$ X por R$ Y", use o menor (R$ Y)
+   - SEMPRE tente encontrar algum valor em R$
 4. Loja
 5. Link COMPLETO do produto
 
-CRITÉRIOS DE CLASSIFICAÇÃO (MUITO IMPORTANTE):
+CRITÉRIOS DE CLASSIFICAÇÃO:
 - MATCH = Produto da MESMA MARCA e MESMA ESPECIFICAÇÃO PRINCIPAL
   Exemplo: Se procura "Notebook Dell Inspiron i5 8GB", então "Notebook Dell Inspiron i5 8GB" = MATCH
   (Mesmo que seja 15" ou 14", se for Dell Inspiron i5 8GB é MATCH)
 
-- SIMILAR = Produto de marca diferente OU especificação diferente OU tipo completamente diferente
+- SIMILAR = Produto de marca diferente OU especificação diferente
   Exemplo: "Notebook HP i5 8GB" = SIMILAR (marca diferente)
   Exemplo: "Notebook Dell Inspiron i7 8GB" = SIMILAR (processador diferente)
 
-Retorne MÁXIMO 10 produtos.
-Use listas numeradas e SEMPRE inclua links clicáveis.`;
+IMPORTANTE: 
+- Priorize produtos COM PREÇO
+- Se um site não mostrar preço no snippet, tente outro
+- Retorne MÁXIMO 10 produtos
+- Use listas numeradas e SEMPRE inclua links clicáveis`;
         
         const result = await model.generateContent({
             contents: [{ parts: [{ text: prompt }] }],
@@ -145,7 +154,7 @@ async function extrairJsonDoMarkdown(textoMarkdown) {
             generationConfig: {
                 temperature: 0,
                 responseMimeType: 'application/json',
-                maxOutputTokens: 4096,
+                maxOutputTokens: 8192,
                 thinkingConfig: {
                     thinkingBudget: 0
                 }
@@ -171,11 +180,15 @@ Retorne um JSON com esta estrutura EXATA:
   ]
 }
 
-REGRAS:
-- Se não houver preço, use null
-- classificacao deve ser "match" ou "similar" (minúsculas)
+REGRAS PARA PREÇOS:
+- Extraia TODOS os preços mencionados no texto
+- Converta "R$ 9.666,00" para 9666.00 (número decimal)
+- Converta "R$ 3.258,50" para 3258.5
+- Se houver múltiplos preços (à vista/parcelado), use o MENOR
+- Se houver "De R$ X por R$ Y", use Y (menor preço)
+- Se realmente não houver preço, use null
 - Preserve os links EXATAMENTE como estão
-- Converta "R$ 866,98" para 866.98 (número)`;
+- classificacao deve ser "match" ou "similar" (minúsculas)`;
         
         const result = await model.generateContent(prompt);
         const response = result.response;
