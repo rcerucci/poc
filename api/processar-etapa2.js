@@ -79,7 +79,7 @@ Retorne produtos com preços em reais (R$).`;
         
         const result = await model.generateContent({
             contents: prompt,
-            tools: ['google_search_retrieval']
+            tools: [{ googleSearch: {} }]
         });
         
         const response = result.response;
