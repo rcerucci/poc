@@ -173,6 +173,96 @@ function extrairDominio(url) {
 }
 
 // =============================================================================
+// EXTRAIR DADOS ESTRUTURADOS (NOVA FUNÇÃO)
+// =============================================================================
+
+async function extrairDadosEstruturados(textoGrounding, linksGrounding) {
+    console.log('📊 [EXTRAÇÃO] Estruturando dados...');
+    
+    try {
+        const model = genAI.getGenerativeModel({
+            model: MODEL,
+            generationConfig: {
+                temperature: 0,
+                responseMimeType: 'application/json',
+                thinkingConfig: {
+                    thinkingBudget: 0
+                }
+            }
+        });
+        
+        // Preparar contexto com os links encontrados
+        const linksFormatados = linksGrounding.map((link, idx) => 
+            `[${idx + 1}] ${link.title} - ${link.uri}`
+        ).join('\n');
+        
+        const prompt = `Analise o texto abaixo e extraia TODOS os produtos com preços mencionados.
+
+TEXTO DA BUSCA:
+${textoGrounding}
+
+LINKS DISPONÍVEIS:
+${linksFormatados}
+
+Retorne um JSON com esta estrutura EXATA:
+
+{
+  "produtos": [
+    {
+      "nome": "nome completo do produto",
+      "preco_a_vista": 999.99,
+      "preco_parcelado": 1099.99,
+      "link": "url completa do produto (usar os links acima)",
+      "loja": "nome da loja"
+    }
+  ]
+}
+
+REGRAS:
+- Extraia TODOS os produtos mencionados no texto
+- Se não houver preço à vista, use null
+- Se não houver preço parcelado, use null
+- Use os links fornecidos acima sempre que possível
+- Se o link não estiver disponível, use null
+- Converta valores como "R$ 866,98" para 866.98 (número)
+- Retorne apenas o JSON, sem texto adicional`;
+        
+        const result = await model.generateContent(prompt);
+        const response = result.response;
+        const jsonText = response.text();
+        
+        // Extrair tokens desta chamada
+        const usage = response.usageMetadata;
+        const tokensExtracao = {
+            input: usage?.promptTokenCount || 0,
+            output: usage?.candidatesTokenCount || 0,
+            total: usage?.totalTokenCount || 0
+        };
+        
+        console.log('📊 Tokens Extração - Input:', tokensExtracao.input, '| Output:', tokensExtracao.output, '| Total:', tokensExtracao.total);
+        
+        const dados = JSON.parse(jsonText);
+        
+        console.log('✅ [EXTRAÇÃO] Encontrados:', dados.produtos?.length || 0, 'produtos');
+        
+        return {
+            sucesso: true,
+            produtos: dados.produtos || [],
+            tokens: tokensExtracao
+        };
+        
+    } catch (error) {
+        console.error('❌ [EXTRAÇÃO] Erro:', error.message);
+        return {
+            sucesso: false,
+            erro: error.message,
+            produtos: [],
+            tokens: { input: 0, output: 0, total: 0 }
+        };
+    }
+}
+
+// =============================================================================
 // ENDPOINT PRINCIPAL
 // =============================================================================
 
@@ -189,7 +279,7 @@ module.exports = async (req, res) => {
     });
     
     console.log('\n' + '='.repeat(70));
-    console.log('🚀 [ETAPA2-GROUNDING] BUSCA DE PREÇOS');
+    console.log('🚀 [ETAPA2-GROUNDING+EXTRAÇÃO] BUSCA DE PREÇOS');
     console.log('='.repeat(70) + '\n');
     
     try {
@@ -218,7 +308,7 @@ module.exports = async (req, res) => {
         console.log('📦 Produto:', nome_produto);
         console.log('🔍 Termo:', termo);
         
-        // Buscar com grounding
+        // ETAPA 1: Buscar com grounding
         const resultado = await buscarComGrounding(termo);
         
         if (!resultado.sucesso) {
@@ -238,6 +328,19 @@ module.exports = async (req, res) => {
         // Processar metadata do grounding
         const metadataProcessada = processarGroundingMetadata(resultado.groundingMetadata);
         
+        // ETAPA 2: Extrair dados estruturados
+        const dadosEstruturados = await extrairDadosEstruturados(
+            resultado.texto,
+            metadataProcessada.links_encontrados
+        );
+        
+        // Calcular tokens totais
+        const tokensTotal = {
+            grounding: resultado.tokens,
+            extracao: dadosEstruturados.tokens,
+            total: resultado.tokens.total + dadosEstruturados.tokens.total
+        };
+        
         const dadosCompletos = {
             produto: {
                 numero_patrimonio: numero_patrimonio || 'N/A',
@@ -251,49 +354,55 @@ module.exports = async (req, res) => {
             
             busca: {
                 termo_utilizado: termo,
-                metodo: 'Grounding with Google Search',
+                metodo: 'Grounding with Google Search + JSON Extraction',
                 queries_realizadas: metadataProcessada.queries_realizadas,
                 total_queries: metadataProcessada.total_queries,
                 total_links: metadataProcessada.total_chunks
             },
             
-            // Resposta da LLM
-            resposta_llm: resultado.texto,
+            // 🆕 Dados estruturados extraídos
+            produtos_encontrados: dadosEstruturados.produtos,
+            total_produtos: dadosEstruturados.produtos.length,
             
-            // Links encontrados pelo grounding
+            // Resposta original da LLM (mantida para referência)
+            resposta_llm_original: resultado.texto,
+            
+            // Links do grounding
             links_grounding: metadataProcessada.links_encontrados,
             
             // Suportes (conexão texto -> fontes)
             suportes: metadataProcessada.suportes,
             
-            // Metadata bruta completa (para análise)
-            grounding_metadata_completo: resultado.groundingMetadata,
-            
-            tokens: resultado.tokens,
+            // Tokens detalhados
+            tokens: tokensTotal,
             
             metadados: {
                 data_processamento: new Date().toISOString(),
-                versao_sistema: '3.0-Grounding-Bruto',
+                versao_sistema: '4.0-Grounding-Estruturado',
                 modelo_llm: MODEL,
-                metodo_busca: 'Grounding with Google Search',
-                thinking_mode: 'desabilitado'
+                metodo_busca: 'Grounding + Extração JSON',
+                thinking_mode: 'desabilitado',
+                extracao_json: dadosEstruturados.sucesso ? 'sucesso' : 'falha'
             }
         };
         
-        console.log('\n✅ [ETAPA2-GROUNDING] CONCLUÍDO');
+        console.log('\n✅ [ETAPA2-GROUNDING+EXTRAÇÃO] CONCLUÍDO');
         console.log('📊 Queries realizadas:', metadataProcessada.total_queries);
         console.log('📊 Links encontrados:', metadataProcessada.total_chunks);
-        console.log('📊 Tokens:', resultado.tokens.total);
+        console.log('📊 Produtos estruturados:', dadosEstruturados.produtos.length);
+        console.log('📊 Tokens Grounding:', resultado.tokens.total);
+        console.log('📊 Tokens Extração:', dadosEstruturados.tokens.total);
+        console.log('📊 Tokens TOTAL:', tokensTotal.total);
         console.log('='.repeat(70) + '\n');
         
         return res.status(200).json({
             status: 'Sucesso',
-            mensagem: `${metadataProcessada.total_chunks} link(s) encontrado(s) via grounding`,
+            mensagem: `${dadosEstruturados.produtos.length} produto(s) estruturado(s) de ${metadataProcessada.total_chunks} link(s) encontrado(s)`,
             dados: dadosCompletos
         });
         
     } catch (error) {
-        console.error('❌ [ETAPA2-GROUNDING] ERRO:', error.message);
+        console.error('❌ [ETAPA2-GROUNDING+EXTRAÇÃO] ERRO:', error.message);
         return res.status(500).json({
             status: 'Erro',
             mensagem: error.message,
