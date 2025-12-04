@@ -71,9 +71,69 @@ const PALAVRAS_EXCLUIR = [
     'agora:', 'agora r$', 'antes:', 'economize'
 ];
 
+// Padrões que indicam página de CATEGORIA (não produto específico)
+const PADROES_CATEGORIA = [
+    '/s?k=',           // Busca Amazon
+    '/lista',          // Listagem Mercado Livre
+    '/busca',          // Busca genérica
+    '/search',         // Search
+    '/categoria',      // Categoria
+    '/categorias',     // Categorias
+    '/colecao',        // Coleção
+    '/colecoes',       // Coleções
+    '/produtos',       // Listagem de produtos (plural)
+    '/catalogo',       // Catálogo
+    '?q=',            // Query parameter
+    '?search=',       // Query parameter
+    '/filtro',        // Página de filtros
+];
+
+// Padrões que indicam produto ESPECÍFICO
+const PADROES_PRODUTO = [
+    '/p/mlb',         // Mercado Livre produto
+    '/dp/',           // Amazon produto
+    '-sku-',          // SKU
+    '-cod-',          // Código
+    '-ref-',          // Referência
+    '/produto/',      // Produto específico
+    '/item/',         // Item específico
+];
+
 function contemPalavrasExcluir(texto) {
     const textoLower = texto.toLowerCase();
     return PALAVRAS_EXCLUIR.some(palavra => textoLower.includes(palavra));
+}
+
+function ehPaginaCategoria(url) {
+    const urlLower = url.toLowerCase();
+    
+    // Verificar padrões de produto ESPECÍFICO (tem prioridade)
+    const ehProdutoEspecifico = PADROES_PRODUTO.some(padrao => urlLower.includes(padrao));
+    if (ehProdutoEspecifico) {
+        return false; // É produto específico, não é categoria
+    }
+    
+    // Verificar padrões de categoria
+    const ehCategoria = PADROES_CATEGORIA.some(padrao => urlLower.includes(padrao));
+    if (ehCategoria) {
+        return true; // É categoria
+    }
+    
+    // Verificar se URL é muito curta/genérica (provável categoria)
+    // Ex: site.com.br/cadeiras (apenas 1 nível após domínio)
+    try {
+        const urlObj = new URL(url);
+        const pathParts = urlObj.pathname.split('/').filter(p => p.length > 0);
+        
+        // Se tiver apenas 1 parte no path e não tiver números, provavelmente é categoria
+        if (pathParts.length === 1 && !/\d/.test(pathParts[0])) {
+            return true;
+        }
+    } catch (e) {
+        // Erro ao parsear URL, considera suspeito
+    }
+    
+    return false; // Não detectou como categoria
 }
 
 function extrairPrecosDoTexto(texto) {
@@ -213,12 +273,26 @@ function processarResultados(resultadosBrutos) {
         const titulo = item.title;
         const snippet = item.snippet || '';
         
+        // Verificar se é página de categoria
+        const isPaginaCategoria = ehPaginaCategoria(link);
+        
         // Verificar se contém palavras de exclusão
         const textoCompleto = `${titulo} ${snippet}`.toLowerCase();
-        const deveExcluir = contemPalavrasExcluir(textoCompleto);
+        const temPalavrasExcluir = contemPalavrasExcluir(textoCompleto);
         
         // Extrair preços do snippet
         const precosSnippet = extrairPrecosDoTexto(snippet);
+        
+        let deveExcluir = false;
+        let motivoExclusao = null;
+        
+        if (isPaginaCategoria) {
+            deveExcluir = true;
+            motivoExclusao = 'Página de categoria/listagem (não é produto específico)';
+        } else if (temPalavrasExcluir) {
+            deveExcluir = true;
+            motivoExclusao = 'Contém palavras de promoção/kit';
+        }
         
         const resultado = {
             posicao: index + 1,
@@ -229,17 +303,18 @@ function processarResultados(resultadosBrutos) {
             preco_no_snippet: precosSnippet.length > 0,
             precos_snippet: precosSnippet,
             excluido: deveExcluir,
-            motivo_exclusao: deveExcluir ? 'Contém palavras de promoção/kit' : null
+            motivo_exclusao: motivoExclusao
         };
         
         if (deveExcluir) {
             console.log(`❌ [${index + 1}] EXCLUÍDO - ${fonte}`);
-            console.log(`   Motivo: Promoção/Kit detectado`);
-            console.log(`   Título: ${titulo.substring(0, 60)}...`);
+            console.log(`   Motivo: ${motivoExclusao}`);
+            console.log(`   URL: ${link.substring(0, 70)}...`);
             excluidos.push(resultado);
         } else {
             console.log(`✅ [${index + 1}] ${fonte}${precosSnippet.length > 0 ? ' 💰 ' + precosSnippet.length + ' preço(s)' : ''}`);
             console.log(`   ${titulo.substring(0, 60)}...`);
+            console.log(`   URL: ${link.substring(0, 70)}...`);
             processados.push(resultado);
         }
     });
@@ -344,9 +419,10 @@ module.exports = async (req, res) => {
             
             metadados: {
                 data_processamento: new Date().toISOString(),
-                versao_sistema: '2.1-Filtro-Promocoes',
+                versao_sistema: '2.2-Filtro-Categorias',
                 api_busca: 'Google Custom Search API',
                 filtros_aplicados: [
+                    'Exclusão de páginas de categoria/listagem',
                     'Exclusão de kits/combos',
                     'Exclusão de promoções',
                     'Extração de preços do snippet'
