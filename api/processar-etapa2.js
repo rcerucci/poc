@@ -417,6 +417,16 @@ module.exports = async (req, res) => {
         // Processar resultados (filtrar promoções/kits e extrair preços)
         const { processados, excluidos } = processarResultados(resultado.resultados);
         
+        // Preparar dados brutos do Google (simplificados)
+        const resultadosBrutosSimplificados = resultado.resultados.map((item, index) => ({
+            posicao: index + 1,
+            link: item.link,
+            fonte: identificarFonte(item.link),
+            titulo: item.title,
+            snippet: item.snippet || '',
+            displayLink: item.displayLink
+        }));
+        
         const dadosCompletos = {
             produto: {
                 numero_patrimonio: numero_patrimonio || 'N/A',
@@ -436,6 +446,9 @@ module.exports = async (req, res) => {
                 total_excluidos: excluidos.length,
                 com_preco_snippet: processados.filter(r => r.preco_no_snippet).length
             },
+            
+            // DADOS BRUTOS DO GOOGLE (para análise)
+            resultados_brutos_google: resultadosBrutosSimplificados,
             
             resultados_validos: processados,
             
