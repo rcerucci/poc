@@ -10,22 +10,6 @@ const redis = new Redis({
 });
 
 // =============================================================================
-// NORMALIZAÇÃO DE TERMO
-// =============================================================================
-
-function normalizarTermo(termo) {
-    return termo
-        .toLowerCase()
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^\w\s]/g, '')
-        .trim()
-        .split(/\s+/)
-        .filter(p => p.length > 0)
-        .sort()
-        .join('_');
-}
-
-// =============================================================================
 // ENDPOINT: ACEITAR COTAÇÃO E SALVAR NO CACHE
 // =============================================================================
 
@@ -60,18 +44,16 @@ module.exports = async (req, res) => {
         }
         
         const termo = termo_busca_comercial.trim();
-        const termoNormalizado = normalizarTermo(termo);
-        const cacheKey = `cotacao:${termoNormalizado}`;
+        // Usar termo DIRETO como chave (mais consistente que normalização)
+        const cacheKey = `cotacao:${termo}`;
         
         console.log('📦 Patrimônio:', numero_patrimonio);
-        console.log('🔍 Termo original:', termo);
-        console.log('🔑 Termo normalizado:', termoNormalizado);
+        console.log('🔍 Termo:', termo);
         console.log('🔑 Cache key:', cacheKey);
         
         // Preparar dados para cache
         const dadosParaSalvar = {
             termo_original: termo,
-            termo_normalizado: termoNormalizado,
             data_cotacao: new Date().toISOString(),
             ...dados_cotacao,
             patrimonio: numero_patrimonio || 'N/A',
@@ -102,7 +84,7 @@ module.exports = async (req, res) => {
             status: 'Sucesso',
             mensagem: 'Cotação aceita e salva no cache por 7 dias',
             dados: {
-                cache_key: termoNormalizado,
+                cache_key: termo, // Retornar termo direto
                 expira_em_dias: 7,
                 data_cotacao: dadosParaSalvar.data_cotacao,
                 tokens_economizaveis: tokensEconomizados
