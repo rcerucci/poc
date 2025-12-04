@@ -1,5 +1,4 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const fetch = require('node-fetch');
 
 // =============================================================================
 // CONFIGURAÇÃO
@@ -9,48 +8,8 @@ const API_KEY = process.env.GOOGLE_API_KEY;
 const MODEL = process.env.VERTEX_MODEL || 'gemini-2.5-flash-lite';
 const genAI = new GoogleGenerativeAI(API_KEY);
 
-// --- Fatores de Depreciação ---
-const FATORES_DEPRECIACAO = {
-    Excelente: {
-        'Computadores e Informática': 0.9,
-        'Ferramentas': 0.85,
-        'Instalações': 0.8,
-        'Máquinas e Equipamentos': 0.85,
-        'Móveis e Utensílios': 0.8,
-        'Veículos': 0.85,
-        'Outros': 0.75
-    },
-    Bom: {
-        'Computadores e Informática': 0.75,
-        'Ferramentas': 0.7,
-        'Instalações': 0.65,
-        'Máquinas e Equipamentos': 0.7,
-        'Móveis e Utensílios': 0.65,
-        'Veículos': 0.7,
-        'Outros': 0.6
-    },
-    Regular: {
-        'Computadores e Informática': 0.55,
-        'Ferramentas': 0.5,
-        'Instalações': 0.45,
-        'Máquinas e Equipamentos': 0.5,
-        'Móveis e Utensílios': 0.45,
-        'Veículos': 0.5,
-        'Outros': 0.4
-    },
-    Ruim: {
-        'Computadores e Informática': 0.35,
-        'Ferramentas': 0.3,
-        'Instalações': 0.25,
-        'Máquinas e Equipamentos': 0.3,
-        'Móveis e Utensílios': 0.25,
-        'Veículos': 0.3,
-        'Outros': 0.2
-    }
-};
-
 // =============================================================================
-// RESOLVER REDIRECTS (SOLUÇÃO PARA O PROBLEMA DO vertexaisearch)
+// RESOLVER REDIRECTS (usando fetch nativo do Node 18+)
 // =============================================================================
 
 async function resolverRedirect(url) {
@@ -65,19 +24,55 @@ async function resolverRedirect(url) {
     }
     
     try {
+        // Node 18+ tem fetch nativo
         const response = await fetch(url, {
             method: 'HEAD',
-            redirect: 'follow',
-            timeout: 5000
+            redirect: 'follow'
         });
         
         const urlFinal = response.url;
-        console.log('✅ [REDIRECT] Resolvido para:', urlFinal.substring(0, 80) + '...');
+        console.log('✅ [REDIRECT] Resolvido:', urlFinal.substring(0, 80) + '...');
         return urlFinal;
         
     } catch (error) {
-        console.warn('⚠️ [REDIRECT] Falha ao resolver, usando original:', error.message);
-        return url;
+        console.warn('⚠️ [REDIRECT] Falha ao resolver:', error.message);
+        return url; // Fallback para URL original
+    }
+}
+
+// =============================================================================
+// EXTRAIR LINKS DO TEXTO MARKDOWN (FALLBACK)
+// =============================================================================
+
+function extrairLinksDoMarkdown(textoMarkdown) {
+    const links = [];
+    
+    // Regex para capturar links Markdown: [texto](url)
+    const regexMarkdown = /\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g;
+    let match;
+    
+    while ((match = regexMarkdown.exec(textoMarkdown)) !== null) {
+        const titulo = match[1];
+        const url = match[2];
+        
+        links.push({
+            uri: url,
+            title: titulo,
+            domain: extrairDominio(url),
+            origem: 'markdown-fallback'
+        });
+    }
+    
+    console.log('🔗 [FALLBACK] Extraídos', links.length, 'links do Markdown');
+    return links;
+}
+
+function extrairDominio(url) {
+    try {
+        const match = url.match(/https?:\/\/(?:www\.)?([^\/]+)/);
+        return match ? match[1] : 'desconhecido';
+    } catch (e) {
+        return 'desconhecido';
     }
 }
 
@@ -108,13 +103,13 @@ async function buscarComGrounding(termo) {
 
 Retorne os produtos encontrados em formato MARKDOWN com preços em reais (R$).
 Para cada produto inclua:
-- Nome do produto
+- Nome completo do produto
 - Preço à vista (se disponível)
 - Preço parcelado (se disponível)
 - Nome da loja
-- Link do produto
+- Link COMPLETO do produto (URL clicável)
 
-Use listas numeradas.`;
+Use listas numeradas e SEMPRE inclua o link do produto.`;
         
         const result = await model.generateContent({
             contents: [{ parts: [{ text: prompt }] }],
@@ -165,33 +160,50 @@ Use listas numeradas.`;
 // PROCESSAR GROUNDING METADATA COM RESOLUÇÃO DE REDIRECTS
 // =============================================================================
 
-async function processarGroundingMetadata(metadata) {
-    if (!metadata) {
+async function processarGroundingMetadata(metadata, textoMarkdown) {
+    const queries = metadata?.webSearchQueries || [];
+    const chunks = metadata?.groundingChunks || [];
+    const supports = metadata?.groundingSupports || [];
+    
+    let linksParaResolver = [];
+    
+    // PRIORIDADE 1: Tentar extrair dos chunks do grounding
+    if (chunks.length > 0) {
+        console.log('📦 [METADATA] Processando', chunks.length, 'chunks');
+        linksParaResolver = chunks
+            .filter(chunk => chunk.web)
+            .map(chunk => ({
+                uri: chunk.web.uri,
+                title: chunk.web.title || 'Sem título',
+                domain: chunk.web.domain || extrairDominio(chunk.web.uri),
+                origem: 'grounding-metadata'
+            }));
+    }
+    
+    // FALLBACK: Se não houver links nos chunks, extrair do Markdown
+    if (linksParaResolver.length === 0) {
+        console.log('⚠️ [METADATA] Nenhum link nos chunks, usando fallback');
+        linksParaResolver = extrairLinksDoMarkdown(textoMarkdown);
+    }
+    
+    if (linksParaResolver.length === 0) {
+        console.warn('❌ [METADATA] Nenhum link encontrado em nenhuma fonte');
         return {
             tem_resultados: false,
-            total_chunks: 0,
-            total_queries: 0
+            total_chunks: chunks.length,
+            total_queries: queries.length,
+            queries_realizadas: queries,
+            links_encontrados: [],
+            suportes: [],
+            search_entry_point: metadata?.searchEntryPoint || null
         };
     }
     
-    const chunks = metadata.groundingChunks || [];
-    const queries = metadata.webSearchQueries || [];
-    const supports = metadata.groundingSupports || [];
-    
-    // Extrair links únicos dos chunks
-    const linksComRedirect = chunks
-        .filter(chunk => chunk.web)
-        .map(chunk => ({
-            uri: chunk.web.uri,
-            title: chunk.web.title,
-            domain: chunk.web.domain || extrairDominio(chunk.web.uri)
-        }));
-    
-    console.log('🔄 [REDIRECT] Resolvendo', linksComRedirect.length, 'links...');
+    console.log('🔄 [REDIRECT] Resolvendo', linksParaResolver.length, 'links...');
     
     // Resolver todos os redirects em paralelo
     const linksResolvidos = await Promise.all(
-        linksComRedirect.map(async (link) => ({
+        linksParaResolver.map(async (link) => ({
             ...link,
             uri_original: link.uri,
             uri: await resolverRedirect(link.uri)
@@ -206,23 +218,14 @@ async function processarGroundingMetadata(metadata) {
     }));
     
     return {
-        tem_resultados: chunks.length > 0,
+        tem_resultados: linksResolvidos.length > 0,
         total_chunks: chunks.length,
         total_queries: queries.length,
         queries_realizadas: queries,
         links_encontrados: linksResolvidos,
         suportes,
-        search_entry_point: metadata.searchEntryPoint || null
+        search_entry_point: metadata?.searchEntryPoint || null
     };
-}
-
-function extrairDominio(url) {
-    try {
-        const match = url.match(/https?:\/\/(?:www\.)?([^\/]+)/);
-        return match ? match[1] : 'desconhecido';
-    } catch (e) {
-        return 'desconhecido';
-    }
 }
 
 // =============================================================================
@@ -230,6 +233,11 @@ function extrairDominio(url) {
 // =============================================================================
 
 function mascararUrls(texto, links) {
+    if (!links || links.length === 0) {
+        console.warn('⚠️ [MASK] Nenhum link para mascarar');
+        return { textoMascarado: texto, mapaUrls: {} };
+    }
+    
     let textoMascarado = texto;
     const mapaUrls = {};
     
@@ -238,9 +246,9 @@ function mascararUrls(texto, links) {
         mapaUrls[placeholder] = link.uri;
         
         // Substituir URLs no texto
-        textoMascarado = textoMascarado.replace(link.uri, placeholder);
+        textoMascarado = textoMascarado.replace(new RegExp(escapeRegex(link.uri), 'g'), placeholder);
         if (link.uri_original && link.uri_original !== link.uri) {
-            textoMascarado = textoMascarado.replace(link.uri_original, placeholder);
+            textoMascarado = textoMascarado.replace(new RegExp(escapeRegex(link.uri_original), 'g'), placeholder);
         }
     });
     
@@ -248,14 +256,23 @@ function mascararUrls(texto, links) {
     return { textoMascarado, mapaUrls };
 }
 
+function escapeRegex(string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function desmascararUrls(texto, mapaUrls) {
+    if (!mapaUrls || Object.keys(mapaUrls).length === 0) {
+        console.warn('⚠️ [UNMASK] Nenhum mapa de URLs disponível');
+        return texto;
+    }
+    
     let textoFinal = texto;
     
     Object.entries(mapaUrls).forEach(([placeholder, url]) => {
-        textoFinal = textoFinal.replace(new RegExp(placeholder, 'g'), url);
+        textoFinal = textoFinal.replace(new RegExp(escapeRegex(placeholder), 'g'), url);
     });
     
-    console.log('🎭 [UNMASK] URLs restauradas');
+    console.log('🎭 [UNMASK] URLs restauradas:', Object.keys(mapaUrls).length);
     return textoFinal;
 }
 
@@ -301,7 +318,7 @@ REGRAS IMPORTANTES:
 - Extraia TODOS os produtos mencionados
 - Se não houver preço à vista, use null
 - Se não houver preço parcelado, use null
-- PRESERVE os placeholders <<URL_N>> EXATAMENTE como estão
+- PRESERVE os placeholders <<URL_N>> EXATAMENTE como estão no texto
 - Converta valores como "R$ 866,98" para 866.98 (número)
 - Se a loja não for mencionada, use null
 - Retorne apenas o JSON, sem texto adicional`;
@@ -408,8 +425,11 @@ module.exports = async (req, res) => {
             });
         }
         
-        // Processar metadata e resolver redirects
-        const metadataProcessada = await processarGroundingMetadata(resultado.groundingMetadata);
+        // Processar metadata e resolver redirects (COM FALLBACK PARA MARKDOWN)
+        const metadataProcessada = await processarGroundingMetadata(
+            resultado.groundingMetadata,
+            resultado.texto  // 🆕 Passar o texto Markdown para fallback
+        );
         
         // Mascarar URLs no texto Markdown
         const { textoMascarado, mapaUrls } = mascararUrls(
@@ -443,7 +463,7 @@ module.exports = async (req, res) => {
                 metodo: 'Grounding + Redirect Resolution + JSON Extraction',
                 queries_realizadas: metadataProcessada.queries_realizadas,
                 total_queries: metadataProcessada.total_queries,
-                total_links: metadataProcessada.total_chunks
+                total_links: metadataProcessada.links_encontrados.length
             },
             
             // 🆕 Dados estruturados extraídos com URLs resolvidas
@@ -464,9 +484,9 @@ module.exports = async (req, res) => {
             
             metadados: {
                 data_processamento: new Date().toISOString(),
-                versao_sistema: '5.0-Redirect-Fixed',
+                versao_sistema: '5.1-Redirect-Fixed-Fallback',
                 modelo_llm: MODEL,
-                metodo_busca: 'Grounding + Redirect Resolution',
+                metodo_busca: 'Grounding + Redirect Resolution + Markdown Fallback',
                 thinking_mode: 'desabilitado',
                 extracao_json: dadosEstruturados.sucesso ? 'sucesso' : 'falha',
                 redirects_resolvidos: metadataProcessada.links_encontrados.length
@@ -475,7 +495,7 @@ module.exports = async (req, res) => {
         
         console.log('\n✅ [ETAPA2-FIXED] CONCLUÍDO');
         console.log('📊 Queries realizadas:', metadataProcessada.total_queries);
-        console.log('📊 Links encontrados:', metadataProcessada.total_chunks);
+        console.log('📊 Links encontrados:', metadataProcessada.links_encontrados.length);
         console.log('📊 Redirects resolvidos:', metadataProcessada.links_encontrados.length);
         console.log('📊 Produtos estruturados:', dadosEstruturados.produtos.length);
         console.log('📊 Tokens TOTAL:', tokensTotal.total);
@@ -483,7 +503,7 @@ module.exports = async (req, res) => {
         
         return res.status(200).json({
             status: 'Sucesso',
-            mensagem: `${dadosEstruturados.produtos.length} produto(s) com links reais de ${metadataProcessada.total_chunks} fonte(s)`,
+            mensagem: `${dadosEstruturados.produtos.length} produto(s) com links reais de ${metadataProcessada.links_encontrados.length} fonte(s)`,
             dados: dadosCompletos
         });
         
