@@ -453,9 +453,20 @@ function removerFoto(index) {
 function validarBotaoProcessar() {
     const fotosValidas = AppState.fotos.filter(f => f !== null);
     const btnProcessar = elementos.processarEtapa1;
+    const secaoObservacao = elementos.observacaoSection;
     
     if (btnProcessar) {
         btnProcessar.disabled = fotosValidas.length < CONFIG.minFotos;
+    }
+    
+    // ✅ Mostrar/ocultar seção de observação
+    if (secaoObservacao) {
+        if (fotosValidas.length >= CONFIG.minFotos) {
+            secaoObservacao.style.display = 'block';
+            console.log('💡 Seção de observação exibida');
+        } else {
+            secaoObservacao.style.display = 'none';
+        }
     }
 }
 
@@ -505,6 +516,39 @@ async function comprimirImagem(file, resolucaoAlvo) {
         reader.onerror = () => reject(new Error('Erro ao ler arquivo'));
         reader.readAsDataURL(file);
     });
+}
+
+// ===================================================================
+// VALIDAÇÃO LLM
+// ===================================================================
+
+function mostrarValidacaoLLM(dados) {
+    const validacaoBox = document.getElementById('validacaoLLM');
+    
+    if (!validacaoBox) return;
+    
+    // Verifica se há validação da observação do operador
+    if (dados.observacao_validada && dados.observacao_validada !== 'N/A') {
+        const emoji = {
+            'Confirmada': '✅',
+            'Provável': '🟡',
+            'Conflitante': '⚠️'
+        }[dados.observacao_validada] || '💡';
+        
+        // Monta mensagem formatada
+        let mensagem = `${emoji} <strong>Observação ${dados.observacao_validada}:</strong> ${dados.nota_observacao}`;
+        
+        validacaoBox.innerHTML = mensagem;
+        validacaoBox.classList.add('validacao-ativa');
+        validacaoBox.style.display = 'block';
+        
+        console.log('📝 Validação LLM exibida:', dados.observacao_validada);
+    } else {
+        // Sem observação - ocultar
+        validacaoBox.innerHTML = '';
+        validacaoBox.classList.remove('validacao-ativa');
+        validacaoBox.style.display = 'none';
+    }
 }
 
 // ===================================================================
@@ -565,6 +609,7 @@ async function processarEtapa1() {
         
         if (resultado.status === 'Sucesso') {
             AppState.dadosEtapa1 = resultado.dados;
+            mostrarValidacaoLLM(resultado.dados);
             preencherFormulario(resultado.dados);
             mostrarAlerta('✅ ' + resultado.mensagem, 'success');
         } else {
