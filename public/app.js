@@ -20,6 +20,55 @@ const AppState = {
     cotacaoCache: null
 };
 
+// ===================================================================
+// TABELA DE DEPRECIAÇÃO
+// ===================================================================
+
+const TABELA_DEPRECIACAO = {
+    "Computadores e Informática": {
+        "Excelente": 0.90,
+        "Bom": 0.75,
+        "Regular": 0.55,
+        "Ruim": 0.35
+    },
+    "Máquinas e Equipamentos": {
+        "Excelente": 0.85,
+        "Bom": 0.70,
+        "Regular": 0.50,
+        "Ruim": 0.30
+    },
+    "Móveis e Utensílios": {
+        "Excelente": 0.80,
+        "Bom": 0.65,
+        "Regular": 0.45,
+        "Ruim": 0.25
+    },
+    "Veículos": {
+        "Excelente": 0.85,
+        "Bom": 0.70,
+        "Regular": 0.50,
+        "Ruim": 0.30
+    },
+    "Ferramentas": {
+        "Excelente": 0.85,
+        "Bom": 0.70,
+        "Regular": 0.50,
+        "Ruim": 0.30
+    },
+    "Instalações": {
+        "Excelente": 0.80,
+        "Bom": 0.65,
+        "Regular": 0.45,
+        "Ruim": 0.25
+    },
+    "Outros": {
+        "Excelente": 0.75,
+        "Bom": 0.60,
+        "Regular": 0.40,
+        "Ruim": 0.20
+    }
+};
+
 const elementos = {
     // Botões principais
     processarEtapa1: document.getElementById('processarEtapa1'),
@@ -72,7 +121,99 @@ document.addEventListener('DOMContentLoaded', () => {
     inicializarUploadFotos();
     inicializarObservacaoOperador();
     inicializarFormatacaoMoeda();
+    inicializarCalculoAutomatico(); // ✅ NOVO
 });
+
+// ===================================================================
+// CÁLCULO DE DEPRECIAÇÃO
+// ===================================================================
+
+function calcularValorAtual() {
+    // Obter valores dos campos
+    const valorMercadoStr = elementos.valorMercado?.value || '0,00';
+    const categoria = elementos.depreciacao?.value;
+    const estado = elementos.estado?.value;
+    
+    // Validar se todos os campos necessários estão preenchidos
+    if (!categoria || !estado) {
+        console.log('⚠️ [CALC] Categoria ou Estado não selecionados');
+        return;
+    }
+    
+    // Converter valor de mercado de string BR para número
+    const valorMercado = converterMoedaParaNumero(valorMercadoStr);
+    
+    if (valorMercado === 0) {
+        console.log('⚠️ [CALC] Valor de Mercado zerado');
+        return;
+    }
+    
+    // Buscar fator de depreciação na tabela
+    const fator = TABELA_DEPRECIACAO[categoria]?.[estado];
+    
+    if (!fator) {
+        console.warn('⚠️ [CALC] Fator não encontrado para:', categoria, estado);
+        return;
+    }
+    
+    // Calcular valor atual
+    const valorAtual = valorMercado * fator;
+    
+    // Preencher campo formatado
+    if (elementos.valorAtual) {
+        elementos.valorAtual.value = formatarMoedaBR(valorAtual);
+    }
+    
+    console.log('✅ [CALC] Valor Atual calculado:');
+    console.log('   - Valor de Mercado: R$', valorMercado.toFixed(2));
+    console.log('   - Categoria:', categoria);
+    console.log('   - Estado:', estado);
+    console.log('   - Fator:', (fator * 100) + '%');
+    console.log('   - Valor Atual: R$', valorAtual.toFixed(2));
+}
+
+function converterMoedaParaNumero(valorStr) {
+    if (!valorStr || valorStr === '') return 0;
+    
+    // Remove "R$", espaços, pontos (milhares) e converte vírgula em ponto
+    return parseFloat(
+        valorStr
+            .replace('R$', '')
+            .replace(/\s/g, '')
+            .replace(/\./g, '')
+            .replace(',', '.')
+    ) || 0;
+}
+
+function formatarMoedaBR(valor) {
+    if (isNaN(valor)) return '0,00';
+    
+    return valor.toLocaleString('pt-BR', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+}
+
+function inicializarCalculoAutomatico() {
+    // Recalcular quando qualquer campo relevante mudar
+    if (elementos.valorMercado) {
+        elementos.valorMercado.addEventListener('input', calcularValorAtual);
+    }
+    
+    if (elementos.depreciacao) {
+        elementos.depreciacao.addEventListener('change', calcularValorAtual);
+    }
+    
+    if (elementos.estado) {
+        elementos.estado.addEventListener('change', calcularValorAtual);
+    }
+    
+    console.log('✅ [CALC] Sistema de cálculo automático inicializado');
+}
+
+// ===================================================================
+// FORMATAÇÃO DE MOEDA (CAMPO VALOR ATUAL - MANUAL)
+// ===================================================================
 
 function formatarMoeda(input) {
     let valor = input.value;
@@ -116,11 +257,10 @@ function inicializarFormatacaoMoeda() {
 
 function preencherValorMercado(mediaPonderada) {
     if (elementos.valorMercado && mediaPonderada) {
-        const valorFormatado = mediaPonderada.toLocaleString('pt-BR', {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
-        });
-        elementos.valorMercado.value = valorFormatado;
+        elementos.valorMercado.value = formatarMoedaBR(mediaPonderada);
+        
+        // ✅ NOVO: Calcular automaticamente o Valor Atual
+        calcularValorAtual();
     }
 }
 
@@ -428,9 +568,6 @@ function preencherFormulario(dados) {
     console.log('✅ Formulário preenchido');
 }
 
-// [CONTINUA NA PARTE 2...]
-// [CONTINUAÇÃO DA PARTE 1...]
-
 // ===================================================================
 // PROCESSAMENTO - ETAPA 2 (BUSCA DE PREÇOS)
 // ===================================================================
@@ -455,7 +592,7 @@ async function verificarCacheEBuscar() {
             especificacoes: AppState.dadosEtapa1.especificacoes,
             estado_conservacao: elementos.estado.value,
             categoria_depreciacao: elementos.depreciacao.value,
-            forcar_nova_busca: false // Verificar cache primeiro
+            forcar_nova_busca: false
         };
         
         const response = await fetch(CONFIG.apiUrl + '/api/processar-etapa2', {
@@ -469,12 +606,10 @@ async function verificarCacheEBuscar() {
         
         if (resultado.status === 'Sucesso') {
             if (resultado.em_cache) {
-                // Cotação veio do cache
                 console.log('⚡ Cotação em cache encontrada!');
                 AppState.cotacaoCache = resultado;
                 mostrarAvisoCache(resultado);
             } else {
-                // Busca nova realizada
                 console.log('🔍 Busca nova realizada');
                 AppState.dadosEtapa2 = resultado.dados;
                 mostrarProdutos(resultado.dados, false);
@@ -496,7 +631,6 @@ async function buscarPreco(forcarNova = false) {
     
     mostrarLoading('🔍 Buscando preços de mercado...');
     
-    // Esconder seção de cache
     if (elementos.cacheSection) {
         elementos.cacheSection.style.display = 'none';
     }
@@ -547,7 +681,6 @@ function usarCotacaoCache() {
         return;
     }
     
-    // Esconder seção de cache
     if (elementos.cacheSection) {
         elementos.cacheSection.style.display = 'none';
     }
@@ -592,8 +725,6 @@ function mostrarAvisoCache(resultado) {
     `;
     
     elementos.cacheSection.style.display = 'block';
-    
-    // Scroll suave
     elementos.cacheSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
@@ -603,7 +734,6 @@ function mostrarProdutos(dados, doCache = false) {
     const produtos = dados.produtos_encontrados || dados.produtos || [];
     const avaliacao = dados.avaliacao || {};
     
-    // Info da cotação
     const fonte = doCache ? '⚡ Cotação do cache' : '🆕 Cotação nova';
     elementos.cotacaoInfo.innerHTML = `
         ${fonte} • 
@@ -612,7 +742,6 @@ function mostrarProdutos(dados, doCache = false) {
         ${avaliacao.produtos_similar || 0} similar
     `;
     
-    // Lista de produtos
     if (produtos.length === 0) {
         elementos.produtosList.innerHTML = `
             <div class="produto-item">
@@ -631,7 +760,7 @@ function mostrarProdutos(dados, doCache = false) {
                     ` : '<span class="produto-sem-preco">Preço não disponível</span>'}
                 </div>
                 <h4 class="produto-nome">${produto.nome || 'Produto sem nome'}</h4>
-                <p class="produto-loja">🏪 ${produto.loja || 'Loja não informada'}</p>
+                <p class="produto-loja">🪧 ${produto.loja || 'Loja não informada'}</p>
                 ${produto.link ? `
                     <a href="${produto.link}" target="_blank" class="produto-link">
                         🔗 Ver produto na loja
@@ -647,8 +776,6 @@ function mostrarProdutos(dados, doCache = false) {
     }
 
     elementos.produtosSection.style.display = 'block';
-    
-    // Scroll suave
     elementos.produtosSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
@@ -670,7 +797,7 @@ async function aceitarCotacao() {
         const payload = {
             termo_busca_comercial: AppState.dadosEtapa1.termo_busca_comercial,
             numero_patrimonio: elementos.numeroPatrimonio.value,
-            operador_id: 'operador_web', // TODO: Implementar login
+            operador_id: 'operador_web',
             dados_cotacao: AppState.dadosEtapa2
         };
         
@@ -710,7 +837,6 @@ function mostrarResultadoFinal() {
     const dados2 = AppState.dadosEtapa2;
     const avaliacao = dados2.avaliacao || {};
     
-    // Identificação
     if (elementos.resultIdentificacao) {
         elementos.resultIdentificacao.innerHTML = `
             <p><strong>Placa:</strong> ${elementos.numeroPatrimonio.value || 'N/A'}</p>
@@ -720,7 +846,6 @@ function mostrarResultadoFinal() {
         `;
     }
     
-    // Classificação
     if (elementos.resultClassificacao) {
         elementos.resultClassificacao.innerHTML = `
             <p><strong>Estado:</strong> ${elementos.estado.value || 'N/A'}</p>
@@ -729,9 +854,10 @@ function mostrarResultadoFinal() {
         `;
     }
     
-    // Valores
     if (elementos.resultValores) {
         elementos.resultValores.innerHTML = `
+            <p><strong>Valor Atual:</strong> R$ ${elementos.valorAtual?.value || 'N/A'}</p>
+            <p><strong>Valor de Mercado:</strong> R$ ${elementos.valorMercado?.value || 'N/A'}</p>
             <p><strong>Média Ponderada:</strong> R$ ${formatarPreco(avaliacao.media_ponderada)}</p>
             <p><strong>Produtos encontrados:</strong> ${avaliacao.total_produtos || 0}</p>
             <p><strong>Com preço:</strong> ${avaliacao.produtos_com_preco || 0}</p>
@@ -739,7 +865,6 @@ function mostrarResultadoFinal() {
         `;
     }
     
-    // JSON completo
     if (elementos.jsonOutput) {
         const dadosCompletos = {
             etapa1: dados1,
@@ -747,25 +872,22 @@ function mostrarResultadoFinal() {
             formulario: {
                 numero_patrimonio: elementos.numeroPatrimonio.value,
                 centro_custo: elementos.centroCusto.value,
-                unidade: elementos.unidade.value
+                unidade: elementos.unidade.value,
+                valor_atual: elementos.valorAtual?.value || '',
+                valor_mercado: elementos.valorMercado?.value || ''
             }
         };
         elementos.jsonOutput.textContent = JSON.stringify(dadosCompletos, null, 2);
     }
     
-    // Esconder seções anteriores
     if (elementos.formSection) elementos.formSection.style.display = 'none';
     if (elementos.produtosSection) elementos.produtosSection.style.display = 'none';
     
-    // Mostrar resultado
     if (elementos.resultSection) {
         elementos.resultSection.style.display = 'block';
         elementos.resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 }
-
-// [CONTINUA NA PARTE 3...]
-// [CONTINUAÇÃO DA PARTE 2...]
 
 // ===================================================================
 // UTILIDADES - ALERTAS E LOADING
@@ -830,8 +952,8 @@ function exportarJSON() {
         formulario: {
             numero_patrimonio: elementos.numeroPatrimonio.value,
             nome_produto: elementos.nomeProduto.value,
-            valor_atual: elementos.valorAtual?.value || '', // ✅ NOVO
-            valor_mercado: elementos.valorMercado?.value || '', // ✅ NOVO
+            valor_atual: elementos.valorAtual?.value || '',
+            valor_mercado: elementos.valorMercado?.value || '',
             estado: elementos.estado.value,
             depreciacao: elementos.depreciacao.value,
             centro_custo: elementos.centroCusto.value,
@@ -866,18 +988,15 @@ function limparTudo() {
         return;
     }
     
-    // Limpar fotos
     AppState.fotos = [null, null, null];
     AppState.dadosEtapa1 = null;
     AppState.dadosEtapa2 = null;
     AppState.cotacaoCache = null;
     
-    // Limpar previews
     for (let i = 0; i < CONFIG.maxFotos; i++) {
         removerFoto(i);
     }
     
-    // Limpar formulário
     if (elementos.numeroPatrimonio) elementos.numeroPatrimonio.value = '';
     if (elementos.nomeProduto) elementos.nomeProduto.value = '';
     if (elementos.valorAtual) elementos.valorAtual.value = '';
@@ -889,12 +1008,10 @@ function limparTudo() {
     if (elementos.descricao) elementos.descricao.value = '';
     if (elementos.nomeEquipamento) elementos.nomeEquipamento.value = '';
     
-    // Reset radios
     const radioNao = document.querySelector('input[name="tipoObservacao"][value="nao"]');
     if (radioNao) radioNao.checked = true;
     if (elementos.nomeEquipamento) elementos.nomeEquipamento.disabled = true;
     
-    // Esconder seções
     if (elementos.observacaoSection) elementos.observacaoSection.style.display = 'none';
     if (elementos.formSection) elementos.formSection.style.display = 'none';
     if (elementos.cacheSection) elementos.cacheSection.style.display = 'none';
@@ -905,9 +1022,5 @@ function limparTudo() {
     
     console.log('🗑️ Sistema resetado');
 }
-
-// ===================================================================
-// FIM DO CÓDIGO
-// ===================================================================
 
 console.log('✅ app.js carregado com sucesso');
