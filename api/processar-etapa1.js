@@ -122,7 +122,6 @@ INSTRUÇÕES:
    
    **REGRAS CRÍTICAS:**
    - ❌ NUNCA adicione palavras como "industrial", "comercial", "profissional" na função
-   - ❌ NUNCA use nome da etiqueta de patrimônio com CNPJ (é o proprietário) como marca
    - ✅ Função deve ser NEUTRA e BREVE: "Limpeza de peças" ou "Usinagem de precisão"
    - ✅ Evite frases longas: prefira "Limpeza de peças" a "Utilizada para limpeza de peças"
    - ✅ Inclua APENAS dados VISÍVEIS: se S/N não está legível → omita completamente
