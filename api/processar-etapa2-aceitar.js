@@ -10,7 +10,98 @@ const redis = new Redis({
 });
 
 // =============================================================================
-// ENDPOINT: ACEITAR COTAÇÃO E SALVAR NO CACHE
+// NORMALIZAR TERMO (MESMA FUNÇÃO DA ETAPA 2)
+// =============================================================================
+
+function normalizarTermo(termo) {
+    return termo
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, '-')
+        .replace(/[^\w\-]/g, '')
+        .substring(0, 100);
+}
+
+// =============================================================================
+// SALVAR CACHE
+// =============================================================================
+
+async function salvarCache(termo, dadosCotacao, patrimonio, operadorId) {
+    try {
+        const termoNormalizado = normalizarTermo(termo);
+        const cacheKey = `cotacao:${termoNormalizado}`;
+        
+        console.log('💾 [CACHE] Salvando:', cacheKey);
+        console.log('🔑 [CACHE] Termo original:', termo);
+        console.log('🔑 [CACHE] Termo normalizado:', termoNormalizado);
+        
+        const dadosParaSalvar = {
+            termo_original: termo,
+            termo_normalizado: termoNormalizado,
+            data_cotacao: new Date().toISOString(),
+            ...dadosCotacao,
+            patrimonio: patrimonio,
+            aceito_por: operadorId || 'sistema',
+            timestamp_aceite: new Date().toISOString()
+        };
+        
+        // Salvar com TTL de 7 dias
+        const resultado = await redis.setex(
+            cacheKey,
+            7 * 24 * 60 * 60,
+            JSON.stringify(dadosParaSalvar)
+        );
+        
+        console.log('✅ [CACHE] Salvo com sucesso (TTL: 7 dias)');
+        console.log('✅ [CACHE] Resultado Redis:', resultado);
+        
+        // Verificar se realmente salvou
+        const verificacao = await redis.get(cacheKey);
+        if (verificacao) {
+            console.log('✅ [CACHE] Verificação OK - Dados encontrados após salvar');
+            
+            // Log dos dados salvos
+            const dadosVerificacao = typeof verificacao === 'string' ? JSON.parse(verificacao) : verificacao;
+            console.log('📊 [CACHE] Produtos salvos:', dadosVerificacao.avaliacao?.total_produtos || 0);
+            console.log('💰 [CACHE] Média ponderada:', dadosVerificacao.avaliacao?.media_ponderada || 'N/A');
+        } else {
+            console.error('❌ [CACHE] AVISO - Dados NÃO encontrados após salvar!');
+        }
+        
+        // Incrementar contador de cache salvos
+        await redis.incr('stats:cache_salvos');
+        
+        // Salvar também em histórico (opcional - para auditoria)
+        const historicoKey = `historico:${patrimonio}:${Date.now()}`;
+        await redis.setex(
+            historicoKey,
+            30 * 24 * 60 * 60, // 30 dias
+            JSON.stringify({
+                ...dadosParaSalvar,
+                tipo: 'aceite_cotacao'
+            })
+        );
+        console.log('📝 [HISTÓRICO] Salvo:', historicoKey);
+        
+        return { 
+            sucesso: true,
+            chave: cacheKey,
+            termo_normalizado: termoNormalizado,
+            data_salva: dadosParaSalvar.data_cotacao
+        };
+        
+    } catch (error) {
+        console.error('❌ [CACHE] Erro ao salvar:', error.message);
+        console.error('❌ [CACHE] Stack:', error.stack);
+        return { 
+            sucesso: false, 
+            erro: error.message 
+        };
+    }
+}
+
+// =============================================================================
+// ENDPOINT PRINCIPAL
 // =============================================================================
 
 module.exports = async (req, res) => {
@@ -21,11 +112,12 @@ module.exports = async (req, res) => {
     if (req.method === 'OPTIONS') return res.status(200).end();
     if (req.method !== 'POST') return res.status(405).json({
         status: 'Erro',
-        mensagem: 'Método não permitido'
+        mensagem: 'Método não permitido',
+        dados: {}
     });
     
     console.log('\n' + '='.repeat(70));
-    console.log('💾 [ACEITAR-COTAÇÃO] SALVAR NO CACHE');
+    console.log('✅ [ACEITAR COTAÇÃO] SALVANDO NO CACHE');
     console.log('='.repeat(70) + '\n');
     
     try {
@@ -33,69 +125,74 @@ module.exports = async (req, res) => {
             termo_busca_comercial,
             numero_patrimonio,
             operador_id,
-            dados_cotacao // Todos os dados da cotação (produtos, avaliacao, etc)
+            dados_cotacao
         } = req.body;
         
-        if (!termo_busca_comercial || !dados_cotacao) {
+        // Validações
+        if (!termo_busca_comercial || termo_busca_comercial.trim() === '') {
             return res.status(400).json({
                 status: 'Erro',
-                mensagem: 'Campos obrigatórios: termo_busca_comercial, dados_cotacao'
+                mensagem: 'Campo "termo_busca_comercial" é obrigatório',
+                dados: {}
+            });
+        }
+        
+        if (!dados_cotacao) {
+            return res.status(400).json({
+                status: 'Erro',
+                mensagem: 'Campo "dados_cotacao" é obrigatório',
+                dados: {}
             });
         }
         
         const termo = termo_busca_comercial.trim();
-        // Usar termo DIRETO como chave (mais consistente que normalização)
-        const cacheKey = `cotacao:${termo}`;
         
         console.log('📦 Patrimônio:', numero_patrimonio);
         console.log('🔍 Termo:', termo);
-        console.log('🔑 Cache key:', cacheKey);
+        console.log('👤 Operador:', operador_id || 'não informado');
+        console.log('📊 Produtos na cotação:', dados_cotacao.avaliacao?.total_produtos || 0);
+        console.log('💰 Média ponderada:', dados_cotacao.avaliacao?.media_ponderada || 'N/A');
         
-        // Preparar dados para cache
-        const dadosParaSalvar = {
-            termo_original: termo,
-            data_cotacao: new Date().toISOString(),
-            ...dados_cotacao,
-            patrimonio: numero_patrimonio || 'N/A',
-            aceito_por: operador_id || 'sistema'
-        };
-        
-        // Salvar no Redis com TTL de 7 dias
-        await redis.setex(
-            cacheKey,
-            7 * 24 * 60 * 60, // 7 dias em segundos
-            JSON.stringify(dadosParaSalvar)
+        // Salvar no cache
+        const resultado = await salvarCache(
+            termo,
+            dados_cotacao,
+            numero_patrimonio,
+            operador_id
         );
         
-        console.log('✅ [CACHE] Cotação salva com sucesso');
-        console.log('⏰ [CACHE] Expira em: 7 dias');
-        
-        // Incrementar estatísticas
-        await redis.incr('stats:cotacoes_aceitas');
-        
-        const tokensEconomizados = dados_cotacao.tokens?.total || 0;
-        if (tokensEconomizados > 0) {
-            await redis.incrby('stats:tokens_economizaveis', tokensEconomizados);
+        if (!resultado.sucesso) {
+            throw new Error(`Falha ao salvar no cache: ${resultado.erro}`);
         }
         
+        console.log('\n✅ [ACEITAR COTAÇÃO] CONCLUÍDO');
+        console.log('🔑 Chave do cache:', resultado.chave);
+        console.log('📅 Data da cotação:', resultado.data_salva);
         console.log('='.repeat(70) + '\n');
         
         return res.status(200).json({
             status: 'Sucesso',
-            mensagem: 'Cotação aceita e salva no cache por 7 dias',
+            mensagem: 'Cotação aceita e salva no cache com sucesso',
             dados: {
-                cache_key: termo, // Retornar termo direto
-                expira_em_dias: 7,
-                data_cotacao: dadosParaSalvar.data_cotacao,
-                tokens_economizaveis: tokensEconomizados
+                termo_original: termo,
+                termo_normalizado: resultado.termo_normalizado,
+                chave_cache: resultado.chave,
+                data_cotacao: resultado.data_salva,
+                patrimonio: numero_patrimonio,
+                operador: operador_id || 'sistema',
+                produtos_salvos: dados_cotacao.avaliacao?.total_produtos || 0,
+                media_ponderada: dados_cotacao.avaliacao?.media_ponderada || null
             }
         });
         
     } catch (error) {
-        console.error('❌ [ACEITAR-COTAÇÃO] ERRO:', error.message);
+        console.error('❌ [ACEITAR COTAÇÃO] ERRO:', error.message);
+        console.error('❌ [STACK]:', error.stack);
+        
         return res.status(500).json({
             status: 'Erro',
-            mensagem: error.message
+            mensagem: error.message,
+            dados: {}
         });
     }
 };

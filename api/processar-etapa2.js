@@ -16,21 +16,40 @@ const redis = new Redis({
 });
 
 // =============================================================================
+// NORMALIZAR TERMO (CHAVE CONSISTENTE)
+// =============================================================================
+
+function normalizarTermo(termo) {
+    // Remove espaços extras, converte para minúsculas e remove caracteres especiais
+    return termo
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, '-')           // Espaços → hífens
+        .replace(/[^\w\-]/g, '')        // Remove caracteres especiais
+        .substring(0, 100);             // Limita tamanho
+}
+
+// =============================================================================
 // CACHE (REDIS)
 // =============================================================================
 
 async function verificarCache(termo) {
     try {
-        // Usar termo DIRETO como chave (Etapa 1 já é consistente)
-        const cacheKey = `cotacao:${termo}`;
+        const termoNormalizado = normalizarTermo(termo);
+        const cacheKey = `cotacao:${termoNormalizado}`;
         
         console.log('🔍 [CACHE] Verificando:', cacheKey);
+        console.log('🔑 [CACHE] Termo original:', termo);
+        console.log('🔑 [CACHE] Termo normalizado:', termoNormalizado);
         
         const cached = await redis.get(cacheKey);
         
         if (!cached) {
             console.log('❌ [CACHE] Não encontrado');
-            return { encontrado: false };
+            return { 
+                encontrado: false,
+                chave_usada: cacheKey 
+            };
         }
         
         const dados = typeof cached === 'string' ? JSON.parse(cached) : cached;
@@ -39,29 +58,35 @@ async function verificarCache(termo) {
         
         console.log('✅ [CACHE] Encontrado!');
         console.log('📅 [CACHE] Idade:', idadeDias.toFixed(1), 'dias');
+        console.log('📦 [CACHE] Produtos:', dados.avaliacao?.total_produtos || 0);
         
         return {
             encontrado: true,
             idade_dias: parseFloat(idadeDias.toFixed(1)),
             data_cotacao: dados.data_cotacao,
-            dados: dados
+            dados: dados,
+            chave_usada: cacheKey
         };
         
     } catch (error) {
         console.error('❌ [CACHE] Erro ao verificar:', error.message);
+        console.error('❌ [CACHE] Stack:', error.stack);
         return { encontrado: false };
     }
 }
 
 async function salvarCache(termo, dadosCotacao, patrimonio, operadorId) {
     try {
-        // Usar termo DIRETO como chave
-        const cacheKey = `cotacao:${termo}`;
+        const termoNormalizado = normalizarTermo(termo);
+        const cacheKey = `cotacao:${termoNormalizado}`;
         
         console.log('💾 [CACHE] Salvando:', cacheKey);
+        console.log('🔑 [CACHE] Termo original:', termo);
+        console.log('🔑 [CACHE] Termo normalizado:', termoNormalizado);
         
         const dadosParaSalvar = {
             termo_original: termo,
+            termo_normalizado: termoNormalizado,
             data_cotacao: new Date().toISOString(),
             ...dadosCotacao,
             patrimonio: patrimonio,
@@ -69,33 +94,46 @@ async function salvarCache(termo, dadosCotacao, patrimonio, operadorId) {
         };
         
         // Salvar com TTL de 7 dias (604800 segundos)
-        await redis.setex(
+        const resultado = await redis.setex(
             cacheKey,
             7 * 24 * 60 * 60,
             JSON.stringify(dadosParaSalvar)
         );
         
         console.log('✅ [CACHE] Salvo com sucesso (TTL: 7 dias)');
+        console.log('✅ [CACHE] Resultado Redis:', resultado);
+        
+        // Verificar se realmente salvou
+        const verificacao = await redis.get(cacheKey);
+        if (verificacao) {
+            console.log('✅ [CACHE] Verificação OK - Dados encontrados após salvar');
+        } else {
+            console.error('❌ [CACHE] AVISO - Dados NÃO encontrados após salvar!');
+        }
         
         // Incrementar contadores
         await redis.incr('stats:cache_salvos');
         
-        return { sucesso: true };
+        return { 
+            sucesso: true,
+            chave: cacheKey,
+            termo_normalizado: termoNormalizado
+        };
         
     } catch (error) {
         console.error('❌ [CACHE] Erro ao salvar:', error.message);
+        console.error('❌ [CACHE] Stack:', error.stack);
         return { sucesso: false, erro: error.message };
     }
 }
 
 // =============================================================================
-// RESOLVER REDIRECTS (usando fetch nativo do Node 18+)
+// RESOLVER REDIRECTS
 // =============================================================================
 
 async function resolverRedirect(url) {
     console.log('🔄 [REDIRECT] Resolvendo:', url.substring(0, 80) + '...');
     
-    // Se não for um redirect do Google, retornar o URL original
     if (!url.includes('vertexaisearch.cloud.google.com') && 
         !url.includes('google.com/url') &&
         !url.includes('google.com/search')) {
@@ -104,7 +142,6 @@ async function resolverRedirect(url) {
     }
     
     try {
-        // Node 18+ tem fetch nativo
         const response = await fetch(url, {
             method: 'HEAD',
             redirect: 'follow'
@@ -116,24 +153,20 @@ async function resolverRedirect(url) {
         
     } catch (error) {
         console.warn('⚠️ [REDIRECT] Falha ao resolver:', error.message);
-        return url; // Fallback para URL original
+        return url;
     }
 }
 
 // =============================================================================
-// EXTRAIR LINKS DO TEXTO MARKDOWN (FALLBACK)
+// EXTRAIR LINKS DO TEXTO MARKDOWN
 // =============================================================================
 
 function extrairLinksDoMarkdown(textoMarkdown) {
     const links = [];
-    const linksVistos = new Set(); // Evitar duplicatas
+    const linksVistos = new Set();
     
-    console.log('==================================================');
-    console.log('🔗 [FALLBACK MARKDOWN] INICIANDO');
-    console.log('==================================================');
-    console.log('📏 Tamanho do texto:', textoMarkdown.length, 'caracteres');
+    console.log('🔗 [FALLBACK MARKDOWN] Tamanho do texto:', textoMarkdown.length, 'caracteres');
     
-    // Regex 1: Links em formato Markdown: [texto](url)
     const regexMarkdown = /\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g;
     let match;
     
@@ -149,42 +182,27 @@ function extrairLinksDoMarkdown(textoMarkdown) {
                 domain: extrairDominio(url),
                 origem: 'markdown-pattern'
             });
-            console.log('🔎 [MARKDOWN] Encontrado:', url.substring(0, 60) + '...');
         }
     }
     
-    // Regex 2: URLs simples (http://... ou https://...)
-    // Pega URLs que estão sozinhas no texto, mesmo sem []()
     const regexUrlSimples = /https?:\/\/[^\s<>"{}|\\^`\[\]]+/g;
     
     while ((match = regexUrlSimples.exec(textoMarkdown)) !== null) {
         const url = match[0];
-        
-        // Limpar caracteres finais indesejados
         const urlLimpa = url.replace(/[.,;:!?)]$/, '');
         
         if (!linksVistos.has(urlLimpa)) {
             linksVistos.add(urlLimpa);
-            
-            // Tentar extrair título do contexto (linha anterior)
-            const posicao = textoMarkdown.indexOf(url);
-            const linhaAnterior = textoMarkdown.substring(Math.max(0, posicao - 200), posicao);
-            const matchTitulo = linhaAnterior.match(/Nome completo do produto:\*\*\s*([^\n]+)/);
-            const titulo = matchTitulo ? matchTitulo[1].trim() : 'Produto';
-            
             links.push({
                 uri: urlLimpa,
-                title: titulo,
+                title: 'Produto',
                 domain: extrairDominio(urlLimpa),
                 origem: 'url-simples'
             });
-            console.log('🔗 [URL-SIMPLES] Encontrado:', urlLimpa.substring(0, 60) + '...');
         }
     }
     
     console.log('📊 [FALLBACK] Total de links extraídos:', links.length);
-    console.log('==================================================');
-    
     return links;
 }
 
@@ -198,7 +216,7 @@ function extrairDominio(url) {
 }
 
 // =============================================================================
-// BUSCAR COM GROUNDING (ETAPA 1 - MARKDOWN COM CITAÇÕES)
+// BUSCAR COM GROUNDING
 // =============================================================================
 
 async function buscarComGrounding(termo) {
@@ -219,12 +237,10 @@ async function buscarComGrounding(termo) {
             }
         });
         
-        // Prompt SIMPLES que funciona melhor com grounding
         const prompt = `Busque informações sobre: ${termo}
 
 Retorne produtos com preços em reais (R$).`;
         
-        // ✅ CORREÇÃO: usar estrutura correta do contents
         const result = await model.generateContent({
             contents: [{ parts: [{ text: prompt }] }],
             tools: [{ googleSearch: {} }]
@@ -232,11 +248,8 @@ Retorne produtos com preços em reais (R$).`;
         
         const response = result.response;
         const texto = response.text();
-        
-        // Extrair metadata de grounding
         const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
         
-        // Extrair usage metadata
         const usage = result.response.usageMetadata;
         const tokensInput = usage?.promptTokenCount || 0;
         const tokensOutput = usage?.candidatesTokenCount || 0;
@@ -244,11 +257,6 @@ Retorne produtos com preços em reais (R$).`;
         
         console.log('✅ [GROUNDING] Sucesso');
         console.log('📊 Tokens - Input:', tokensInput, '| Output:', tokensOutput, '| Total:', tokensTotal);
-        
-        if (groundingMetadata) {
-            console.log('🌐 Web searches:', groundingMetadata.webSearchQueries?.length || 0);
-            console.log('📦 Grounding chunks:', groundingMetadata.groundingChunks?.length || 0);
-        }
         
         return {
             sucesso: true,
@@ -271,7 +279,7 @@ Retorne produtos com preços em reais (R$).`;
 }
 
 // =============================================================================
-// PROCESSAR GROUNDING METADATA COM RESOLUÇÃO DE REDIRECTS
+// PROCESSAR GROUNDING METADATA
 // =============================================================================
 
 async function processarGroundingMetadata(metadata, textoMarkdown) {
@@ -281,7 +289,6 @@ async function processarGroundingMetadata(metadata, textoMarkdown) {
     
     let linksParaResolver = [];
     
-    // PRIORIDADE 1: Tentar extrair dos chunks do grounding
     if (chunks.length > 0) {
         console.log('📦 [METADATA] Processando', chunks.length, 'chunks');
         linksParaResolver = chunks
@@ -289,19 +296,18 @@ async function processarGroundingMetadata(metadata, textoMarkdown) {
             .map(chunk => ({
                 uri: chunk.web.uri,
                 title: chunk.web.title || 'Sem título',
-                domain: extrairDominio(chunk.web.uri), // Extrair do URI real
+                domain: extrairDominio(chunk.web.uri),
                 origem: 'grounding-metadata'
             }));
     }
     
-    // FALLBACK: Se não houver links nos chunks, extrair do Markdown
     if (linksParaResolver.length === 0) {
         console.log('⚠️ [METADATA] Nenhum link nos chunks, usando fallback');
         linksParaResolver = extrairLinksDoMarkdown(textoMarkdown);
     }
     
     if (linksParaResolver.length === 0) {
-        console.warn('❌ [METADATA] Nenhum link encontrado em nenhuma fonte');
+        console.warn('❌ [METADATA] Nenhum link encontrado');
         return {
             tem_resultados: false,
             total_chunks: chunks.length,
@@ -313,9 +319,6 @@ async function processarGroundingMetadata(metadata, textoMarkdown) {
         };
     }
     
-    console.log('🔄 [REDIRECT] Resolvendo', linksParaResolver.length, 'links...');
-    
-    // Resolver todos os redirects em paralelo
     const linksResolvidos = await Promise.all(
         linksParaResolver.map(async (link) => {
             const uriResolvido = await resolverRedirect(link.uri);
@@ -323,12 +326,11 @@ async function processarGroundingMetadata(metadata, textoMarkdown) {
                 ...link,
                 uri_original: link.uri,
                 uri: uriResolvido,
-                domain: extrairDominio(uriResolvido) // Domínio do link FINAL
+                domain: extrairDominio(uriResolvido)
             };
         })
     );
     
-    // Processar supports (liga texto às fontes)
     const suportes = supports.map(support => ({
         texto: support.segment?.text || '',
         indices_chunks: support.groundingChunkIndices || [],
@@ -347,55 +349,7 @@ async function processarGroundingMetadata(metadata, textoMarkdown) {
 }
 
 // =============================================================================
-// MASCARAR URLS (PROTEÇÃO CONTRA CORRUPÇÃO)
-// =============================================================================
-
-function mascararUrls(texto, links) {
-    if (!links || links.length === 0) {
-        console.warn('⚠️ [MASK] Nenhum link para mascarar');
-        return { textoMascarado: texto, mapaUrls: {} };
-    }
-    
-    let textoMascarado = texto;
-    const mapaUrls = {};
-    
-    links.forEach((link, idx) => {
-        const placeholder = `<<URL_${idx + 1}>>`;
-        mapaUrls[placeholder] = link.uri;
-        
-        // Substituir URLs no texto
-        textoMascarado = textoMascarado.replace(new RegExp(escapeRegex(link.uri), 'g'), placeholder);
-        if (link.uri_original && link.uri_original !== link.uri) {
-            textoMascarado = textoMascarado.replace(new RegExp(escapeRegex(link.uri_original), 'g'), placeholder);
-        }
-    });
-    
-    console.log('🎭 [MASK] URLs mascaradas:', Object.keys(mapaUrls).length);
-    return { textoMascarado, mapaUrls };
-}
-
-function escapeRegex(string) {
-    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function desmascararUrls(texto, mapaUrls) {
-    if (!mapaUrls || Object.keys(mapaUrls).length === 0) {
-        console.warn('⚠️ [UNMASK] Nenhum mapa de URLs disponível');
-        return texto;
-    }
-    
-    let textoFinal = texto;
-    
-    Object.entries(mapaUrls).forEach(([placeholder, url]) => {
-        textoFinal = textoFinal.replace(new RegExp(escapeRegex(placeholder), 'g'), url);
-    });
-    
-    console.log('🎭 [UNMASK] URLs restauradas:', Object.keys(mapaUrls).length);
-    return textoFinal;
-}
-
-// =============================================================================
-// EXTRAIR DADOS ESTRUTURADOS (ETAPA 2 - JSON COM URLS PROTEGIDAS)
+// EXTRAIR DADOS ESTRUTURADOS
 // =============================================================================
 
 async function extrairDadosEstruturados(textoMarkdown) {
@@ -432,7 +386,7 @@ Retorne:
 
 REGRAS:
 - Preço: número decimal ou null se não houver
-- "match" = Minuzzi 25kVA | "similar" = marca/spec diferente  
+- "match" = exatamente o produto buscado | "similar" = marca/spec diferente  
 - Extraia NA ORDEM que aparecem no texto`;
         
         const result = await model.generateContent(prompt);
@@ -446,22 +400,20 @@ REGRAS:
             total: usage?.totalTokenCount || 0
         };
         
-        console.log('📊 Tokens Extração - Input:', tokensExtracao.input, '| Output:', tokensExtracao.output, '| Total:', tokensExtracao.total);
+        console.log('📊 Tokens Extração - Input:', tokensExtracao.input, '| Output:', tokensExtracao.output);
         
         const dadosFinais = JSON.parse(jsonText);
         
-        // Inicializar array de produtos se não existir
         if (!dadosFinais.produtos) {
             dadosFinais.produtos = [];
         }
         
-        // Adicionar campos vazios para link e loja (serão preenchidos depois)
         dadosFinais.produtos.forEach(p => {
             p.link = null;
             p.loja = null;
         });
         
-        // ✅ CALCULAR MÉDIA PONDERADA E ESTATÍSTICAS (apenas em JavaScript)
+        // Calcular média ponderada
         let somaMatch = 0, countMatch = 0;
         let somaSimilar = 0, countSimilar = 0;
         let precoMin = null, precoMax = null;
@@ -472,11 +424,9 @@ REGRAS:
                 const preco = parseFloat(p.preco);
                 countComPreco++;
                 
-                // Atualizar min/max
                 if (precoMin === null || preco < precoMin) precoMin = preco;
                 if (precoMax === null || preco > precoMax) precoMax = preco;
                 
-                // Somar por classificação
                 if (p.classificacao === 'match') {
                     somaMatch += preco;
                     countMatch++;
@@ -487,12 +437,10 @@ REGRAS:
             }
         });
         
-        // Calcular média ponderada
         const denominador = (countMatch * 2) + countSimilar;
         const numerador = (somaMatch * 2) + somaSimilar;
         const mediaPonderada = denominador > 0 ? numerador / denominador : null;
         
-        // Criar objeto de avaliação
         dadosFinais.avaliacao = {
             media_ponderada: mediaPonderada ? parseFloat(mediaPonderada.toFixed(2)) : null,
             total_produtos: dadosFinais.produtos.length,
@@ -505,8 +453,6 @@ REGRAS:
         
         console.log('✅ [EXTRAÇÃO] Encontrados:', dadosFinais.produtos.length, 'produtos');
         console.log('💰 [CÁLCULO] Média ponderada:', mediaPonderada?.toFixed(2) || 'N/A');
-        console.log('📊 [CÁLCULO] Numerador:', numerador, '| Denominador:', denominador);
-        console.log('📊 [CÁLCULO] Match:', countMatch, '(R$', somaMatch.toFixed(2), ') | Similar:', countSimilar, '(R$', somaSimilar.toFixed(2), ')');
         
         return {
             sucesso: true,
@@ -544,7 +490,7 @@ module.exports = async (req, res) => {
     });
     
     console.log('\n' + '='.repeat(70));
-    console.log('🚀 [ETAPA2-V5.1] BUSCA COM GROUNDING');
+    console.log('🚀 [ETAPA2-V5.2] BUSCA COM GROUNDING + CACHE REDIS');
     console.log('='.repeat(70) + '\n');
     
     try {
@@ -557,7 +503,7 @@ module.exports = async (req, res) => {
             especificacoes,
             estado_conservacao,
             categoria_depreciacao,
-            forcar_nova_busca // ← Nova flag opcional
+            forcar_nova_busca
         } = req.body;
         
         if (!termo_busca_comercial || termo_busca_comercial.trim() === '') {
@@ -575,7 +521,7 @@ module.exports = async (req, res) => {
         console.log('🔍 Termo:', termo);
         console.log('🔄 Forçar nova busca:', forcar_nova_busca ? 'SIM' : 'NÃO');
         
-        // VERIFICAR CACHE (se não forçar nova busca)
+        // VERIFICAR CACHE
         if (!forcar_nova_busca) {
             const cache = await verificarCache(termo);
             
@@ -594,10 +540,9 @@ module.exports = async (req, res) => {
             }
         }
         
-        // BUSCAR NOVA COTAÇÃO (cache não encontrado ou forçada nova busca)
+        // BUSCAR NOVA COTAÇÃO
         console.log('🔍 [BUSCA] Executando nova busca...');
         
-        // ETAPA 1: Buscar com grounding (Markdown)
         const resultado = await buscarComGrounding(termo);
         
         if (!resultado.sucesso) {
@@ -614,18 +559,16 @@ module.exports = async (req, res) => {
             });
         }
         
-        // Processar metadata e resolver redirects
         const metadataProcessada = await processarGroundingMetadata(
             resultado.groundingMetadata,
             resultado.texto
         );
         
-        // ETAPA 2: Extrair dados estruturados (JSON) - texto RAW
         const dadosEstruturados = await extrairDadosEstruturados(
             resultado.texto
         );
         
-        // Mapear links aos produtos por ORDEM (grounding retorna na ordem do texto)
+        // Mapear links aos produtos
         if (dadosEstruturados.produtos && metadataProcessada.links_encontrados) {
             const links = metadataProcessada.links_encontrados;
             
@@ -638,7 +581,6 @@ module.exports = async (req, res) => {
             });
         }
         
-        // Calcular tokens totais
         const tokensTotal = {
             grounding: resultado.tokens,
             extracao: dadosEstruturados.tokens,
@@ -664,11 +606,9 @@ module.exports = async (req, res) => {
                 total_links: metadataProcessada.links_encontrados.length
             },
             
-            // Dados estruturados extraídos
             produtos_encontrados: dadosEstruturados.produtos || [],
             total_produtos: (dadosEstruturados.produtos || []).length,
             
-            // Avaliação com média ponderada e classificações
             avaliacao: dadosEstruturados.avaliacao || {
                 media_ponderada: null,
                 total_produtos: (dadosEstruturados.produtos || []).length,
@@ -679,13 +619,11 @@ module.exports = async (req, res) => {
                 preco_maximo: null
             },
             
-            // Links do grounding
             links_grounding: metadataProcessada.links_encontrados,
             
-            // Tokens detalhados
             meta: {
                 data_processamento: new Date().toISOString(),
-                versao_sistema: '5.1-Cache-Direto-URLs',
+                versao_sistema: '5.2-Cache-Normalizado',
                 modelo_llm: MODEL,
                 queries: metadataProcessada.total_queries,
                 tokens_grounding: resultado.tokens.total,
@@ -694,16 +632,15 @@ module.exports = async (req, res) => {
             }
         };
         
-        console.log('\n✅ [ETAPA2-V5.1] CONCLUÍDO');
+        console.log('\n✅ [ETAPA2-V5.2] CONCLUÍDO');
         console.log('📊 Queries realizadas:', metadataProcessada.total_queries);
         console.log('📊 Links encontrados:', metadataProcessada.links_encontrados.length);
         console.log('📊 Produtos estruturados:', (dadosEstruturados.produtos || []).length);
         console.log('💰 Média ponderada:', dadosCompletos.avaliacao.media_ponderada || 'N/A');
-        console.log('📊 Match:', dadosCompletos.avaliacao.produtos_match, '| Similar:', dadosCompletos.avaliacao.produtos_similar);
         console.log('📊 Tokens TOTAL:', tokensTotal.total);
         console.log('='.repeat(70) + '\n');
         
-        // Incrementar contador de buscas novas
+        // Incrementar stats
         try {
             await redis.incr('stats:buscas_novas');
             await redis.incrby('stats:tokens_gastos', tokensTotal.total);
@@ -721,7 +658,8 @@ module.exports = async (req, res) => {
         });
         
     } catch (error) {
-        console.error('❌ [ETAPA2-V5.1] ERRO:', error.message);
+        console.error('❌ [ETAPA2-V5.2] ERRO:', error.message);
+        console.error('❌ [STACK]:', error.stack);
         return res.status(500).json({
             status: 'Erro',
             mensagem: error.message,
