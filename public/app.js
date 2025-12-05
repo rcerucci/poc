@@ -869,11 +869,38 @@ async function aceitarCotacao() {
     mostrarLoading('💾 Salvando cotação...');
     
     try {
+        // ✅ Capturar valor atual do campo (pode ter sido alterado manualmente)
+        const valorMercadoAtual = converterMoedaParaNumero(elementos.valorMercado?.value || '0,00');
+        const mediaPonderadaOriginal = AppState.dadosEtapa2.avaliacao?.media_ponderada || 0;
+        
+        // ✅ Criar cópia dos dados da cotação
+        const dadosCotacaoAtualizado = JSON.parse(JSON.stringify(AppState.dadosEtapa2));
+        
+        // ✅ Verificar se operador escolheu preço diferente da média
+        const diferencaPercentual = Math.abs(valorMercadoAtual - mediaPonderadaOriginal) / mediaPonderadaOriginal;
+        const precoAlterado = diferencaPercentual > 0.01; // >1% de diferença
+        
+        if (precoAlterado) {
+            console.log('💰 Operador escolheu preço específico:');
+            console.log('   - Média ponderada original: R$', mediaPonderadaOriginal.toFixed(2));
+            console.log('   - Preço escolhido: R$', valorMercadoAtual.toFixed(2));
+            console.log('   - Diferença:', (diferencaPercentual * 100).toFixed(1) + '%');
+            
+            // Atualizar média ponderada com valor escolhido
+            dadosCotacaoAtualizado.avaliacao.media_ponderada = valorMercadoAtual;
+            dadosCotacaoAtualizado.avaliacao.media_ponderada_original = mediaPonderadaOriginal;
+            dadosCotacaoAtualizado.avaliacao.preco_manual = true;
+            dadosCotacaoAtualizado.avaliacao.preco_manual_motivo = 'Operador escolheu preço específico de um card';
+        } else {
+            console.log('📊 Usando média ponderada: R$', mediaPonderadaOriginal.toFixed(2));
+            dadosCotacaoAtualizado.avaliacao.preco_manual = false;
+        }
+        
         const payload = {
             termo_busca_comercial: AppState.dadosEtapa1.termo_busca_comercial,
             numero_patrimonio: elementos.numeroPatrimonio.value,
             operador_id: 'operador_web',
-            dados_cotacao: AppState.dadosEtapa2
+            dados_cotacao: dadosCotacaoAtualizado
         };
         
         const response = await fetch(CONFIG.apiUrl + '/api/processar-etapa2-aceitar', {
