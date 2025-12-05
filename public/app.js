@@ -232,6 +232,7 @@ function formatarMoeda(input) {
 }
 
 function inicializarFormatacaoMoeda() {
+    // Campo Valor Atual
     if (elementos.valorAtual) {
         elementos.valorAtual.addEventListener('input', function() {
             formatarMoeda(this);
@@ -244,6 +245,27 @@ function inicializarFormatacaoMoeda() {
         });
         
         elementos.valorAtual.addEventListener('focus', function() {
+            if (this.value === '0,00') {
+                this.value = '';
+            }
+        });
+    }
+    
+    // ✅ Campo Valor de Mercado (editável pelo operador)
+    if (elementos.valorMercado) {
+        elementos.valorMercado.addEventListener('input', function() {
+            formatarMoeda(this);
+            // Recalcular Valor Atual ao digitar
+            calcularValorAtual();
+        });
+        
+        elementos.valorMercado.addEventListener('blur', function() {
+            if (!this.value) {
+                this.value = '0,00';
+            }
+        });
+        
+        elementos.valorMercado.addEventListener('focus', function() {
             if (this.value === '0,00') {
                 this.value = '';
             }
