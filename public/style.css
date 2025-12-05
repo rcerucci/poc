@@ -1129,9 +1129,14 @@ kbd {
     margin: 5px 0;
 }
 
+.produto-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+}
+
 .produto-link {
     display: inline-block;
-    margin-top: 10px;
     padding: 8px 12px;
     background: #667eea;
     color: white;
@@ -1140,11 +1145,38 @@ kbd {
     font-size: 13px;
     font-weight: 600;
     transition: all 0.2s;
+    flex: 1;
+    text-align: center;
 }
 
 .produto-link:hover {
     background: #5568d3;
     transform: translateX(3px);
+}
+
+.btn-usar-preco {
+    display: inline-block;
+    padding: 8px 12px;
+    background: #10b981;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    flex: 1;
+    text-align: center;
+}
+
+.btn-usar-preco:hover {
+    background: #059669;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
+}
+
+.btn-usar-preco:active {
+    transform: translateY(0);
 }
 
 /* Ações da Cotação */

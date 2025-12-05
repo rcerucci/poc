@@ -264,6 +264,29 @@ function preencherValorMercado(mediaPonderada) {
     }
 }
 
+// ===================================================================
+// USAR PREÇO ESPECÍFICO DE UM CARD
+// ===================================================================
+
+function usarPrecoEspecifico(preco) {
+    if (elementos.valorMercado && preco) {
+        elementos.valorMercado.value = formatarMoedaBR(preco);
+        
+        // Calcular automaticamente o Valor Atual
+        calcularValorAtual();
+        
+        // Feedback visual
+        mostrarAlerta(`💰 Preço específico aplicado: R$ ${formatarMoedaBR(preco)}`, 'success', 3000);
+        
+        // Scroll suave para o formulário
+        if (elementos.formSection) {
+            elementos.formSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+        
+        console.log('💰 Preço específico aplicado: R$', preco.toFixed(2));
+    }
+}
+
 function inicializarEventListeners() {
     const btnLimparTudo = document.getElementById('btnLimparTudo');
     if (btnLimparTudo) btnLimparTudo.addEventListener('click', limparTudo);
@@ -430,20 +453,9 @@ function removerFoto(index) {
 function validarBotaoProcessar() {
     const fotosValidas = AppState.fotos.filter(f => f !== null);
     const btnProcessar = elementos.processarEtapa1;
-    const secaoObservacao = elementos.observacaoSection;
     
     if (btnProcessar) {
         btnProcessar.disabled = fotosValidas.length < CONFIG.minFotos;
-    }
-    
-    // ✅ Mostrar/ocultar seção de observação
-    if (secaoObservacao) {
-        if (fotosValidas.length >= CONFIG.minFotos) {
-            secaoObservacao.style.display = 'block';
-            console.log('💡 Seção de observação exibida');
-        } else {
-            secaoObservacao.style.display = 'none';
-        }
     }
 }
 
@@ -499,40 +511,6 @@ async function comprimirImagem(file, resolucaoAlvo) {
 // PROCESSAMENTO - ETAPA 1 (EXTRAÇÃO DE DADOS)
 // ===================================================================
 
-
-// ===================================================================
-// VALIDAÇÃO LLM
-// ===================================================================
-
-function mostrarValidacaoLLM(dados) {
-    const validacaoBox = document.getElementById('validacaoLLM');
-    
-    if (!validacaoBox) return;
-    
-    // Verifica se há validação da observação do operador
-    if (dados.observacao_validada && dados.observacao_validada !== 'N/A') {
-        const emoji = {
-            'Confirmada': '✅',
-            'Provável': '🟡',
-            'Conflitante': '⚠️'
-        }[dados.observacao_validada] || '💡';
-        
-        // Monta mensagem formatada
-        let mensagem = `${emoji} <strong>Observação ${dados.observacao_validada}:</strong> ${dados.nota_observacao}`;
-        
-        validacaoBox.innerHTML = mensagem;
-        validacaoBox.classList.add('validacao-ativa');
-        validacaoBox.style.display = 'block';
-        
-        console.log('📝 Validação LLM exibida:', dados.observacao_validada);
-    } else {
-        // Sem observação - ocultar
-        validacaoBox.innerHTML = '';
-        validacaoBox.classList.remove('validacao-ativa');
-        validacaoBox.style.display = 'none';
-    }
-}
-
 async function processarEtapa1() {
     console.log('📸 Iniciando Etapa 1...');
     
@@ -587,7 +565,6 @@ async function processarEtapa1() {
         
         if (resultado.status === 'Sucesso') {
             AppState.dadosEtapa1 = resultado.dados;
-            mostrarValidacaoLLM(resultado.dados);
             preencherFormulario(resultado.dados);
             mostrarAlerta('✅ ' + resultado.mensagem, 'success');
         } else {
@@ -795,7 +772,7 @@ function mostrarProdutos(dados, doCache = false) {
             </div>
         `;
     } else {
-        elementos.produtosList.innerHTML = produtos.map(produto => `
+        elementos.produtosList.innerHTML = produtos.map((produto, index) => `
             <div class="produto-item ${produto.classificacao || 'similar'}">
                 <div class="produto-header">
                     <span class="produto-badge ${produto.classificacao || 'similar'}">
@@ -807,11 +784,18 @@ function mostrarProdutos(dados, doCache = false) {
                 </div>
                 <h4 class="produto-nome">${produto.nome || 'Produto sem nome'}</h4>
                 <p class="produto-loja">🪧 ${produto.loja || 'Loja não informada'}</p>
-                ${produto.link ? `
-                    <a href="${produto.link}" target="_blank" class="produto-link">
-                        🔗 Ver produto na loja
-                    </a>
-                ` : ''}
+                <div class="produto-actions">
+                    ${produto.link ? `
+                        <a href="${produto.link}" target="_blank" class="produto-link">
+                            🔗 Ver na loja
+                        </a>
+                    ` : ''}
+                    ${produto.preco ? `
+                        <button class="btn-usar-preco" onclick="usarPrecoEspecifico(${produto.preco})">
+                            💰 Usar este preço
+                        </button>
+                    ` : ''}
+                </div>
             </div>
         `).join('');
     }
